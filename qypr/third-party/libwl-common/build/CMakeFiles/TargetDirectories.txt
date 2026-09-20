@@ -1,6 +1,0 @@
-/home/arch/Coding/libwl-common/build/CMakeFiles/blur_test.dir
-/home/arch/Coding/libwl-common/build/CMakeFiles/icon_test.dir
-/home/arch/Coding/libwl-common/build/CMakeFiles/desktop_test.dir
-/home/arch/Coding/libwl-common/build/CMakeFiles/test.dir
-/home/arch/Coding/libwl-common/build/CMakeFiles/edit_cache.dir
-/home/arch/Coding/libwl-common/build/CMakeFiles/rebuild_cache.dir

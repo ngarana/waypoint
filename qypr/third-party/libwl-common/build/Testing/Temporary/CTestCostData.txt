@@ -1,4 +1,0 @@
-blur_test 1 0.00469801
-icon_test 1 0.0110779
-desktop_test 1 0.0019079
----

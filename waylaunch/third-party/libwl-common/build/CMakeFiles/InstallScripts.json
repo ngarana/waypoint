@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/arch/Coding/libwl-common/build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

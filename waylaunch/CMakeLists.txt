@@ -29,7 +29,7 @@ find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 # Shared core (libwl-common subtree): canonical protocol XML + EventLoop.
 # Build paths reference it; only data + the reactor are shared, each repo
 # keeps its own codegen rules and loop wiring.
-set(LIBWL_COMMON ${CMAKE_SOURCE_DIR}/third-party/libwl-common)
+set(LIBWL_COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 
 set(PROTOCOL_BUILD_DIR ${CMAKE_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${PROTOCOL_BUILD_DIR})

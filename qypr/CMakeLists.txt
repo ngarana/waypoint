@@ -83,7 +83,7 @@ qypr_gen_protocol(ext-session-lock-v1
 qypr_gen_protocol(ext-workspace-v1
     "${WAYLAND_PROTOCOLS_DIR}/staging/ext-workspace/ext-workspace-v1.xml")
 qypr_gen_protocol(wlr-foreign-toplevel-management-unstable-v1
-    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-foreign-toplevel-management-unstable-v1.xml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../common/protocols/wlr-foreign-toplevel-management-unstable-v1.xml")
 # Standalone qypr-bar host surface:
 #   wlr-layer-shell (vendored) anchors the bar as a desktop panel with an
 #   exclusive zone. xdg-shell is generated only to satisfy the xdg_popup symbol
@@ -91,7 +91,7 @@ qypr_gen_protocol(wlr-foreign-toplevel-management-unstable-v1
 qypr_gen_protocol(xdg-shell
     "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
 qypr_gen_protocol(wlr-layer-shell-unstable-v1
-    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-layer-shell-unstable-v1.xml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../common/protocols/wlr-layer-shell-unstable-v1.xml")
 # Idle inhibitor ("keep awake" toggle, Phase 15) — standard unstable protocol,
 # respected by swayidle/hypridle and any compositor implementing it.
 qypr_gen_protocol(idle-inhibit-unstable-v1
@@ -100,7 +100,7 @@ qypr_gen_protocol(idle-inhibit-unstable-v1
 # shift the screen colour temperature without a D-Bus daemon (Redshift) or
 # any compositor-specific API. Per-output gamma ramps pushed once per toggle.
 qypr_gen_protocol(wlr-gamma-control-unstable-v1
-    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-gamma-control-unstable-v1.xml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../common/protocols/wlr-gamma-control-unstable-v1.xml")
 
 # -----------------------------------------------------------------------------
 # Version header (generated)
@@ -160,7 +160,7 @@ endforeach()
 # every target's include path so `#include "core/EventLoop.hpp"` resolves
 # identically in both repos; WL_COMMON_SOURCES joins each binary explicitly
 # (third-party/ is outside the src/ glob).
-set(WL_COMMON_DIR "${CMAKE_SOURCE_DIR}/third-party/libwl-common")
+set(WL_COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 set(WL_COMMON_SOURCES
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     "${WL_COMMON_DIR}/core/Process.cpp"
