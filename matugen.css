@@ -1,0 +1,31 @@
+/*
+* qypr bar palette (DARK)
+* Generated with Matugen — consumed by qypr-bar via [theme] colors-file.
+* Only written on `matugen -m dark` runs; the bar reloads automatically.
+*/
+--background: #002b36;
+--on_background: #839496;
+--surface: #002b36;
+--on_surface: #839496;
+--surface_variant: #073642;
+--on_surface_variant: #93a1a1;
+--outline: #93a1a1;
+--outline_variant: #93a1a1;
+--primary: #268bd2;
+--on_primary: #002b36;
+--primary_container: #073642;
+--on_primary_container: #839496;
+--secondary: #2aa198;
+--on_secondary: #002b36;
+--tertiary: #859900;
+--on_tertiary: #002b36;
+--error: #dc322f;
+--on_error: #002b36;
+--error_container: #073642;
+--on_error_container: #839496;
+--inverse_surface: #073642;
+--inverse_on_surface: #839496;
+--inverse_primary: #268bd2;
+--surface_tint: #268bd2;
+--shadow: #002b36;
+--scrim: #002b36;

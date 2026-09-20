@@ -1,0 +1,112 @@
+.TH QYPR-LOCK 1 "2026-07-11" "qypr-lock" "User Commands"
+.SH NAME
+qypr-lock \- lean GPU-free Wayland session lock screen for Hyprland
+.SH SYNOPSIS
+.B qypr-lock
+[options]
+.SH DESCRIPTION
+.B qypr-lock
+is a memory-efficient, GPU-free session lock screen for Wayland compositors
+implementing the
+.B ext-session-lock-v1
+protocol (such as Hyprland). It is software-rendered with cairo and
+.BR wl_shm ";" it authenticates the user with PAM and, optionally, shows an
+MPRIS now-playing panel, lock-screen notifications, and a video wallpaper.
+.PP
+Running the binary locks every connected output. Successful PAM
+authentication (the
+.B login
+service) unlocks the session and the process exits.
+.PP
+When idle, only a clock and a standby power button are shown. Any key press
+or pointer movement reveals the password field, the power menu, and the audio
+panel. After a configurable idle period the optional video wallpaper pauses and
+the screen fades to black; any input reverses it. Real backlight/DPMS power-off
+is left to the idle daemon (e.g. hypridle).
+.SH OPTIONS
+.TP
+.BR \-\-idle\-timeout " " \fIseconds\fR
+Pause the video wallpaper and dim the screen to black after
+.I seconds
+of idle. Default is 60. A value of 0 disables the idle dim.
+.TP
+.BR \-\-preview " [" \fIpath.png\fR "]"
+Render the lock screen to a PNG without locking the session, for visual
+verification. Writes
+.I path
+and
+.IR path -idle.png.
+If
+.I path
+is omitted,
+.B qypr-preview.png
+is used. This does not lock the session.
+.TP
+.BR \-\-video\-test " [" \fIseconds\fR "]"
+Exercise the video pipeline offscreen (via libmpv) without locking. Runs for
+.I seconds
+(default 6) and then exits. Useful to verify the playlist and decode pipeline.
+.TP
+.BR \-h ", " \-\-help
+Print a short usage message and exit.
+.SH ENVIRONMENT
+.TP
+.B XDG_RUNTIME_DIR
+Required by Wayland and PAM for socket and credential exchange.
+.TP
+.B XDG_CONFIG_HOME
+Used to locate the per-user configuration, playlists, and the notification log
+service.
+.SH FILES
+.TP
+.I ~/.config/qypr/playlists/day.m3u
+.TP
+.I ~/.config/qypr/playlists/night.m3u
+Time-of-day video playlists for the wallpaper. Entries are resolved relative
+to the playlist file. When unavailable, a gradient background is shown instead.
+.TP
+.I ~/.config/qypr/sensitive_apps.conf
+Per-app rules used by the notification layer.
+.SH NOTIFICATIONS
+Real lock-screen notifications are shown by observing
+.B org.freedesktop.Notifications
+traffic on the session bus through a D-Bus monitor connection, compatible with
+any daemon (SwayNC, dunst, mako, ...). To also carry the pre-lock backlog of
+undismissed notifications, enable the
+.B qypr-record
+mirror service; see
+.BR qypr-record (1).
+.SH SECURITY
+The password is copied directly into a dedicated PAM worker thread and cleared
+immediately after use; the UI only ever holds the in-progress input.
+Authentication runs off the UI thread so a slow PAM stack cannot freeze the
+lock surface.
+.SH EXIT STATUS
+.TP
+.B 0
+The session was unlocked successfully (authentication succeeded).
+.TP
+.B non-zero
+An error occurred before or during locking (e.g. Wayland/PAM setup failure),
+or the process was terminated by a signal.
+.SH EXAMPLES
+.TP
+Lock the session now:
+.B qypr-lock
+.TP
+Lock and dim after 30s idle:
+.B qypr-lock \-\-idle\-timeout 30
+.TP
+Preview the look without locking:
+.B qypr-lock \-\-preview /tmp/preview.png
+.TP
+Exercise the video wallpaper for 10s:
+.B qypr-lock \-\-video\-test 10
+.SH SEE ALSO
+.BR qypr-record (1),
+.BR hyprctl (1),
+.BR hypridle (1),
+.BR systemctl (1),
+.BR pam (8)
+.SH AUTHORS
+The qypr project.

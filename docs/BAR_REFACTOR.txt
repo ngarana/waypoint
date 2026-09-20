@@ -1,0 +1,56 @@
+Status Bar Theming — System-Theme Adoption
+==========================================
+
+Objective
+- The status bar adopts the user's *active desktop theme* on the fly: it draws
+  applet icons from whatever freedesktop icon theme is configured
+  (gtk-icon-theme-name) and derives its backdrop chrome from the configured
+  colour palette. Nothing is pinned to macOS/WhiteSur — a WhiteSur, Papirus,
+  Adwaita, or MacTahoe install each just works, and a bare machine with no
+  symbolic icon theme degrades cleanly to the built-in Nerd Font glyphs.
+
+  (This supersedes an earlier attempt that hard-coded a "macOS look" with
+  WhiteSur icon names and a `style = macos` preset. The mechanism was always
+  theme-agnostic — standard freedesktop `*-symbolic` names resolved through the
+  active icon theme — so the refactor simply removed the macOS-specific framing
+  and made the fallback robust.)
+
+How it works
+- Each StatusIndicator exposes two representations:
+    icon()        → a Nerd Font glyph (self-contained, always present)
+    themedIcon()  → a freedesktop symbolic name, e.g. "audio-volume-high-symbolic",
+                    "battery-good-symbolic", "network-wireless-signal-good-symbolic"
+- IconResolver resolves a symbolic name against the active icon theme plus its
+  Inherits chain and every context subdir (status/symbolic, etc.), caching both
+  hits and misses. A symbolic SVG is black-with-alpha, so Painter::drawSurfaceTinted
+  masks it to iconColor() (the bar text colour) — the icon recolours to the theme.
+- theme::icons::Mode selects the behaviour (bar.conf: `icon-style`):
+    Auto      (default) — symbolic when the active theme provides it, else glyph.
+    Symbolic            — always prefer the theme (per-icon glyph fallback).
+    Glyph               — always the Nerd Font glyph; never touch the icon theme.
+- StatusIndicator::displayIconSurface() is the single resolution point shared by
+  measureWidth() and draw(), so layout and paint never disagree — the previous
+  bug (measure reserved icon width even when the theme lacked the icon and draw
+  fell back to the glyph) is gone.
+
+Backdrop chrome
+- The translucent menu-bar tint + hairline separator is always available (no
+  preset gates it). theme::statusbar::barTint / barBorder default to the resolved
+  palette's `background` / `text`, so the strip tracks the configured colours;
+  bar-tint / bar-border-color override explicitly. Alpha comes from bar-tint-alpha
+  (or the [bar] `backdrop` slot opacity on the standalone qypr-bar).
+- `style` now only selects popover rendering (glass | solid); `macos` is accepted
+  as a backward-compatible alias for glass.
+
+Relevant files
+- src/ui/Theme.hpp / Theme.cpp      — icons::Mode, icon-style parse, palette-derived
+                                       barTint/barBorder, glass/solid + macos alias.
+- src/ui/statusbar/StatusIndicator.* — displayIconSurface() shared by measure/draw,
+                                       symbolic cache, crossfade on icon change.
+- src/render/Painter.cpp             — drawSurfaceTinted() recolours symbolic SVGs.
+- src/ui/IconResolver.cpp            — freedesktop theme-chain + context resolution.
+- src/ui/indicators/*.cpp            — per-applet themedIcon() symbolic names.
+- src/ui/statusbar/StatusBar.cpp     — draws the palette-derived backdrop + hairline.
+- bar.conf / examples/bar.conf       — icon-style + backdrop docs.
+- tests/test_theme.cpp              — ThemeFollowsSystemPalette covers icon-style
+                                      parse, the macos alias, and palette-derived tint.

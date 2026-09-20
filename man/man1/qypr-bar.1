@@ -1,0 +1,75 @@
+.TH QYPR-BAR 1 "2026-07-17" "qypr-bar" "User Commands"
+.SH NAME
+qypr-bar \- lean GPU-free Wayland desktop status bar (waybar replacement)
+.SH SYNOPSIS
+.B qypr-bar
+.SH DESCRIPTION
+.B qypr-bar
+is a memory-efficient, GPU-free status bar for the unlocked desktop. It hosts
+the same status bar as
+.BR qypr-lock (1)
+\(em the same indicators, Quick Settings panel, and popovers \(em but on a
+.B wlr-layer-shell-unstable-v1
+surface instead of a session-lock surface, so it runs as a normal desktop
+panel on any Wayland compositor that implements layer-shell (Hyprland, Sway,
+river, ...). It is software-rendered with cairo and
+.BR wl_shm .
+.PP
+The bar anchors a full-width, chromeless strip to the top of each output and
+reserves an exclusive zone, so tiled windows never sit underneath it. A subtle
+backdrop keeps the glyphs legible over any wallpaper. When Quick Settings or a
+detail popover opens, the surface grows to the full output height so the
+overlay is visible and takes input, then shrinks back so the desktop keeps its
+clicks.
+.PP
+Unlike the lock screen, the bar reveals the session-sensitive widgets that are
+always hidden while locked:
+.TP
+.B Workspaces
+a pill per workspace via the standard
+.B ext-workspace-v1
+protocol; the active one is accented, urgent ones tinted, and a click switches
+workspace. Hidden/special workspaces are filtered.
+.TP
+.B Active window
+the focused window's title (application id fallback) via
+.BR wlr-foreign-toplevel-management ,
+following keyboard focus.
+.PP
+No compositor-specific IPC is used (no
+.BR hyprctl );
+every backend speaks a standard Wayland protocol or freedesktop/systemd
+interface, so the bar is portable across compositors.
+.SH INDICATORS
+Clock, battery (UPower), WiFi (NetworkManager), Bluetooth (BlueZ), volume
+(PipeWire via libpulse), brightness (logind/sysfs), Do Not Disturb, and a
+StatusNotifierItem tray host for third-party icons \(em plus the workspaces and
+active-window widgets above. Left-click activates an indicator or opens its
+detail; scrolling over the volume/brightness indicators adjusts them; the gear
+opens Quick Settings.
+.SH ENVIRONMENT
+.TP
+.B WAYLAND_DISPLAY
+The compositor socket to connect to.
+.TP
+.B XDG_RUNTIME_DIR
+Required by Wayland for socket exchange.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal shutdown.
+.TP
+.B 1
+The compositor is unreachable or does not implement
+.BR wlr-layer-shell-unstable-v1 .
+.SH EXAMPLES
+.TP
+Run the bar (typically from the compositor's autostart):
+.B qypr-bar &
+.SH SEE ALSO
+.BR qypr-lock (1),
+.BR qypr-record (1),
+.BR waybar (1),
+.BR hyprctl (1)
+.SH AUTHORS
+The qypr project.
