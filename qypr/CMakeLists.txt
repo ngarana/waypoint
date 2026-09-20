@@ -1,0 +1,318 @@
+cmake_minimum_required(VERSION 3.20)
+project(qypr VERSION 0.1.0 LANGUAGES C CXX)
+
+# Pre-release / build-metadata suffix appended to the semantic version string
+# (e.g. "-rc1", "-dev+gabcdef0"). Leave empty for stable releases.
+set(QYPR_VERSION_EXTRA "" CACHE STRING "Version pre-release / build-metadata suffix")
+
+# -----------------------------------------------------------------------------
+# Standards & defaults
+# -----------------------------------------------------------------------------
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
+# Coverage is a test-only opt-in (configure with -DENABLE_COVERAGE=ON). It is
+# scoped to the qypr-test target below, so the shipped qypr-lock / qypr-record
+# binaries are never instrumented (no -O0, no .gcda writes at runtime).
+option(ENABLE_COVERAGE "Instrument the qypr-test target for coverage" OFF)
+
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
+add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
+
+pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
+pkg_check_modules(WLCURSOR REQUIRED IMPORTED_TARGET wayland-cursor)
+pkg_check_modules(XKB      REQUIRED IMPORTED_TARGET xkbcommon)
+pkg_check_modules(CAIRO    REQUIRED IMPORTED_TARGET cairo)
+pkg_check_modules(PANGO    REQUIRED IMPORTED_TARGET pangocairo)
+pkg_check_modules(SDBUS    REQUIRED IMPORTED_TARGET sdbus-c++)
+pkg_check_modules(SYSTEMD  REQUIRED IMPORTED_TARGET libsystemd)  # sd-bus (notification monitor)
+pkg_check_modules(UDEV     REQUIRED IMPORTED_TARGET libudev)     # backlight change events
+pkg_check_modules(PULSE    REQUIRED IMPORTED_TARGET libpulse)    # volume (pipewire-pulse)
+pkg_check_modules(MPV      REQUIRED IMPORTED_TARGET mpv)
+pkg_check_modules(RSVG     REQUIRED IMPORTED_TARGET librsvg-2.0)  # SVG icon rasterization
+
+find_library(PAM_LIBRARY pam REQUIRED)
+find_path(PAM_INCLUDE_DIR security/pam_appl.h REQUIRED)
+
+# -----------------------------------------------------------------------------
+# Wayland protocol code generation (ext-session-lock-v1)
+# -----------------------------------------------------------------------------
+find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+
+set(GEN_DIR "${CMAKE_BINARY_DIR}/wayland-generated")
+file(MAKE_DIRECTORY "${GEN_DIR}")
+
+# Generate client-header + private-code for a protocol XML, appending the two
+# outputs to PROTO_SOURCES. <name> is the file stem (without -v1.xml).
+set(PROTO_SOURCES "")
+function(qypr_gen_protocol name xml)
+    set(hdr "${GEN_DIR}/${name}-client-protocol.h")
+    set(src "${GEN_DIR}/${name}-protocol.c")
+    # wlr-layer-shell's get_layer_surface has an argument literally named
+    # `namespace` — a C++ keyword that breaks the generated header when included
+    # from C++. Rename the identifier (whole-word; a no-op for other protocols).
+    add_custom_command(OUTPUT "${hdr}"
+        COMMAND "${WAYLAND_SCANNER}" client-header "${xml}" "${hdr}"
+        COMMAND sed -i "s/\\bnamespace\\b/wl_namespace/g" "${hdr}"
+        DEPENDS "${xml}" VERBATIM)
+    add_custom_command(OUTPUT "${src}"
+        COMMAND "${WAYLAND_SCANNER}" private-code "${xml}" "${src}"
+        DEPENDS "${xml}" VERBATIM)
+    set(PROTO_SOURCES ${PROTO_SOURCES} "${hdr}" "${src}" PARENT_SCOPE)
+endfunction()
+
+qypr_gen_protocol(ext-session-lock-v1
+    "${WAYLAND_PROTOCOLS_DIR}/staging/ext-session-lock/ext-session-lock-v1.xml")
+# General-purpose bar widgets — compositor-agnostic protocols only:
+#   workspaces  → ext-workspace-v1 (staging, standard)
+#   active window / taskbar → wlr-foreign-toplevel-management (vendored; the only
+#     widely-supported protocol carrying per-window *focus* state — ext's
+#     foreign-toplevel-list is list-only).
+qypr_gen_protocol(ext-workspace-v1
+    "${WAYLAND_PROTOCOLS_DIR}/staging/ext-workspace/ext-workspace-v1.xml")
+qypr_gen_protocol(wlr-foreign-toplevel-management-unstable-v1
+    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-foreign-toplevel-management-unstable-v1.xml")
+# Standalone qypr-bar host surface:
+#   wlr-layer-shell (vendored) anchors the bar as a desktop panel with an
+#   exclusive zone. xdg-shell is generated only to satisfy the xdg_popup symbol
+#   that layer-shell's get_popup request references — qypr-bar never uses popups.
+qypr_gen_protocol(xdg-shell
+    "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
+qypr_gen_protocol(wlr-layer-shell-unstable-v1
+    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-layer-shell-unstable-v1.xml")
+# Idle inhibitor ("keep awake" toggle, Phase 15) — standard unstable protocol,
+# respected by swayidle/hypridle and any compositor implementing it.
+qypr_gen_protocol(idle-inhibit-unstable-v1
+    "${WAYLAND_PROTOCOLS_DIR}/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml")
+# Night Light (wlr-gamma-control, vendored wlroots protocol) — lets the bar
+# shift the screen colour temperature without a D-Bus daemon (Redshift) or
+# any compositor-specific API. Per-output gamma ramps pushed once per toggle.
+qypr_gen_protocol(wlr-gamma-control-unstable-v1
+    "${CMAKE_SOURCE_DIR}/third-party/libwl-common/protocols/wlr-gamma-control-unstable-v1.xml")
+
+# -----------------------------------------------------------------------------
+# Version header (generated)
+# -----------------------------------------------------------------------------
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/core/Version.hpp.in"
+    "${CMAKE_BINARY_DIR}/generated/Version.hpp"
+    @ONLY)
+
+# -----------------------------------------------------------------------------
+# Targets
+# -----------------------------------------------------------------------------
+file(GLOB_RECURSE QYPR_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
+# Entry points carry their own main() and are added per-target below, so no
+# executable ever links two of them; NotificationLog is recorder-only.
+list(REMOVE_ITEM QYPR_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/main.cpp"
+    "${CMAKE_SOURCE_DIR}/src/bar_main.cpp"
+    "${CMAKE_SOURCE_DIR}/src/recorder_main.cpp"
+    "${CMAKE_SOURCE_DIR}/src/notifications/NotificationLog.cpp"
+)
+
+# Lock-only sources: the session-lock app and everything reachable only from it
+# (its UI, the video wallpaper, PAM). qypr-bar links none of these.
+#
+# This split is a startup-latency guard, not just tidiness. VideoPlayer.cpp is
+# the sole reason libmpv appears in a link line, and libmpv drags in the whole
+# ffmpeg stack — measured at 201 extra shared objects and 213 MB of mapped
+# closure that the bar never calls into. On a cold boot the dynamic loader must
+# open and fault every one of them before main() runs, which is what made the
+# bar appear seconds after the desktop. Keep this list in sync when a new
+# lock-only file lands: the include graph must never take the bar back to mpv
+# or PAM.
+set(QYPR_LOCK_ONLY_SOURCES
+    src/core/App.cpp
+    src/ui/Shell.cpp
+    src/ui/LockScreen.cpp
+    src/ui/AudioController.cpp
+    src/ui/ActionButton.cpp
+    src/ui/PasswordField.cpp
+    src/ui/Clock.cpp
+    src/ui/PowerDialog.cpp
+    src/ui/StatusMessage.cpp
+    src/wayland/LockSession.cpp
+    src/wayland/WaylandDisplay.cpp
+    src/video/VideoPlayer.cpp
+    src/auth/PamAuthenticator.cpp
+)
+
+set(QYPR_BAR_SOURCES ${QYPR_SOURCES})
+foreach(f ${QYPR_LOCK_ONLY_SOURCES})
+    list(REMOVE_ITEM QYPR_BAR_SOURCES "${CMAKE_SOURCE_DIR}/${f}")
+endforeach()
+
+# Shared core (libwl-common subtree): canonical protocol XML (referenced by
+# qypr_gen_protocol above) + the EventLoop reactor. The subtree root goes on
+# every target's include path so `#include "core/EventLoop.hpp"` resolves
+# identically in both repos; WL_COMMON_SOURCES joins each binary explicitly
+# (third-party/ is outside the src/ glob).
+set(WL_COMMON_DIR "${CMAKE_SOURCE_DIR}/third-party/libwl-common")
+set(WL_COMMON_SOURCES
+    "${WL_COMMON_DIR}/core/EventLoop.cpp"
+    "${WL_COMMON_DIR}/core/Process.cpp"
+    "${WL_COMMON_DIR}/system/DesktopIndex.cpp")
+# Render helpers: bar/lock/test only. qypr-record never draws (linking cairo
+# into it would drag the graphics stack into a daemon).
+set(WL_COMMON_RENDER_SOURCES
+    "${WL_COMMON_DIR}/render/Painter.cpp"
+    "${WL_COMMON_DIR}/render/IconResolver.cpp")
+# CPU shm buffers (bar/lock/test; recorder never draws).
+set(WL_COMMON_WAYLAND_SOURCES "${WL_COMMON_DIR}/wayland/ShmBuffer.cpp")
+
+# 1. Main Lock Screen target (links all graphics, mpv, PAM, sdbus-c++, etc.)
+add_executable(qypr-lock
+    ${QYPR_SOURCES}
+    ${WL_COMMON_SOURCES}
+    ${WL_COMMON_RENDER_SOURCES}
+    ${WL_COMMON_WAYLAND_SOURCES}
+    src/main.cpp
+    ${PROTO_SOURCES})
+
+target_include_directories(qypr-lock PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${WL_COMMON_DIR}"
+    "${CMAKE_BINARY_DIR}/generated"
+    "${GEN_DIR}"
+    "${PAM_INCLUDE_DIR}")
+
+target_link_libraries(qypr-lock PRIVATE
+    PkgConfig::WAYLAND
+    PkgConfig::WLCURSOR
+    PkgConfig::XKB
+    PkgConfig::CAIRO
+    PkgConfig::PANGO
+    PkgConfig::SDBUS
+    PkgConfig::SYSTEMD
+    PkgConfig::UDEV
+    PkgConfig::PULSE
+    PkgConfig::MPV
+    PkgConfig::RSVG
+    "${PAM_LIBRARY}"
+    Threads::Threads)
+
+# 1b. Standalone status-bar target (qypr-bar): the unlocked-desktop bar on
+# wlr-layer-shell. Shares the *bar* object set with qypr-lock — the lock app,
+# its UI, the video wallpaper and PAM are excluded (QYPR_LOCK_ONLY_SOURCES
+# above), so neither libmpv nor libpam is on the bar's startup path.
+add_executable(qypr-bar
+    ${QYPR_BAR_SOURCES}
+    ${WL_COMMON_SOURCES}
+    ${WL_COMMON_RENDER_SOURCES}
+    ${WL_COMMON_WAYLAND_SOURCES}
+    src/bar_main.cpp
+    ${PROTO_SOURCES})
+
+target_include_directories(qypr-bar PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${WL_COMMON_DIR}"
+    "${CMAKE_BINARY_DIR}/generated"
+    "${GEN_DIR}")
+
+target_link_libraries(qypr-bar PRIVATE
+    PkgConfig::WAYLAND
+    PkgConfig::WLCURSOR
+    PkgConfig::XKB
+    PkgConfig::CAIRO
+    PkgConfig::PANGO
+    PkgConfig::SDBUS
+    PkgConfig::SYSTEMD
+    PkgConfig::UDEV
+    PkgConfig::PULSE
+    PkgConfig::RSVG
+    Threads::Threads)
+
+# 2. Standalone Recorder target (only needs systemd for sd-bus)
+add_executable(qypr-record
+    src/core/Config.cpp          # NotificationMonitor resolves its XDG config dir
+    "${WL_COMMON_DIR}/core/EventLoop.cpp"
+    src/notifications/NotificationMonitor.cpp
+    src/notifications/NotificationLog.cpp
+    src/recorder_main.cpp
+)
+
+target_include_directories(qypr-record PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${WL_COMMON_DIR}"
+    "${CMAKE_BINARY_DIR}/generated"
+)
+
+target_link_libraries(qypr-record PRIVATE
+    PkgConfig::SYSTEMD
+)
+
+# 3. Unit Test suite target (mock/headless environment). Modular TUs
+# (tests/test_*.cpp) share tests/test_framework.hpp; TEST bodies run during
+# static initialisation in link order — keep test_bar.cpp's internal order
+# (registry test before the focus-cycling test that reuses its indicator).
+add_executable(qypr-test
+    tests/test_main.cpp
+    tests/test_core.cpp
+    tests/test_theme.cpp
+    tests/test_auth.cpp
+    tests/test_system.cpp
+    tests/test_wayland.cpp
+    tests/test_lock.cpp
+    tests/test_bar.cpp
+    tests/test_indicators.cpp
+    tests/test_notifications.cpp
+    tests/test_desktop.cpp
+    tests/mocks.cpp
+    ${QYPR_SOURCES}
+    ${WL_COMMON_SOURCES}
+    ${WL_COMMON_RENDER_SOURCES}
+    ${WL_COMMON_WAYLAND_SOURCES}
+    src/main.cpp
+    src/notifications/NotificationLog.cpp
+    src/recorder_main.cpp
+    ${PROTO_SOURCES})
+
+target_compile_definitions(qypr-test PRIVATE TESTING)
+
+if(ENABLE_COVERAGE)
+    target_compile_options(qypr-test PRIVATE --coverage -O0 -g)
+    target_link_options(qypr-test PRIVATE --coverage)
+endif()
+
+target_include_directories(qypr-test PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${WL_COMMON_DIR}"
+    "${CMAKE_BINARY_DIR}/generated"
+    "${GEN_DIR}"
+    "${PAM_INCLUDE_DIR}")
+
+target_link_libraries(qypr-test PRIVATE
+    PkgConfig::WAYLAND
+    PkgConfig::WLCURSOR
+    PkgConfig::XKB
+    PkgConfig::CAIRO
+    PkgConfig::PANGO
+    PkgConfig::SYSTEMD
+    PkgConfig::UDEV
+    PkgConfig::PULSE
+    PkgConfig::MPV
+    PkgConfig::RSVG
+    Threads::Threads)
+
+# qypr-test is a headless, mock-linked binary — build it, but never install it.
+install(TARGETS qypr-lock qypr-bar qypr-record RUNTIME DESTINATION bin)
+
+# Man pages.
+install(FILES man/man1/qypr-lock.1 man/man1/qypr-bar.1 man/man1/qypr-record.1
+        DESTINATION share/man/man1)
+
+# Example configuration (copy to $XDG_CONFIG_HOME/qypr/bar.conf to use).
+install(FILES examples/bar.conf DESTINATION share/qypr/examples)

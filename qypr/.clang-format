@@ -1,0 +1,92 @@
+---
+# clang-format configuration for qypr.
+# Derived from the actual codebase style (4-space indent, 100-col, K&R-ish braces).
+Language: Cpp
+Standard: c++20
+
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+ContinuationIndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+NamespaceIndentation: None
+# Access modifiers (public:/private:/protected:) flush with the class body,
+# not indented relative to class.  LLVM defaults to -2 (indent 2 less than body),
+# which gives "  public:".  We want 0 relative to the body = -4 relative to class.
+AccessModifierOffset: -4
+
+# Line length
+ColumnLimit: 100
+
+# Braces
+BreakBeforeBraces: Attach
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Right
+AlignOperands: true
+# The codebase uses double-space before trailing comments (//  not / ).
+# SpacesBeforeTrailingComments controls this.
+SpacesBeforeTrailingComments: 2
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+PointerAlignment: Left
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: Never
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeRangeBasedForLoopColon: true
+
+# Include ordering is maintained manually — the codebase uses a deliberate order
+# (matching header → POSIX → stdlib → third-party → other project headers) that
+# differs from clang-format's standard groupings.  Do not reorder.
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# Short functions / lambdas on one line only when trivial
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+# The codebase uses single-line guards: if (!x) return; / if (y) close(y);
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: true
+
+# Constructor initializers
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+PackConstructorInitializers: CurrentLine
+
+# Templates & requires
+AlwaysBreakTemplateDeclarations: Yes
+RequiresClausePosition: OwnLine
+
+# Penalties (prefer breaking after operators rather than before)
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 200
+
+# Misc
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ReflowComments: true
+SortUsingDeclarations: true
+EmptyLineBeforeAccessModifier: LogicalBlock

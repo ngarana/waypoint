@@ -1,0 +1,146 @@
+---
+# clang-tidy configuration for qypr (C++20 Wayland desktop suite).
+#
+# Run via:  scripts/lint.sh  (whole tree)
+#           pre-commit hook  (staged files only)
+#
+# Requires a compile_commands.json in the build directory.  Generate with:
+#   cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+#   ln -sf build/compile_commands.json .
+
+Checks: >
+  clang-diagnostic-*,
+  -clang-diagnostic-unused-command-line-argument,
+
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.strcpy,
+
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-special-member-functions,
+
+  modernize-*,
+  -modernize-use-trailing-return-type,
+
+  performance-*,
+
+  readability-*,
+  -readability-function-cognitive-complexity,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -readability-identifier-length,
+
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  -misc-include-cleaner,
+
+  hicpp-*,
+  -hicpp-avoid-c-arrays,
+  -hicpp-braces-around-statements,
+  -hicpp-no-array-decay,
+  -hicpp-use-equals-default,
+  -hicpp-vararg,
+
+  concurrency-*,
+
+  portability-*
+
+# Treat these as errors (will make the hook/script exit non-zero)
+WarningsAsErrors: >
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  clang-analyzer-core.NullDereference,
+  clang-analyzer-core.uninitialized.*,
+  clang-analyzer-cplusplus.NewDelete,
+  clang-analyzer-cplusplus.NewDeleteLeaks,
+  cppcoreguidelines-pro-type-member-init,
+  misc-use-after-move
+
+# Suppress noise from generated Wayland / protocol headers and third-party code
+HeaderFilterRegex: '^(?!.*wayland-generated)(?!.*build/).*\.(hpp|h)$'
+ExcludeHeaderFilterRegex: '.*(wayland-generated|/build/).*'
+
+CheckOptions:
+  # Naming convention – match the codebase: camelBack locals, camelBack_ members,
+  # PascalCase types/classes, kConstant constants, MACRO_CASE macros.
+  # Note: clang-tidy uses 'CamelCase' for PascalCase and 'camelBack' for camelCase.
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.MethodCase
+    value: camelBack
+  - key: readability-identifier-naming.MemberCase
+    value: camelBack
+  # Trailing underscore on *private/protected* members only. Public members
+  # (plain struct fields, e.g. a local Row/Hit) keep the bare camelBack name so
+  # designated initializers `{.field = ...}` stay valid: clang-tidy's rename
+  # fixit does NOT rewrite designated initializers, so a blanket MemberSuffix of
+  # '_' silently breaks aggregate initialization.
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.PublicMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.ParameterCase
+    value: camelBack
+  - key: readability-identifier-naming.LocalVariableCase
+    value: camelBack
+  # A const local is still a local — keep camelBack, never PascalCase. Without
+  # this override the constant rules below would rename every `const int foo`
+  # (and its uses) to `Foo`, which is churn, not a fix.
+  - key: readability-identifier-naming.LocalConstantCase
+    value: camelBack
+  - key: readability-identifier-naming.LocalConstantPointerCase
+    value: camelBack
+  - key: readability-identifier-naming.VariableCase
+    value: camelBack
+  # Namespace/class-scope constants use the k-prefix convention: kUpperCamel
+  # (e.g. kUPower, kScrollStep), matching the existing codebase.
+  - key: readability-identifier-naming.ConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstantPrefix
+    value: k
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+  # Don't demand override on trivial destructors
+  - key: cppcoreguidelines-explicit-virtual-functions.AllowOverrideAndFinal
+    value: 'true'
+
+  # Performance: pass strings by const-ref when ≤ 32 bytes is too aggressive
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'std::string_view'
+
+  # modernize: use std::make_unique everywhere
+  - key: modernize-make-unique.MakeSmartPtrFunction
+    value: 'std::make_unique'
+  - key: modernize-make-shared.MakeSmartPtrFunction
+    value: 'std::make_shared'
+
+  # bugprone-narrowing-conversions: ignore float→int in cairo draw calls
+  - key: bugprone-narrowing-conversions.WarnOnFloatingPointNarrowingConversion
+    value: 'false'

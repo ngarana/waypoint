@@ -1,0 +1,15 @@
+[Unit]
+Description=qypr notification log (mirrors the daemon's queue for the lock screen)
+# Only the session D-Bus is needed (no Wayland), so default.target works on
+# any setup; use graphical-session.target instead if your session activates it.
+After=dbus.socket
+
+[Service]
+Type=simple
+# Point this at your built binary.
+ExecStart=/home/arch/.config/qypr/build/qypr-record
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

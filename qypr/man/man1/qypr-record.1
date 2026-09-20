@@ -1,0 +1,67 @@
+.TH QYPR-RECORD 1 "2026-07-11" "qypr-lock" "User Commands"
+.SH NAME
+qypr-record \- notification mirror daemon for qypr-lock
+.SH SYNOPSIS
+.B qypr-record
+.SH DESCRIPTION
+.B qypr-record
+is a lightweight, standalone background service that mirrors the
+.B org.freedesktop.Notifications
+queue so that
+.BR qypr-lock (1)
+can display the backlog of undismissed notifications that arrived before the
+screen was locked.
+.PP
+It runs as a separate binary from
+.B qypr-lock
+so that the heavy graphical and security dependencies (Wayland, Cairo, Pango,
+PAM, mpv, ...) are not loaded into a long-lived background process, keeping its
+idle memory footprint small. It observes notification traffic through a D-Bus
+monitor connection (the same mechanism as
+.BR "busctl monitor" )
+and tracks dismissals, handing the queue to the lock screen over D-Bus at
+startup (the
+.B org.qypr.Notifications
+interface).
+.PP
+The service is normally started via the provided systemd user unit
+.IR qypr-notification-log.service .
+.SH OPTIONS
+None. The daemon takes no command-line arguments and runs until terminated.
+.SH ENVIRONMENT
+.TP
+.B XDG_RUNTIME_DIR
+Required for the session D-Bus connection.
+.TP
+.B XDG_CONFIG_HOME
+Used to locate per-user state for the notification log.
+.SH FILES
+.TP
+.I ~/.config/systemd/user/qypr-notification-log.service
+The systemd user unit that launches
+.BR qypr-record .
+.SH SYSTEMD INTEGRATION
+Install and enable the unit to carry the pre-lock notification backlog:
+.PP
+.RS
+.nf
+install -Dm644 systemd/qypr-notification-log.service \\
+    ~/.config/systemd/user/qypr-notification-log.service
+systemctl --user daemon-reload
+systemctl --user enable --now qypr-notification-log.service
+.fi
+.RE
+.SH EXIT STATUS
+.TP
+.B 0
+The daemon shut down cleanly.
+.TP
+.B 1
+Failed to start the D-Bus monitor or the notification log.
+.SH SEE ALSO
+.BR qypr-lock (1),
+.BR systemctl (1),
+.BR busctl (1),
+.BR org.freedesktop.Notifications (5)
+.SH AUTHORS
+The qypr project.
