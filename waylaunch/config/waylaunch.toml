@@ -1,0 +1,306 @@
+# ============================================================================
+#  waylaunch — App launcher and file search for Wayland
+# ----------------------------------------------------------------------------
+#  Install to:  ~/.config/waylaunch/config.toml
+#  (or pass an explicit path with:  waylaunch --config /path/to/file.toml)
+#
+#  Every value below is the built-in default — delete any key to fall back to
+#  it. The file is grouped by what it controls: [general] runtime, [appearance]
+#  the panel look, [theme] colors/fonts, [search] what the one query returns,
+#  and [[commands]] custom actions. Keybindings are fixed (see the bottom).
+# ============================================================================
+
+[general]
+name    = "waylaunch"
+version = 1
+debug   = false           # true → verbose stderr (also: waylaunch --debug)
+
+
+# ============================================================================
+#  [appearance] — search panel geometry and the frosted-glass effect.
+#  These drive the actual on-screen layout (two-column: results + preview).
+# ============================================================================
+[appearance]
+width          = 720      # panel width in px
+margin_top     = 150      # gap from the top of the screen (search sits high)
+corner_radius  = 16       # panel corner rounding
+search_height  = 64       # height of the large search field
+row_height     = 56       # height of one result row
+icon_size      = 34       # result/app icon size
+list_width     = 402      # width of the left result column inside `width`
+max_per_group  = 6        # max rows shown per category (Apps / Files ...)
+
+# Frosted glass. waylaunch captures the desktop and blurs it client-side, so
+#   "auto" → use glass if a backdrop can be captured, else an opaque panel
+#   "on"   → force glass
+#   "off"  → always opaque (cheapest; no screen capture at all)
+blur           = "auto"
+panel_opacity  = 0.58     # panel tint alpha when blurred but no captured backdrop
+opaque_opacity = 0.96     # panel alpha when glass is unavailable / "off"
+backdrop_tint  = 0.55     # darkening laid over the captured+blurred backdrop
+
+
+# ============================================================================
+#  [theme] — colors and fonts. Defaults are a Catppuccin-ish dark palette.
+# ============================================================================
+[theme]
+name        = "dark"
+mode        = "dark"      # also picks the matugen dark/light scheme below
+custom_path = ""
+# source = "static" | "matugen". matugen follows the wallpaper: Material You
+# tokens are overlaid on [theme.colors] (missing tokens/files keep these
+# static values, so enabling without a colors file changes nothing),
+# live-reloaded in every module without a restart.
+source      = "matugen"
+# matugen --json hex output. Empty = ~/.config/matugen/colors.json.
+# Generate it with e.g.:  matugen image ~/wallpaper.png --json hex
+# or a template writing {"colors": {"dark": {...}, "light": {...}}}.
+# This repo ships matugen/waylaunch-colors.json: copy it to
+# ~/.config/matugen/templates/, register it --
+#   [templates.waylaunch]
+#   input_path = '~/.config/matugen/templates/waylaunch-colors.json'
+#   output_path = '~/.config/matugen/waylaunch-colors.json'
+# -- and point matugen_path at the output (no post_hook needed: waylaunch
+# polls the file and repaints live). A template may also emit our slot names
+# directly ({"background": "{{colors.surface.dark.hex}}", ...}); those win.
+# Semantic warning/success (Material You has no such roles): define them in
+# matugen so they stay meaningful AND harmonize with the wallpaper —
+#   [config.custom_colors]
+#   warning = "#fab387"
+#   success = "#a6e3a1"
+# — otherwise they fall back to the tertiary/secondary palette hues.
+matugen_path = ""
+
+[theme.colors]
+background     = "#1e1e2e"   # panel base (tinted by [appearance] over glass)
+background_alt = "#313244"   # section header / subtle fills
+foreground     = "#cdd6f4"   # primary text
+text_muted     = "#6c7086"   # subtitles, section labels, placeholder
+accent         = "#89b4fa"   # selection highlight, caret
+accent_hover   = "#b4d0fb"
+error          = "#f38ba8"
+warning        = "#fab387"
+success        = "#a6e3a1"
+border         = "#45475a"   # hairline separators
+selection      = "#45475a"   # selected-row background
+
+[theme.input_font]           # the big query field
+family = "SF Pro Display, Inter, Sans"
+size   = 22.0
+
+[theme.result_font]          # result row primary label
+family = "SF Pro Text, Inter, Sans"
+size   = 14.0
+
+[theme.result_detail_font]   # subtitles / preview metadata
+family = "SF Pro Text, Inter, Sans"
+size   = 11.5
+
+
+# ============================================================================
+#  [search] — the unified query. One search box returns apps, files, a
+#  calculator result and custom commands together, grouped and ranked.
+# ============================================================================
+[search]
+placeholder    = "Search"
+
+# Turn individual result providers on/off.
+applications   = true        # .desktop apps (matched by name/comment)
+files          = true        # async file/folder search (native walk, no deps)
+calculator     = true        # a math expression becomes the Top Hit
+commands       = true        # the [[commands]] entries below
+
+# --- File search (native bounded filesystem walk) -----------------------------
+# Roots to search. "~" expands to $HOME. If empty, non-desktop [[search.paths]]
+# are used, and failing that, $HOME.
+file_roots       = ["~"]
+# Directories never descended into (exact basename or glob, e.g. *.tmp). If
+# you leave this empty, waylaunch applies a sensible built-in noise list.
+file_excludes    = [
+    ".git", "node_modules", ".cache", "target", ".venv",
+    "__pycache__", ".cargo", ".rustup", "go/pkg", ".local/share/Trash",
+    "court/backups"
+]
+file_min_query   = 2         # min characters typed before file search fires
+max_file_results = 6         # files kept after ranking (prefix > substring,
+                             # shallower + more-recent scores higher)
+
+# Persisted empty-query suggestions and activation-aware ranking.
+[history]
+enabled                    = true
+max_entries                = 100
+max_age_days               = 365
+frecency_half_life_days    = 30.0
+
+# Application scan locations (type = "desktop"). These are scanned once at
+# startup. Non-"desktop" entries can seed file_roots when file_roots is empty.
+[[search.paths]]
+path    = "/usr/share/applications"
+type    = "desktop"
+enabled = true
+
+[[search.paths]]
+path    = "~/.local/share/applications"
+type    = "desktop"
+enabled = true
+
+[[search.paths]]
+path    = "/usr/local/share/applications"
+type    = "desktop"
+enabled = true
+
+
+# ============================================================================
+#  [content] — index-backed full-text CONTENTS search (Spotlight's "find inside
+#  documents"). Served by the waylaunchd daemon, which builds an inverted index
+#  (SQLite FTS5) over your files; the launcher queries it read-only and shows a
+#  CONTENTS section below apps/files. Start the daemon with:
+#      systemctl --user enable --now waylaunchd
+#  and inspect/control it with `waylaunchctl status`. If the daemon has never
+#  run, content search silently stays off (filename search still works).
+#
+#  The launcher reads only enable/min_query/max_results/match here; the rest are
+#  the daemon's. roots/excludes default to the [search] file settings above.
+# ============================================================================
+[content]
+enable        = true          # master switch (also gates the UI CONTENTS section)
+# roots       = ["~"]         # defaults to [search].file_roots, then ~
+# excludes    = [".git", "node_modules", ".cache"]   # defaults to [search].file_excludes
+exclude_paths = ["~/.ssh", "~/.gnupg", "~/.mozilla", "~/Coding/court/backups"] # privacy: never read (merged w/ defaults)
+max_file_mb   = 8             # don't open files larger than this
+max_text_mb   = 2             # cap extracted text per file
+max_index_mb  = 1000             # hard cap on index size (0 = unlimited)
+match         = "prefix"      # "prefix" (as-you-type) | "substring" (trigram)
+min_query     = 3             # chars before content search fires
+max_results   = 6             # CONTENTS rows shown
+extractors    = ["text", "pdf", "office", "html"]    # importers to enable
+throttle_on_battery = true    # slow the crawl while on battery
+reconcile_interval_s          = 900   # periodic freshness backstop, seconds (0 = off)
+reconcile_interval_degraded_s = 180   # shorter interval while inotify watches are exhausted
+
+
+# ============================================================================
+#  [[commands]] — custom actions that appear as results when their name
+#  matches the query. `command` runs via /bin/sh -c when you press Return.
+#  Add as many blocks as you like.
+# ============================================================================
+[[commands]]
+name     = "Lock Screen"
+command  = "loginctl lock-session"
+icon     = "system-lock-screen"
+category = "System"
+
+[[commands]]
+name     = "Sleep"
+command  = "systemctl suspend"
+icon     = "system-suspend"
+category = "System"
+
+[[commands]]
+name     = "Log Out"
+command  = "loginctl terminate-session $XDG_SESSION_ID"
+icon     = "system-log-out"
+category = "System"
+
+[[commands]]
+name     = "Restart"
+command  = "systemctl reboot"
+icon     = "system-reboot"
+category = "System"
+
+[[commands]]
+name     = "Power Off"
+command  = "systemctl poweroff"
+icon     = "system-shutdown"
+category = "System"
+
+
+# ============================================================================
+#  [app_switcher] — macOS-style Command+Tab Application Switcher HUD.
+# ============================================================================
+[app_switcher]
+enabled        = true     # enable Command+Tab application switcher overlay
+modifier       = "Super"  # modifier key to hold ("Super" | "Alt")
+icon_size      = 64       # application icon size in px
+card_size      = 104      # card size in px
+corner_radius  = 20       # glass HUD corner radius
+show_app_names = true     # show active application title below HUD
+group_by_app   = true     # true: one entry per app (macOS style). false: one
+                          #   entry per window, so you can switch to a specific
+                          #   instance (e.g. the same app on another workspace).
+                          #   Pair false with a title-based activate_command below.
+quick_actions  = true     # enable 'Q' (quit app) and 'H' (hide/minimize)
+hypr_address_focus = true # Hyprland exact-address workspace follow (default on):
+                          #   resolve the selected window to `address:0x...` via
+                          #   `j/clients` and focus it with exact string equality.
+                          #   Unlike title:/class: selectors (regexes!) this matches
+                          #   titles like "(17) WhatsApp - Helium" literally.
+                          #   Safe no-op off Hyprland. Set false to disable.
+
+# Optional command run when a window is activated, *in addition* to the standard
+# wlr-foreign-toplevel activate request AND the exact-address follow above.
+# The selected window is exported as $WL_APP_ID / $WL_CLASS / $WL_TITLE.
+# You rarely need this on Hyprland anymore; keep it for non-Hyprland compositors
+# that don't follow activate to the window's workspace (most — Hyprland, sway — do).
+# WARNING: Hyprland title:/class: selectors are regexes — a title-based command
+# silently misses titles containing ()[]..*+? etc. Never match on raw $WL_TITLE.
+#   Standard Hyprland (class-based; ambiguous when one app spans workspaces):
+# activate_command = 'hyprctl dispatch focuswindow class:"$WL_CLASS"'
+#   Lua-scripted Hyprland (hl.dsp.* dispatch over the IPC socket):
+# activate_command = '''printf 'dispatch hl.dsp.focus({window="class:%s"})' "$WL_CLASS" | socat - UNIX-CONNECT:"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock"'''
+#   (Prefer hypr_address_focus above: a title-based variant of this command
+#   cannot match titles with regex metacharacters like "(17) ...", and naive
+#   escaping breaks across the shell → Lua-string → regex quoting layers.)
+
+
+
+# ============================================================================
+#  [power] — the power-actions overlay (waylaunch --power). A switcher-style
+#  frosted HUD with Lock / Restart / Exit / Hibernate / Suspend / Shut Down.
+#  Bind it to a compositor key, e.g. Hyprland:
+#      bind = SUPER SHIFT, Q, exec, waylaunch --power
+#  Destructive actions ask for confirmation first (Return confirms, Esc goes
+#  back). Every value below is the default; the whole section is optional.
+# ============================================================================
+[power]
+# Which actions appear, in this order. [] disables the overlay entirely.
+enabled_actions     = ["lock", "restart", "exit", "hibernate", "suspend", "shutdown"]
+confirm_destructive = true    # false → every action runs immediately on Return
+countdown_seconds   = 60      # dialog auto-confirms when the counter hits 0 (0 = off)
+font_scale          = 1.0     # text size multiplier inside the power overlay only
+
+# Override any command. Commands are argv-split (quotes supported), executed
+# directly — NOT through a shell. "exit" falls back to loginctl terminating
+# your session when wayland-logout isn't installed. The four power verbs
+# (poweroff/reboot/suspend/hibernate) are normalized at action time to the
+# binary that has them here: systemctl on systemd, loginctl on elogind.
+[power.commands]
+lock      = "loginctl lock-session"
+restart   = "systemctl reboot"
+exit      = "wayland-logout"
+hibernate = "systemctl hibernate"
+suspend   = "systemctl suspend"
+shutdown  = "systemctl poweroff"
+
+# Localize/replace the confirmation phrase per action. It is inserted into the
+# headline: "Are you sure you want to <phrase>?"
+[power.confirm_text]
+restart   = "restart your computer"
+exit      = "log out now"
+hibernate = "hibernate your computer"
+suspend   = "put your computer to sleep"
+shutdown  = "shut down your computer now"
+
+
+# ============================================================================
+#  Keybindings (fixed — not user-configurable yet)
+#  ----------------------------------------------------------------------------
+#    Type            filter results live
+#    Down / Ctrl-J   next result          Up / Ctrl-K   previous result
+#    PageUp/PageDown jump by a group      Tab           autocomplete app name
+#    Return          activate  (app: launch · file: open · calc: copy result
+#                               · command: run)
+#    Right-click     reveal in file manager  (files/folders, and an app's
+#                                             .desktop file)
+#    Esc             dismiss
+# ============================================================================

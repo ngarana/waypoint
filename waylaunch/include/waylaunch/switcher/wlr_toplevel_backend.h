@@ -1,0 +1,80 @@
+#pragma once
+
+#include "toplevel/ToplevelBackend.hpp"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#ifdef HAS_FOREIGN_TOPLEVEL
+#include "wlr-foreign-toplevel-management-client-protocol.h"
+#endif
+
+namespace qypr {
+class EventLoop;
+}
+
+namespace waylaunch {
+
+class WlrForeignToplevelBackend : public IToplevelBackend {
+  public:
+    WlrForeignToplevelBackend() = default;
+    ~WlrForeignToplevelBackend() override;
+
+    bool init(wl_display* display, wl_registry* registry) override;
+    void add_observer(IToplevelObserver* observer) override;
+    void remove_observer(IToplevelObserver* observer) override;
+
+    void activate(uintptr_t handle_id, wl_seat* seat) override;
+    void close(uintptr_t handle_id) override;
+    void set_minimized(uintptr_t handle_id, bool minimize) override;
+
+    // Optional shell command run on activate (in addition to the protocol
+    // request); the window is exported as $WL_APP_ID/$WL_CLASS/$WL_TITLE — a
+    // compositor-agnostic hook for focus behaviour the protocol can't express
+    // (e.g. workspace-following).
+    void set_activate_command(std::string cmd) { activate_command_ = std::move(cmd); }
+
+    // Hyprland exact-address workspace follow (on by default): resolve the
+    // selected window to `address:0x...` via `j/clients` and focus that.
+    // Exact C++ string equality — unlike title:/class: selectors it is not a
+    // regex, so titles like "(17) WhatsApp - Helium" match. Best-effort no-op
+    // off Hyprland. See hyprland_focus.h.
+    void set_hypr_address_focus(bool enabled) { hypr_address_focus_ = enabled; }
+
+    // Reactor for pidfd child-reaping (shared I3 spawn): the activate hook
+    // command is reaped through it instead of leaking a zombie per confirm.
+    // Borrowed (LauncherUI owns it); null disables the hook (tests).
+    void set_event_loop(qypr::EventLoop* loop) { event_loop_ = loop; }
+
+    const std::vector<ToplevelWindow>& windows() const override { return window_cache_; }
+
+#ifdef HAS_FOREIGN_TOPLEVEL
+    void bind_manager(zwlr_foreign_toplevel_manager_v1* manager);
+    void handle_manager_toplevel(zwlr_foreign_toplevel_handle_v1* handle);
+    void handle_toplevel_title(zwlr_foreign_toplevel_handle_v1* handle, const char* title);
+    void handle_toplevel_app_id(zwlr_foreign_toplevel_handle_v1* handle, const char* app_id);
+    void handle_toplevel_state(zwlr_foreign_toplevel_handle_v1* handle, wl_array* state);
+    void handle_toplevel_closed(zwlr_foreign_toplevel_handle_v1* handle);
+#endif
+
+  private:
+    void sync_cache();
+    void run_activate_command(const std::string& cmd, const ToplevelWindow& win);
+    void notify_created(const ToplevelWindow& win);
+    void notify_updated(const ToplevelWindow& win);
+    void notify_closed(uintptr_t handle_id);
+
+    std::vector<IToplevelObserver*> observers_;
+    std::vector<ToplevelWindow> window_cache_;
+    std::string activate_command_;
+    bool hypr_address_focus_ = true;
+    qypr::EventLoop* event_loop_ = nullptr;
+
+#ifdef HAS_FOREIGN_TOPLEVEL
+    zwlr_foreign_toplevel_manager_v1* manager_ = nullptr;
+    std::unordered_map<uintptr_t, zwlr_foreign_toplevel_handle_v1*> handle_map_;
+#endif
+};
+
+} // namespace waylaunch

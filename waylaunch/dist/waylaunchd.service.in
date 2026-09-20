@@ -1,0 +1,49 @@
+[Unit]
+Description=waylaunch content-search indexer
+Documentation=man:waylaunch(1)
+# The indexer works on files, not on the display, so it is tied to the user
+# session rather than the graphical one. It used to be WantedBy/PartOf
+# graphical-session.target, but that target is only started by a session
+# manager that opts in — compositors that don't (Hyprland without uwsm) left
+# this unit "enabled" yet never started, and a PartOf stop at logout never came
+# back. Ordering after it is kept (a no-op when it is never reached) so we
+# start late during a normal graphical login.
+After=graphical-session.target
+
+[Service]
+Type=simple
+# Paths are substituted from the install prefix at configure time (a plain
+# /usr/bin here would break a /usr/local install with status=203/EXEC).
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/waylaunchd
+ExecReload=@CMAKE_INSTALL_FULL_BINDIR@/waylaunchctl reconcile
+Restart=on-failure
+RestartSec=5
+
+# Resource governance (docs/CONTENT_SEARCH.md §7 / NFR3/NFR4): run indexing at
+# background priority and cap memory so it is safe to leave running on a laptop.
+Nice=10
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+# Delegate a cgroup subtree so the daemon can sandbox extractor subprocesses in
+# a child cgroup (memory.max / pids.max / oom.group + clone3 CLONE_INTO_CGROUP).
+# Requires write access to the subtree, so ProtectControlGroups must stay off.
+Delegate=cpu memory pids
+# Envelope for the whole tree (daemon + extractors). The daemon confines the
+# extractors further via its ./extract subgroup (default 512M, swap off); no
+# MemoryHigh here — throttling a PDF parser mid-file just makes it hang longer.
+MemoryMax=768M
+# Hardening: the daemon needs no elevated privileges and no network.
+PrivateNetwork=true
+NoNewPrivileges=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+# Create (and own) the runtime dir for the control socket. Without this, the
+# %t/waylaunch bind for ReadWritePaths under ProtectSystem=strict fails on any
+# boot where the dir doesn't already exist — /run is tmpfs, wiped each reboot —
+# with status=226/NAMESPACE. RuntimeDirectory makes systemd mkdir it (and clean
+# it up) before the sandbox is set up, on every start.
+RuntimeDirectory=waylaunch
+ReadWritePaths=%h/.local/share/waylaunch
+
+[Install]
+WantedBy=default.target

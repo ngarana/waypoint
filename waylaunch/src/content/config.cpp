@@ -1,0 +1,206 @@
+#include "waylaunch/content/config.h"
+
+#include <algorithm>
+#include <toml++/toml.hpp>
+
+#include <cstdlib>
+#include <unistd.h>
+
+namespace waylaunch::content {
+
+namespace {
+
+std::string home_dir() {
+    const char* h = getenv("HOME");
+    return h ? std::string(h) : std::string();
+}
+
+std::string default_config_path() {
+    const char* xdg = getenv("XDG_CONFIG_HOME");
+    if (xdg && xdg[0]) return std::string(xdg) + "/waylaunch/config.toml";
+    std::string h = home_dir();
+    if (!h.empty()) return h + "/.config/waylaunch/config.toml";
+    return "./config.toml";
+}
+
+// Read an array-of-strings TOML node into a vector (const or mutable node-view).
+template <typename NodeView> std::vector<std::string> str_array(NodeView node) {
+    std::vector<std::string> out;
+    if (auto arr = node.as_array())
+        for (auto& e : *arr)
+            if (auto s = e.template value<std::string>()) out.push_back(*s);
+    return out;
+}
+
+std::vector<std::string> expand_all(std::vector<std::string> v) {
+    for (auto& s : v) s = expand_tilde(s);
+    return v;
+}
+
+} // namespace
+
+std::string expand_tilde(const std::string& p) {
+    if (p.empty() || p[0] != '~') return p;
+    std::string h = home_dir();
+    if (h.empty()) return p;
+    if (p.size() == 1) return h;
+    if (p[1] == '/') return h + p.substr(1);
+    return p; // ~user unsupported
+}
+
+std::string ContentConfig::runtime_dir() {
+    const char* xdg = getenv("XDG_RUNTIME_DIR");
+    if (xdg && xdg[0]) return std::string(xdg) + "/waylaunch";
+    // Fallback: a private dir under /tmp keyed by uid.
+    return "/tmp/waylaunch-" + std::to_string(getuid());
+}
+
+std::string ContentConfig::socket_path() { return runtime_dir() + "/waylaunchd.sock"; }
+
+std::string ContentConfig::db_path() {
+    const char* xdg = getenv("XDG_DATA_HOME");
+    std::string base;
+    if (xdg && xdg[0]) {
+        base = std::string(xdg) + "/waylaunch";
+    } else {
+        std::string h = home_dir();
+        base = h.empty() ? "./.local/share/waylaunch" : h + "/.local/share/waylaunch";
+    }
+    return base + "/index.db";
+}
+
+ExtractOptions ContentConfig::extract_options() const {
+    ExtractOptions o;
+    o.max_text_bytes = max_text_mb * 1024 * 1024;
+    o.max_read_bytes = max_file_mb * 1024 * 1024;
+    o.nice = worker_nice;
+    return o;
+}
+
+ContentConfig load_content_config(const std::string& config_path) {
+    ContentConfig c;
+    std::string path = config_path.empty() ? default_config_path() : config_path;
+
+    // Sensible privacy defaults regardless of config (NFR7 / §8).
+    std::string h = home_dir();
+    if (!h.empty()) {
+        c.exclude_paths = {h + "/.ssh",
+                           h + "/.gnupg",
+                           h + "/.mozilla",
+                           h + "/.local/share/keyrings",
+                           h + "/.password-store",
+                           h + "/.config/waylaunch"};
+    }
+
+    toml::table tbl;
+    try {
+        tbl = toml::parse_file(path);
+    } catch (...) {
+        // No/invalid config: fall back to defaults + $HOME root.
+        if (c.roots.empty() && !h.empty()) c.roots = {h};
+        return c;
+    }
+
+    // [search] fallbacks for roots/excludes.
+    std::vector<std::string> search_roots;
+    std::vector<std::string> search_excludes;
+    if (auto* s = tbl["search"].as_table()) {
+        search_roots = expand_all(str_array((*s)["file_roots"]));
+        search_excludes = str_array((*s)["file_excludes"]);
+    }
+
+    if (auto* ct = tbl["content"].as_table()) {
+        const toml::table& t = *ct;
+        if (auto v = t["enable"].value<bool>()) c.enable = *v;
+        c.roots = expand_all(str_array(t["roots"]));
+        c.excludes = str_array(t["excludes"]);
+        // Merge user-specified privacy paths onto the built-in defaults.
+        for (auto& p : expand_all(str_array(t["exclude_paths"]))) c.exclude_paths.push_back(p);
+        if (auto v = t["max_file_mb"].value<int64_t>()) c.max_file_mb = static_cast<size_t>(*v);
+        if (auto v = t["max_text_mb"].value<int64_t>()) c.max_text_mb = static_cast<size_t>(*v);
+        if (auto v = t["max_index_mb"].value<int64_t>()) c.max_index_mb = static_cast<size_t>(*v);
+        if (auto v = t["min_query"].value<int64_t>()) c.min_query = static_cast<int>(*v);
+        if (auto v = t["max_results"].value<int64_t>()) c.max_results = static_cast<int>(*v);
+        if (auto v = t["worker_nice"].value<int64_t>()) c.worker_nice = static_cast<int>(*v);
+        if (auto v = t["reconcile_interval_s"].value<int64_t>())
+            c.reconcile_interval_s = static_cast<int>(*v);
+        if (auto v = t["reconcile_interval_degraded_s"].value<int64_t>())
+            c.reconcile_interval_degraded_s = static_cast<int>(*v);
+        if (auto v = t["throttle_on_battery"].value<bool>()) c.throttle_on_battery = *v;
+        if (auto v = t["match"].value<std::string>())
+            c.match = (*v == "substring") ? MatchMode::Substring : MatchMode::Prefix;
+        auto ex = str_array(t["extractors"]);
+        if (!ex.empty()) c.extractors = ex;
+    }
+
+    // Roots: [content].roots → [search].file_roots → $HOME.
+    if (c.roots.empty()) c.roots = search_roots;
+    if (c.roots.empty() && !h.empty()) c.roots = {h};
+
+    // Excludes: union of [content].excludes, [search].file_excludes and a
+    // built-in noise list. These are ADDITIVE, as the shipped config documents
+    // ("merged with the built-in noise list"). This used to be a fallback chain
+    // — the built-ins applied only when the user's list was empty — so adding a
+    // single project-specific exclude silently re-admitted .venv/__pycache__/
+    // .mypy_cache and friends. On one real install that was 127k of 170k indexed
+    // files (~3/4 of a 1.5 GB index) and it is why the crawl kept hitting the
+    // size cap. There is no negation syntax: a built-in cannot be opted out of.
+    static const char* kBuiltinExcludes[] = {
+        ".git",
+        "node_modules",
+        ".cache",
+        "target",
+        ".venv",
+        "__pycache__",
+        ".cargo",
+        ".rustup",
+        "go/pkg",
+        ".local/share/Trash",
+        ".npm",
+        "build",
+        // Generated caches seen dominating a real index; all are reproducible
+        // build/tool output with no reason to be searchable.
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        ".tox",
+        // Package/tool stores. These hold content-addressed blobs rather than
+        // documents — a pnpm store alone contributed 34k files to that index.
+        ".pnpm-store",
+        ".pre-commit-home",
+        ".yarn",
+        ".m2",
+        ".ivy2",
+        ".nuget",
+        ".gem",
+        ".bundle",
+        ".conda",
+        ".stack-work",
+        ".ccache",
+        ".sccache",
+        ".gradle",
+        ".terraform",
+        ".terragrunt-cache",
+        ".parcel-cache",
+        ".turbo",
+        ".nx",
+        ".angular",
+        ".vite",
+        ".svelte-kit",
+        ".eggs",
+        "bower_components",
+        "vcpkg_installed",
+    };
+    for (const char* d : kBuiltinExcludes) c.excludes.emplace_back(d);
+    for (const auto& d : search_excludes) c.excludes.push_back(d);
+    // Dedupe, preserving first-seen order (the user's own entries stay in front).
+    std::vector<std::string> uniq;
+    uniq.reserve(c.excludes.size());
+    for (auto& d : c.excludes)
+        if (!d.empty() && std::ranges::find(uniq, d) == uniq.end()) uniq.push_back(d);
+    c.excludes.swap(uniq);
+    return c;
+}
+
+} // namespace waylaunch::content

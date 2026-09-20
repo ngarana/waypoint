@@ -1,0 +1,297 @@
+#pragma once
+
+#include "wayland/ShmBuffer.hpp" // shared memfd shm (libwl-common subtree)
+#include <cairo/cairo.h>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+#include <xkbcommon/xkbcommon.h>
+
+struct wl_display;
+struct wl_registry;
+struct wl_compositor;
+struct wl_shm;
+struct wl_seat;
+struct wl_keyboard;
+struct wl_pointer;
+struct wl_output;
+struct wl_surface;
+struct wl_buffer;
+struct wl_shm_pool;
+struct wl_cursor_theme;
+struct wl_cursor;
+struct zwlr_layer_shell_v1;
+struct zwlr_layer_surface_v1;
+
+#ifdef HAS_FOREIGN_TOPLEVEL
+struct zwlr_foreign_toplevel_manager_v1;
+struct zwlr_foreign_toplevel_handle_v1;
+#endif
+
+#ifdef HAS_SCREENCOPY
+struct zwlr_screencopy_manager_v1;
+struct zwlr_screencopy_frame_v1;
+#endif
+
+namespace waylaunch {
+
+// A pooled frame buffer: shared memfd-backed shm (libwl-common) with
+// waylaunch's size discipline layered on top. Release tracking lives in the
+// shared unit (busy flag + release listener); this struct only owns the slot.
+struct Buffer {
+    std::unique_ptr<qypr::ShmBuffer> shm;
+
+    int width() const { return shm ? shm->width() : 0; }
+    int height() const { return shm ? shm->height() : 0; }
+    int stride() const { return shm ? cairo_image_surface_get_stride(shm->cairoSurface()) : 0; }
+    uint8_t* data() const {
+        return shm ? cairo_image_surface_get_data(shm->cairoSurface()) : nullptr;
+    }
+    wl_buffer* wl_buf() const { return shm ? shm->buffer() : nullptr; }
+    bool busy() const { return shm ? shm->busy() : false; }
+};
+
+struct KeyboardState {
+    xkb_context* xkb_ctx = nullptr;
+    xkb_keymap* keymap = nullptr;
+    xkb_state* state = nullptr;
+    int repeat_rate = 0;
+    int repeat_delay = 0;
+    KeyboardState();
+    ~KeyboardState();
+};
+
+struct OutputInfo {
+    wl_output* output = nullptr;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t scale = 1;
+    std::string name;
+};
+
+using KeyHandler = std::function<void(uint32_t keysym, uint32_t utf32, bool pressed)>;
+using ModifiersHandler = std::function<void(uint32_t mods)>;
+using MouseHandler = std::function<void(double x, double y, uint32_t button, bool pressed)>;
+using MouseMoveHandler = std::function<void(double x, double y)>;
+using AxisHandler = std::function<void(double x, double y, int32_t axis, double value)>;
+using CloseHandler = std::function<void()>;
+using RedrawHandler = std::function<void()>;
+
+// Layer-shell placement for the surface. Values match the
+// zwlr_layer_surface_v1 anchor/keyboard-interactivity enums so the .cpp can
+// static_assert the mapping instead of translating.
+enum class LayerAnchor : uint32_t {
+    Top = 1,
+    Bottom = 2,
+    Left = 4,
+    Right = 8,
+};
+
+enum class LayerKeyboardMode : uint32_t {
+    None = 0,
+    Exclusive = 1,
+    OnDemand = 2,
+};
+
+struct LayerSurfaceConfig {
+    // Edges the surface anchors to; opposite pairs stretch (0 in that
+    // dimension), a single edge takes the explicit size.
+    uint32_t anchors =
+        static_cast<uint32_t>(LayerAnchor::Top) | static_cast<uint32_t>(LayerAnchor::Bottom) |
+        static_cast<uint32_t>(LayerAnchor::Left) | static_cast<uint32_t>(LayerAnchor::Right);
+    int32_t width = 0;  // 0 = span the output in this dimension
+    int32_t height = 0; // 0 = span the output in this dimension
+    // Offset from the anchored edge(s). The dropdown tab strip anchors
+    // TOP|LEFT with explicit size and margins placing it flush above its
+    // terminal instead of under the bar at the output edge.
+    int32_t margin_top = 0;
+    int32_t margin_right = 0;
+    int32_t margin_bottom = 0;
+    int32_t margin_left = 0;
+    LayerKeyboardMode keyboard = LayerKeyboardMode::Exclusive;
+    int32_t exclusive_zone = -1; // -1: render above other exclusive zones
+    const char* layer_namespace = "waylaunch";
+    // Output to map on, by wl_output name (`eDP-1`, `DP-2`). Empty leaves the
+    // choice to the compositor, which picks the one with the pointer — fine
+    // for a fullscreen overlay, wrong for a surface that must sit flush above
+    // a window placed on the *focused* monitor. The output is fixed when the
+    // layer surface is created, so changing this recreates it (remap_surface).
+    std::string output_name;
+};
+
+class WaylandCore {
+  public:
+    WaylandCore();
+    ~WaylandCore();
+
+    bool init();
+    void run();
+    void set_running(bool v); // begin/stop the external dispatch loop
+    void quit();
+
+    // Layer placement for the surface. Call before init() for the initial
+    // map, and/or before remap_surface() to resize/reposition on re-show.
+    // Default reproduces the historical fullscreen overlay exactly.
+    void set_layer_surface_config(const LayerSurfaceConfig& config);
+
+    Buffer* acquire_buffer();
+    void submit_buffer(Buffer* buf, int x = 0, int y = 0);
+    // Unmap the surface (attach a null buffer): the compositor takes it off-screen
+    // and releases its keyboard grab, without tearing down the connection. Used by
+    // the resident switcher to go dormant between Alt+Tab presses. Per layer-shell,
+    // the unmap discards the layer_surface state, so is_configured() goes false and
+    // re-showing must call remap_surface() and wait for the fresh configure before
+    // any buffer is attached.
+    void unmap_surface();
+    // Redo the initial-commit handshake after unmap_surface(): re-applies the layer
+    // properties and commits bufferless; the resulting configure re-enables
+    // rendering (is_configured()) and fires the redraw handler.
+    void remap_surface();
+
+    void set_key_handler(KeyHandler handler);
+    void set_modifiers_handler(ModifiersHandler handler);
+    void set_mouse_handler(MouseHandler handler);
+    void set_mouse_move_handler(MouseMoveHandler handler); // pointer motion/enter (hover)
+    void set_axis_handler(AxisHandler handler);
+    void set_close_handler(CloseHandler handler);
+    void set_redraw_handler(RedrawHandler handler);
+
+    OutputInfo& primary_output();
+    int32_t primary_scale() const;
+    int32_t output_width() const;
+    int32_t output_height() const;
+    int32_t surface_width() const; // current surface/buffer width (may differ from output)
+    int32_t surface_height() const;
+
+    wl_display* display() const;
+    wl_surface* surface() const;
+    wl_seat* seat() const; // for clients that need the seat (e.g. switcher activate)
+    bool is_running() const;
+    bool is_configured() const; // true once the (layer/xdg) surface has been configured
+
+    // Is a modifier (by its xkb name, e.g. XKB_MOD_NAME_ALT) currently held? Keeps
+    // the xkb_state detail inside WaylandCore instead of exposing kbd_ to callers.
+    bool modifier_active(const char* xkb_mod_name) const;
+
+    // Client-side backdrop capture for glassmorphism: grabs the primary output
+    // into an SHM buffer BEFORE the overlay is mapped, so we can blur it ourselves.
+    bool capture_backdrop();
+    void set_want_backdrop(bool v); // if false, skip the (screencopy) capture entirely
+    bool has_backdrop() const;
+    const uint8_t* backdrop_data() const;
+    int backdrop_width() const;
+    int backdrop_height() const;
+    int backdrop_stride() const;
+    uint32_t backdrop_format() const;
+    bool backdrop_y_invert() const;
+
+    void handle_keymap(uint32_t format, int32_t fd, uint32_t size);
+    void handle_key(uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
+    void handle_modifiers(uint32_t md, uint32_t ml, uint32_t mk, uint32_t group) const;
+    void handle_output_geometry(wl_output* out, int32_t x, int32_t y, int32_t w, int32_t h,
+                                int32_t transform, int32_t factor);
+    void handle_output_mode(wl_output* out, uint32_t flags, int32_t width, int32_t height,
+                            int32_t refresh);
+    void handle_output_scale(wl_output* out, int32_t factor);
+    void handle_output_name(wl_output* out, const std::string& name);
+    // OutputInfo owning `out`, or nullptr. Public only because the C listener
+    // trampolines above route through it.
+    OutputInfo* output_for(wl_output* out);
+    // Bound wl_output whose name matches, or nullptr (also for an empty name).
+    wl_output* output_by_name(const std::string& name);
+
+    // C-ABI glue: these are written by the free-function wl_listener trampolines
+    // in wayland_core.cpp (which take a void* and cast to WaylandCore). They are
+    // implementation state, NOT the public API — other modules go through the
+    // accessors above (seat(), modifier_active(), foreign_toplevel_manager(), the
+    // set_*_handler setters). They stay in the header only because the C callbacks
+    // that fill them can't be class members without pulling <wayland-client.h>
+    // (wl_fixed_t et al.) into this otherwise forward-declared header.
+    wl_keyboard* keyboard_ = nullptr;
+    wl_pointer* pointer_ = nullptr;
+    double pointer_x_ = 0, pointer_y_ = 0;
+    KeyboardState kbd_;
+    // Cursor image: an exclusive layer surface owns pointer focus, so the client
+    // must paint the pointer itself on enter — otherwise it's invisible over the
+    // overlay and mouse aiming is impossible. Loaded lazily on first pointer enter.
+    wl_cursor_theme* cursor_theme_ = nullptr;
+    wl_cursor* cursor_ = nullptr;
+    wl_surface* cursor_surface_ = nullptr;
+    void ensure_cursor(uint32_t serial); // load (once) + attach the pointer image
+    wl_compositor* compositor_ = nullptr;
+    wl_shm* shm_ = nullptr;
+    wl_seat* seat_ = nullptr;
+    std::vector<OutputInfo> outputs_;
+    std::vector<std::unique_ptr<Buffer>> buffers_;
+    KeyHandler key_handler_;
+    ModifiersHandler modifiers_handler_;
+    MouseHandler mouse_handler_;
+    MouseMoveHandler mouse_move_handler_;
+    AxisHandler axis_handler_;
+    CloseHandler close_handler_;
+    RedrawHandler redraw_handler_;
+
+    zwlr_layer_shell_v1* layer_shell_ = nullptr;
+    zwlr_layer_surface_v1* layer_surface_ = nullptr;
+    // Output name the live layer_surface_ was created against, so
+    // remap_surface() can tell when it has to be rebuilt on another monitor.
+    std::string layer_output_name_;
+    bool create_layer_surface();
+
+#ifdef HAS_FOREIGN_TOPLEVEL
+    zwlr_foreign_toplevel_manager_v1* foreign_toplevel_manager_ = nullptr;
+    using ForeignToplevelListener = std::function<void(zwlr_foreign_toplevel_manager_v1*)>;
+    ForeignToplevelListener foreign_toplevel_listener_;
+    void set_foreign_toplevel_listener(ForeignToplevelListener h) {
+        foreign_toplevel_listener_ = std::move(h);
+    }
+    zwlr_foreign_toplevel_manager_v1* foreign_toplevel_manager() const {
+        return foreign_toplevel_manager_;
+    }
+#endif
+
+#ifdef HAS_SCREENCOPY
+    zwlr_screencopy_manager_v1* screencopy_manager_ = nullptr;
+    // Backdrop capture state (written by frame-listener trampolines).
+    std::vector<uint8_t> backdrop_pixels_;
+    int backdrop_w_ = 0, backdrop_h_ = 0, backdrop_stride_ = 0;
+    uint32_t backdrop_format_ = 0;
+    bool backdrop_y_invert_ = false;
+    bool backdrop_ready_ = false;
+    bool backdrop_failed_ = false;
+    bool has_backdrop_ = false;
+    // Temporary SHM buffer the compositor copies the frame into.
+    int cap_fd_ = -1;
+    uint8_t* cap_data_ = nullptr;
+    int cap_size_ = 0;
+    wl_buffer* cap_wl_buffer_ = nullptr;
+    zwlr_screencopy_frame_v1* cap_frame_ = nullptr;
+    void handle_sc_buffer(uint32_t format, uint32_t w, uint32_t h, uint32_t stride);
+    void handle_sc_flags(uint32_t flags);
+    void handle_sc_ready();
+    void handle_sc_failed();
+#endif
+
+  private:
+    void apply_layer_config() const; // shared by init() and remap_surface()
+    wl_display* display_ = nullptr;
+    wl_registry* registry_ = nullptr;
+    wl_surface* surface_ = nullptr;
+
+    bool running_ = false;
+    bool want_backdrop_ = true;
+    LayerSurfaceConfig layer_config_;
+    int32_t pending_width_ = 0;
+    int32_t pending_height_ = 0;
+    bool configured_ = false;
+
+    // Key repeat state
+    uint32_t repeat_keysym_ = 0;
+    uint32_t repeat_utf32_ = 0;
+    uint32_t repeat_time_ = 0;
+    bool repeat_active_ = false;
+};
+
+} // namespace waylaunch

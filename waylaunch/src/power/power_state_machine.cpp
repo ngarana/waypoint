@@ -1,0 +1,28 @@
+#include "waylaunch/power/power_state_machine.h"
+
+namespace waylaunch {
+
+void PowerStateMachine::process_event(PowerEvent event) {
+    switch (state_) {
+        case PowerState::Hidden:
+            if (event == PowerEvent::Trigger) state_ = PowerState::Active;
+            break;
+
+        case PowerState::Active:
+            if (event == PowerEvent::OpenConfirm) state_ = PowerState::ConfirmOpen;
+            else if (event == PowerEvent::Execute || event == PowerEvent::Cancel)
+                state_ = PowerState::Dismissing;
+            break;
+
+        case PowerState::ConfirmOpen:
+            // Cancel dismisses the overlay outright — it does not return to the
+            // picker (see PowerManager::cancel).
+            if (event == PowerEvent::Execute || event == PowerEvent::Cancel)
+                state_ = PowerState::Dismissing;
+            break;
+
+        case PowerState::Dismissing: state_ = PowerState::Hidden; break;
+    }
+}
+
+} // namespace waylaunch
