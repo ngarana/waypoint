@@ -1,0 +1,29 @@
+<* if {{ is_dark_mode }} *>
+{
+    "background": "#002b36",
+    "background_alt": "#073642",
+    "foreground": "#839496",
+    "text_muted": "#586e75",
+    "accent": "#268bd2",
+    "accent_hover": "#2aa198",
+    "error": "#dc322f",
+    "warning": "#b58900",
+    "success": "#859900",
+    "border": "#657b83",
+    "selection": "#073642"
+}
+<* else *>
+{
+    "background": "#fdf6e3",
+    "background_alt": "#eee8d5",
+    "foreground": "#657b83",
+    "text_muted": "#586e75",
+    "accent": "#268bd2",
+    "accent_hover": "#2aa198",
+    "error": "#dc322f",
+    "warning": "#b58900",
+    "success": "#859900",
+    "border": "#657b83",
+    "selection": "#eee8d5"
+}
+<* endif *>
