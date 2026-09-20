@@ -1,0 +1,62 @@
+Start testing: Sep 20 15:02 EAT
+----------------------------------------------------------
+1/3 Testing: blur_test
+1/3 Test: blur_test
+Command: "/home/arch/Coding/libwl-common/build/blur_test"
+Directory: /home/arch/Coding/libwl-common/build
+"blur_test" start time: Sep 20 15:02 EAT
+Output:
+----------------------------------------------------------
+[PASS] blur no-op guards
+[PASS] blur softens step edge
+[PASS] backdrop rejects bad input
+[PASS] backdrop paints clipped glass
+All BackdropBlur unit tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"blur_test" end time: Sep 20 15:02 EAT
+"blur_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/3 Testing: icon_test
+2/3 Test: icon_test
+Command: "/home/arch/Coding/libwl-common/build/icon_test"
+Directory: /home/arch/Coding/libwl-common/build
+"icon_test" start time: Sep 20 15:02 EAT
+Output:
+----------------------------------------------------------
+[PASS] size-distance ordering + sized cache
+[PASS] inheritance fallback + miss caching
+[PASS] absolute path passthrough
+All IconResolver unit tests passed successfully!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"icon_test" end time: Sep 20 15:02 EAT
+"icon_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/3 Testing: desktop_test
+3/3 Test: desktop_test
+Command: "/home/arch/Coding/libwl-common/build/desktop_test"
+Directory: /home/arch/Coding/libwl-common/build
+"desktop_test" start time: Sep 20 15:02 EAT
+Output:
+----------------------------------------------------------
+[PASS] scan filters + fields
+[PASS] search ranking + haystack
+[PASS] search-paths override
+[PASS] resolve tiers
+All DesktopIndex unit tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"desktop_test" end time: Sep 20 15:02 EAT
+"desktop_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 20 15:02 EAT
