@@ -131,7 +131,7 @@ src/dropdown/
     window_ownership.cpp
     session_supervisor.cpp
     dropdown_state.cpp
-    dropdown_main.cpp       # the poll loop
+    dropdown_main.cpp       # event sources on the shared EventLoop (was: poll loop)
 tests/
     dropdown_manager_test.cpp
     geometry_policy_test.cpp
@@ -214,7 +214,8 @@ activewindow>>kitty,◑ Dropdown terminal replacement
 `activewindowv2` (address only) drives focus-loss. `closewindow` drives death
 detection. `focusedmon` drives monitor following.
 
-Expose the socket fd directly so the daemon's `poll()` owns it — the pattern at
+Expose the socket fd directly so the daemon's reactor owns it (was: `poll()`; see
+`launcher_ui.cpp` EventLoop migration) — the pattern at
 `launcher_ui.cpp:539`. Never a background thread; the repo does not do that for
 event sources.
 
@@ -562,7 +563,9 @@ are fixed here.
 
 1. **The daemon deadlocked on the second show.** `libwayland`'s
    `prepare_read`/`read_events` pair is a reader lock, and the poll loop held it
-   across every handler. `show_strip()` round-trips to collect the strip's
+   across every handler. (The reactor migration preserves this as an explicit
+   pairing discipline — see `dropdown_main.cpp` — after a first attempt hung
+   the same way; unpaired intents spin in `dispatch_pending`.) `show_strip()` round-trips to collect the strip's
    configure, so the second show called `prepare_read` again on the same thread;
    `read_events` then waited for a peer that does not exist. The daemon parked
    in `futex_do_wait` — deaf to SIGUSR1 *and* SIGTERM, needing SIGKILL. It only
