@@ -1,5 +1,6 @@
 #include "waylaunch/dropdown/dropdown_main.h"
 
+#include "core/EventLoop.hpp" // shared reactor (libwl-common subtree)
 #include "waylaunch/config.h"
 #include "waylaunch/dropdown/dropdown_manager.h"
 #include "waylaunch/dropdown/dropdown_state.h"
@@ -24,6 +25,7 @@
 #include <iostream>
 #include <memory>
 #include <poll.h>
+#include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/timerfd.h>
 #include <sys/wait.h>
@@ -54,12 +56,12 @@ constexpr uint32_t kBtnLeft = 0x110;
 
 // Hyprland announces nothing when a window is resized or moved — socket2 is
 // silent through a whole drag (verified live on 0.56.2) — so the strip cannot
-// be event-driven onto the terminal it belongs to. It samples instead: this is
-// the poll timeout while the dropdown is on screen, fast enough to look
-// attached during a drag and costing one j/clients read per tick. While hidden
-// the loop idles on the slower config-mtime cadence.
-constexpr int kVisiblePollMs = 120;
-constexpr int kIdlePollMs = 500;
+// be event-driven onto the terminal it belongs to. It samples instead: the
+// repeat tick below re-runs the tail while the dropdown is on screen, fast
+// enough to look attached during a drag and costing one j/clients read per
+// tick. While hidden the same tick is a near-no-op (every step is
+// state-gated), so one cadence serves both.
+constexpr int kVisibleTickMs = 120;
 
 // A tab bar showing one tab says nothing: the active-tab highlight fills the
 // whole strip because it has no siblings to contrast against, which reads as a
@@ -209,6 +211,22 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
     auto arm = [&](TimerPurpose purpose, std::chrono::milliseconds delay) {
         timer_purpose = purpose;
         arm_timer(timer_fd, delay);
+    };
+
+    // Shared reactor (libwl-common) for the main loop below. Declared here so
+    // every helper above (notably shed_wayland, which must release the read
+    // intent and unregister the dead fd when it destroys the display) can
+    // reach it; callbacks are registered just before loop.run().
+    qypr::EventLoop loop;
+    // Exactly one Wayland read intent may exist at a time (see the loop
+    // section); wl_dpy is the display owning it, or null when none does.
+    bool wl_read_pending = false;
+    wl_display* wl_dpy = nullptr;
+    int wl_fd_reg = -1;
+    int ev_fd_reg = -1;
+    auto release_read = [&](wl_display* dpy) {
+        if (wl_read_pending && dpy != nullptr) { wl_display_cancel_read(dpy); }
+        wl_read_pending = false;
     };
 
     // This slot's windows, for the strip — read from j/clients, the same
@@ -515,6 +533,15 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
         strip_needs_render = false;
         strip_rect.reset();
         wayland.reset();
+        // The display is gone: drop any outstanding read intent with it and
+        // unregister its fd now (epoll only auto-drops closed fds at a wait
+        // boundary, and prepare would spin on the dead display otherwise).
+        release_read(wl_dpy);
+        wl_dpy = nullptr;
+        if (wl_fd_reg >= 0) {
+            loop.removeFd(wl_fd_reg);
+            wl_fd_reg = -1;
+        }
         wayland_retry_after =
             std::chrono::steady_clock::now() + std::chrono::seconds(kWaylandRetrySec);
     };
@@ -630,20 +657,214 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
     manager.process_event(DropdownEvent::Toggle);
     spawn();
 
-    bool running = true;
-    while (running) {
+    // Event sources on the shared reactor (libwl-common). The daemon's loop
+    // had one load-bearing invariant that moves here unchanged: the Wayland
+    // prepare_read/read_events pair is a reader lock, and several handlers
+    // below re-enter libwayland (show_strip() round-trips to collect the
+    // strip's configure). So exactly one read intent may exist at a time:
+    // - prepare takes it (after settling any stale one with cancel_read),
+    // - the Wayland callback completes it (read or cancel),
+    // - every other callback releases it FIRST (epoll dispatch order is
+    //   undefined, so a signal/timer/hypr callback may run before the
+    //   Wayland one — releasing up front keeps show_strip()'s roundtrip
+    //   from wedging against a dangling intent).
+    // Violating this hangs the daemon deaf to SIGUSR1 and SIGTERM alike
+    // (diagnosed live via wchan); the discipline above makes every order
+    // safe. The Wayland callback re-takes the intent itself when a sibling
+    // already released it, so no wakeup is ever lost.
+    // (loop, wl_read_pending, wl_dpy, wl_fd_reg, ev_fd_reg and release_read
+    // live above, next to the helpers that share them.)
+    // Per-tick tail (was the loop body below the handlers): settle geometry,
+    // then paint if dirty. Idempotent (sync is state-compare guarded, paint
+    // is flag-gated), so running it at the end of every callback is safe.
+    auto end_of_tick = [&] {
+        release_read(wl_dpy);
+        // Sample after the handlers, so a toggle in this same tick settles
+        // first and the strip is never re-mapped onto a window that is on its
+        // way out.
+        sync_strip_to_window();
+        // Painting is safe here (see above), and a handler may have shed the
+        // connection in the meantime.
+        if (wayland && strip_ready && strip_needs_render) {
+            strip_needs_render = false;
+            render_strip();
+        }
+    };
+
+    auto sync_fds = [&] {
+        int want_ev = events.poll_fd();
+        if (want_ev != ev_fd_reg) {
+            if (ev_fd_reg >= 0) { loop.removeFd(ev_fd_reg); }
+            ev_fd_reg = want_ev;
+            if (ev_fd_reg >= 0) {
+                loop.addFd(ev_fd_reg, [&](uint32_t) {
+                    release_read(wl_dpy);
+                    for (const HyprEvent& event : events.read_available()) {
+                        if (event.name == "activewindowv2") {
+                            on_focus_event(event.payload);
+                            // The active tab's pill moves with focus.
+                            strip_needs_render |= strip_ready;
+                        } else if (event.name == "closewindow") {
+                            on_close_event(event.payload);
+                            strip_needs_render |= strip_ready;
+                        } else if (event.name == "openwindow" || event.name == "windowtitlev2" ||
+                                   event.name == "movewindowv2") {
+                            // Tabs come from j/clients now, so membership and titles
+                            // have to be re-read when the window set changes; these
+                            // are the events that say it did.
+                            strip_needs_render |= strip_ready;
+                        }
+                        // focusedmon: monitor following already happens through the
+                        // focused-monitor read on every show; while visible we
+                        // deliberately do not chase, so user drags are never fought.
+                    }
+                    end_of_tick();
+                });
+            }
+        }
+        int want_wl = (wl_dpy != nullptr) ? wl_display_get_fd(wl_dpy) : -1;
+        if (want_wl != wl_fd_reg) {
+            if (wl_fd_reg >= 0) { loop.removeFd(wl_fd_reg); }
+            wl_fd_reg = want_wl;
+            if (wl_fd_reg >= 0) {
+                loop.addFd(wl_fd_reg, [&](uint32_t ev) {
+                    // Normalize first: a sibling callback may have released
+                    // the prepare intent earlier in this batch — re-take it
+                    // (single-threaded, so this succeeds immediately) rather
+                    // than reading unpaired.
+                    if (!wl_read_pending && wl_dpy != nullptr) {
+                        bool ok = false;
+                        for (int i = 0; i < 100; ++i) {
+                            if (wl_display_prepare_read(wl_dpy) == 0) {
+                                ok = true;
+                                break;
+                            }
+                            if (wl_display_dispatch_pending(wl_dpy) < 0) { break; }
+                        }
+                        if (!ok) {
+                            end_of_tick();
+                            return;
+                        }
+                        wl_read_pending = true;
+                    }
+                    bool wayland_lost = false;
+                    if (wl_dpy == nullptr) {
+                        // Shed mid-batch; the fd unregisters next prepare.
+                    } else if ((ev & EPOLLIN) != 0) {
+                        // A dead socket means the compositor went away. That is the
+                        // strip's problem alone: shedding beats taking the daemon
+                        // down and losing the session with it.
+                        if (wl_display_read_events(wl_dpy) < 0) { wayland_lost = true; }
+                    } else {
+                        wl_display_cancel_read(wl_dpy);
+                    }
+                    release_read(wl_dpy);
+                    if (!wayland_lost && wl_dpy != nullptr) {
+                        if (wl_display_dispatch_pending(wl_dpy) < 0) { wayland_lost = true; }
+                    }
+                    if (wayland_lost) {
+                        shed_wayland("wayland connection lost");
+                        wl_dpy = nullptr;
+                        // Unregister now (shed cleared the intent above);
+                        // prepare re-registers after the rebuild.
+                        if (wl_fd_reg >= 0) {
+                            loop.removeFd(wl_fd_reg);
+                            wl_fd_reg = -1;
+                        }
+                    }
+                    end_of_tick();
+                });
+            }
+        }
+    };
+
+    loop.addFd(signal_fd, [&](uint32_t) {
+        release_read(wl_dpy);
+        // Both fds are nonblocking, so these drain loops terminate with
+        // EAGAIN once pending events are consumed. Never drop the
+        // NONBLOCK flags: a blocking read here would hang the daemon
+        // after the last pending signal (seen live via wchan).
+        signalfd_siginfo info{};
+        while (read(signal_fd, &info, sizeof(info)) == static_cast<ssize_t>(sizeof(info))) {
+            if (info.ssi_signo == static_cast<uint32_t>(SIGUSR1)) {
+                on_toggle();
+            } else if (info.ssi_signo == static_cast<uint32_t>(SIGCHLD)) {
+                int status = 0;
+                pid_t waited = 0;
+                while ((waited = waitpid(-1, &status, WNOHANG)) > 0) {
+                    if (waited == supervisor.child_pid()) {
+                        auto now = std::chrono::steady_clock::now();
+                        manager.process_event(DropdownEvent::ChildExited);
+                        auto delay = supervisor.note_exited(now);
+                        if (delay.has_value()) { arm(TimerPurpose::Respawn, *delay); }
+                    }
+                }
+            } else {
+                loop.quit();
+                return;
+            }
+        }
+        end_of_tick();
+    });
+
+    loop.addFd(timer_fd, [&](uint32_t) {
+        release_read(wl_dpy);
+        uint64_t expirations = 0;
+        while (read(timer_fd, &expirations, sizeof(expirations)) ==
+               static_cast<ssize_t>(sizeof(expirations))) {}
+        // Consumed: disarm before branching; each path re-arms as needed.
+        disarm_timer(timer_fd);
+        if (timer_purpose == TimerPurpose::Respawn) {
+            timer_purpose = TimerPurpose::None;
+            // Backoff elapsed after a death: re-enter Spawning and fork.
+            if (manager.current_state() == DropdownState::Absent) {
+                manager.process_event(DropdownEvent::Toggle);
+            }
+            if (manager.current_state() == DropdownState::Spawning) { spawn(); }
+        } else if (timer_purpose == TimerPurpose::AppearRetry) {
+            // Fresh child not yet in j/clients: hide it onto the slot's
+            // hidden workspace once it appears (initial Hidden).
+            bool placed = false;
+            if (backend_usable) {
+                if (auto parked = park_hidden(); parked.has_value()) {
+                    placed = true;
+                    slot_address = parked->address;
+                    guard.set_slot(supervisor.child_pid(), slot_address);
+                    manager.process_event(DropdownEvent::WindowHidden);
+                }
+            } else {
+                placed = true; // no compositor to observe; assume hidden
+                manager.process_event(DropdownEvent::WindowHidden);
+            }
+            if (!placed && manager.current_state() == DropdownState::Spawning) {
+                if (++appear_attempts < kAppearAttempts) {
+                    arm(TimerPurpose::AppearRetry, kAppearRetry);
+                } else {
+                    timer_purpose = TimerPurpose::None;
+                    manager.process_event(DropdownEvent::WindowHidden);
+                }
+            } else {
+                timer_purpose = TimerPurpose::None;
+            }
+        }
+        end_of_tick();
+    });
+
+    loop.addPrepare([&] {
         reload_config(false);
         // Live strip theming: a wallpaper (matugen) or [theme] edit repaints
-        // the visible strip within one poll quantum. reload_config() above
-        // already refreshed repo_config, so poll() sees both file moves.
+        // the visible strip within one reactor quantum. reload_config() above
+        // already refreshed repo_config.
         if (matugen.poll(repo_config.get().theme) &&
             manager.current_state() == DropdownState::Visible) {
             strip_needs_render = true;
         }
         events.ensure_connected(std::chrono::steady_clock::now());
-        // Wayland dispatch around poll (launcher pattern): prepare before
-        // blocking, read-or-cancel after. Only while the strip is up.
-        wl_display* wl_dpy = (wayland && strip_ready) ? wayland->display() : nullptr;
+        // Wayland dispatch around the wait (launcher pattern): recompute the
+        // display (shed/rebuild changes it), drop poisoned connections, sync
+        // fd registrations, then prepare-or-skip with the reader-lock
+        // discipline above. Only while the strip is up.
+        wl_dpy = (wayland && strip_ready) ? wayland->display() : nullptr;
         if (wl_dpy != nullptr && wl_display_get_error(wl_dpy) != 0) {
             // A protocol error poisons the connection: prepare_read would
             // spin forever and signals would never be serviced (all blocked
@@ -654,159 +875,30 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
             shed_wayland("wayland protocol error");
             wl_dpy = nullptr;
         }
-        bool reading = false;
+        sync_fds();
+        release_read(wl_dpy);
         if (wl_dpy != nullptr) {
-            // Bounded: a never-draining queue must still reach poll() so
+            // Bounded: a never-draining queue must still reach the wait so
             // signals stay serviced.
+            bool ok = false;
             for (int i = 0; i < 100; ++i) {
                 if (wl_display_prepare_read(wl_dpy) == 0) {
-                    reading = true;
+                    ok = true;
                     break;
                 }
-                if (wl_display_dispatch_pending(wl_dpy) < 0) break;
+                if (wl_display_dispatch_pending(wl_dpy) < 0) { break; }
             }
             wl_display_flush(wl_dpy);
+            wl_read_pending = ok;
         }
-        pollfd fds[4]{};
-        fds[0].fd = signal_fd;
-        fds[0].events = POLLIN;
-        fds[1].fd = timer_fd;
-        fds[1].events = POLLIN;
-        fds[2].fd = events.poll_fd(); // -1 while disconnected: ignored by poll
-        fds[2].events = POLLIN;
-        fds[3].fd = (wl_dpy != nullptr) ? wl_display_get_fd(wl_dpy) : -1;
-        fds[3].events = POLLIN;
-        // Bounded wait so the config mtime is rechecked while idle and the
-        // strip can sample the terminal's geometry while visible; all event
-        // sources remain level-triggered so nothing is lost.
-        bool visible = manager.current_state() == DropdownState::Visible;
-        int n = poll(fds, 4, visible ? kVisiblePollMs : kIdlePollMs);
-        // Close the read window HERE, before any handler runs. libwayland's
-        // prepare_read/read_events pair is a reader lock: a second
-        // prepare_read on the same thread makes read_events wait for a peer
-        // that does not exist, and the daemon parks in futex forever. The
-        // handlers below re-enter libwayland — show_strip() round-trips to
-        // collect the strip's configure — so holding the read across them
-        // wedged the daemon on the second show, deaf to SIGUSR1 and SIGTERM
-        // alike. Everything Wayland-facing now happens outside the window.
-        bool wayland_lost = false;
-        if (reading) {
-            if (n > 0 && (fds[3].revents & POLLIN) != 0) {
-                // A dead socket means the compositor went away. That is the
-                // strip's problem alone: shedding beats taking the daemon
-                // down and losing the session with it.
-                if (wl_display_read_events(wl_dpy) < 0) wayland_lost = true;
-            } else {
-                wl_display_cancel_read(wl_dpy);
-            }
-            if (!wayland_lost && wl_display_dispatch_pending(wl_dpy) < 0) wayland_lost = true;
-        }
-        if (wayland_lost) {
-            shed_wayland("wayland connection lost");
-            wl_dpy = nullptr;
-        }
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        if ((fds[0].revents & POLLIN) != 0) {
-            // Both fds are nonblocking, so these drain loops terminate with
-            // EAGAIN once pending events are consumed. Never drop the
-            // NONBLOCK flags: a blocking read here would hang the daemon
-            // after the last pending signal (seen live via wchan).
-            signalfd_siginfo info{};
-            while (read(signal_fd, &info, sizeof(info)) == static_cast<ssize_t>(sizeof(info))) {
-                if (info.ssi_signo == static_cast<uint32_t>(SIGUSR1)) {
-                    on_toggle();
-                } else if (info.ssi_signo == static_cast<uint32_t>(SIGCHLD)) {
-                    int status = 0;
-                    pid_t waited = 0;
-                    while ((waited = waitpid(-1, &status, WNOHANG)) > 0) {
-                        if (waited == supervisor.child_pid()) {
-                            auto now = std::chrono::steady_clock::now();
-                            manager.process_event(DropdownEvent::ChildExited);
-                            auto delay = supervisor.note_exited(now);
-                            if (delay.has_value()) arm(TimerPurpose::Respawn, *delay);
-                        }
-                    }
-                } else {
-                    running = false;
-                }
-            }
-        }
-        if ((fds[1].revents & POLLIN) != 0) {
-            uint64_t expirations = 0;
-            while (read(timer_fd, &expirations, sizeof(expirations)) ==
-                   static_cast<ssize_t>(sizeof(expirations))) {}
-            // Consumed: disarm before branching; each path re-arms as needed.
-            disarm_timer(timer_fd);
-            if (timer_purpose == TimerPurpose::Respawn) {
-                timer_purpose = TimerPurpose::None;
-                // Backoff elapsed after a death: re-enter Spawning and fork.
-                if (manager.current_state() == DropdownState::Absent) {
-                    manager.process_event(DropdownEvent::Toggle);
-                }
-                if (manager.current_state() == DropdownState::Spawning) spawn();
-            } else if (timer_purpose == TimerPurpose::AppearRetry) {
-                // Fresh child not yet in j/clients: hide it onto the slot's
-                // hidden workspace once it appears (initial Hidden).
-                bool placed = false;
-                if (backend_usable) {
-                    if (auto parked = park_hidden(); parked.has_value()) {
-                        placed = true;
-                        slot_address = parked->address;
-                        guard.set_slot(supervisor.child_pid(), slot_address);
-                        manager.process_event(DropdownEvent::WindowHidden);
-                    }
-                } else {
-                    placed = true; // no compositor to observe; assume hidden
-                    manager.process_event(DropdownEvent::WindowHidden);
-                }
-                if (!placed && manager.current_state() == DropdownState::Spawning) {
-                    if (++appear_attempts < kAppearAttempts) {
-                        arm(TimerPurpose::AppearRetry, kAppearRetry);
-                    } else {
-                        timer_purpose = TimerPurpose::None;
-                        manager.process_event(DropdownEvent::WindowHidden);
-                    }
-                } else {
-                    timer_purpose = TimerPurpose::None;
-                }
-            }
-        }
-        if (fds[2].revents & POLLIN) {
-            for (const HyprEvent& event : events.read_available()) {
-                if (event.name == "activewindowv2") {
-                    on_focus_event(event.payload);
-                    // The active tab's pill moves with focus.
-                    strip_needs_render |= strip_ready;
-                } else if (event.name == "closewindow") {
-                    on_close_event(event.payload);
-                    strip_needs_render |= strip_ready;
-                } else if (event.name == "openwindow" || event.name == "windowtitlev2" ||
-                           event.name == "movewindowv2") {
-                    // Tabs come from j/clients now, so membership and titles
-                    // have to be re-read when the window set changes; these
-                    // are the events that say it did.
-                    strip_needs_render |= strip_ready;
-                }
-                // focusedmon: monitor following already happens through the
-                // focused-monitor read on every show; while visible we
-                // deliberately do not chase, so user drags are never fought.
-            }
-        }
-        // Sample after the handlers, so a toggle in this same tick settles
-        // first and the strip is never re-mapped onto a window that is on its
-        // way out. Safe here for the same reason painting is: the read window
-        // closed above.
-        sync_strip_to_window();
-        // Painting is safe here: the read window closed above, and a handler
-        // may have shed the connection in the meantime.
-        if (wayland && strip_ready && strip_needs_render) {
-            strip_needs_render = false;
-            render_strip();
-        }
-    }
+    });
+
+    // Sampling tick: geometry sampling and repaint must also happen with no
+    // fd activity (a dragged terminal, an idle hidden daemon). Every step
+    // below is state-gated, so the hidden-idle tick is a near-no-op.
+    loop.addTimer(kVisibleTickMs, true, [&] { end_of_tick(); });
+
+    loop.run();
 
     if (supervisor.has_child()) {
         kill(supervisor.child_pid(), SIGTERM);
