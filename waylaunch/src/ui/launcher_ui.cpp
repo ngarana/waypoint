@@ -1164,7 +1164,7 @@ void LauncherUI::open_file_location(int index) {
     // Fallback: open the enclosing directory with the default handler.
     std::string dir = abs.parent_path().string();
     if (dir.empty()) dir = ".";
-    Subprocess::spawn_reaped(&loop_, {"xdg-open", dir});
+    Subprocess::spawn_reaped(loop_, {"xdg-open", dir});
     quit();
 }
 

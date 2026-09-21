@@ -19,7 +19,7 @@ wiring stay in each consumer — only the *data and units* below are shared.
 | `protocols/wlr-screencopy-unstable-v1.xml` | waylaunch's copy (backdrop blur) | unused by qypr (vendored for the union) |
 | `protocols/wlr-gamma-control-unstable-v1.xml` | qypr's copy (night light) | unused by waylaunch (vendored for the union) |
 | `core/EventLoop.hpp` / `.cpp` | qypr's epoll reactor | fd/timer/post multiplexing; `addFd`/`addTimer`/`post`/`addPrepare` |
-| `core/Process.hpp` / `.cpp` | qypr's I3 spawn primitive | `posix_spawn`, absolute paths, `SIGDEF`, pidfd reaping; `env_add`/`devnull_stdio` options for hook commands |
+| `core/Process.hpp` / `.cpp` | qypr's I3 spawn primitive | `posix_spawn`, absolute paths, `SIGDEF`, pidfd reaping; `env_add`/`devnull_stdio` options for hook commands; the single contract also covers captured runs (`runCapture`), `commandExists`, and loop-less daemon launch (`spawnDaemon`) |
 | `core/Types.hpp` | qypr's UI value types | `Color`, `Rect`, easing, `Animated`; header-only |
 | `core/SolarCalc.hpp` / `.cpp` | sunrise/sunset (NOAA) | pure date math for the solar auto-palette; `nullopt` on polar day/night |
 | `render/Painter.hpp` / `.cpp` | qypr's cairo/pango helpers | `fillGlass` takes an explicit `solid` flag so the unit stays theme-free |
