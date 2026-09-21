@@ -37,7 +37,7 @@ std::vector<ListItem> CommandProvider::query(const ProviderQuery& q) {
 bool CommandProvider::activate(const ListItem& it) {
     if (it.kind != ItemKind::Command) return false;
     if (!it.action_command.empty())
-        Subprocess::spawn_detached({"/bin/sh", "-c", it.action_command});
+        Subprocess::spawn_reaped(event_loop_, {"/bin/sh", "-c", it.action_command});
     return true;
 }
 

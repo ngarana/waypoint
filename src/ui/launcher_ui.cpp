@@ -860,6 +860,9 @@ void LauncherUI::register_providers() {
     if (content_store_)
         providers_.push_back(std::make_unique<ContentProvider>(
             content_store_.get(), content_min_query_, content_max_results_, &history_));
+    // Reactor for pidfd child-reaping: subprocess spawns from providers go
+    // through the shared I3 primitive instead of fork().
+    for (auto& provider : providers_) provider->set_event_loop(&loop_);
 }
 
 void LauncherUI::rebuild_app_items() {
@@ -1156,7 +1159,7 @@ void LauncherUI::open_file_location(int index) {
     // Fallback: open the enclosing directory with the default handler.
     std::string dir = abs.parent_path().string();
     if (dir.empty()) dir = ".";
-    Subprocess::spawn_detached({"xdg-open", dir});
+    Subprocess::spawn_reaped(&loop_, {"xdg-open", dir});
     quit();
 }
 

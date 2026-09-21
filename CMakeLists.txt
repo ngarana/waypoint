@@ -124,9 +124,12 @@ add_library(waylaunch_content STATIC
     src/content/fs_watcher.cpp
     src/content/control.cpp
     src/search/subprocess.cpp
+    ${LIBWL_COMMON}/core/EventLoop.cpp
+    ${LIBWL_COMMON}/core/Process.cpp
 )
 target_include_directories(waylaunch_content PUBLIC
     ${CMAKE_SOURCE_DIR}/include
+    ${LIBWL_COMMON}
     ${SQLITE3_INCLUDE_DIRS}
     ${ZSTD_INCLUDE_DIRS}
 )
@@ -400,8 +403,11 @@ if(BUILD_TESTING)
     target_link_libraries(content_bench PRIVATE waylaunch_content)
     target_compile_options(content_bench PRIVATE -Wall -Wextra -O2)
 
-    add_executable(subprocess_test tests/subprocess_test.cpp src/search/subprocess.cpp)
-    target_include_directories(subprocess_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    add_executable(subprocess_test tests/subprocess_test.cpp src/search/subprocess.cpp
+        ${LIBWL_COMMON}/core/EventLoop.cpp
+        ${LIBWL_COMMON}/core/Process.cpp)
+    target_include_directories(subprocess_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON})
     target_compile_options(subprocess_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME subprocess_test COMMAND subprocess_test)
 
@@ -416,8 +422,11 @@ if(BUILD_TESTING)
         src/modes/calculator.cpp
         src/modes/clipboard.cpp
         src/search/subprocess.cpp
+        ${LIBWL_COMMON}/core/EventLoop.cpp
+        ${LIBWL_COMMON}/core/Process.cpp
         src/ui/history.cpp)
-    target_include_directories(provider_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(provider_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON})
     target_compile_options(provider_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME provider_test COMMAND provider_test)
 
@@ -425,9 +434,12 @@ if(BUILD_TESTING)
         src/providers/file_provider.cpp
         src/modes/clipboard.cpp
         src/search/subprocess.cpp
+        ${LIBWL_COMMON}/core/EventLoop.cpp
+        ${LIBWL_COMMON}/core/Process.cpp
         src/util/search_util.cpp
         src/ui/history.cpp)
-    target_include_directories(file_provider_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(file_provider_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON})
     target_compile_options(file_provider_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME file_provider_test COMMAND file_provider_test)
 

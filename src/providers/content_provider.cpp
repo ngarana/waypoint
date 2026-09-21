@@ -37,8 +37,8 @@ std::vector<ListItem> ContentProvider::query(const ProviderQuery& q) {
 bool ContentProvider::activate(const ListItem& it) {
     if (it.kind != ItemKind::Content) return false;
     if (!it.path.empty()) {
-        Clipboard::copy_file_path(it.path);
-        Subprocess::spawn_detached({"xdg-open", it.path});
+        Clipboard::copy_file_path(it.path, event_loop_);
+        Subprocess::spawn_reaped(event_loop_, {"xdg-open", it.path});
     }
     return true;
 }
