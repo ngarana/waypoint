@@ -23,6 +23,7 @@
 #include "notifications/NotificationMonitor.hpp"
 #include "power/SystemActions.hpp"
 #include "system/PowerProfilesBackend.hpp"
+#include "system/GeoClueBackend.hpp"
 #include "system/IdleInhibitor.hpp"
 #include "system/DesktopIndex.hpp"
 #include "system/KeyboardLayout.hpp"
@@ -78,6 +79,11 @@ private:
     void syncKeyboard();
     // Re-read bar.conf and re-apply all sections without a restart.
     void reloadConfig();
+    // Recompute the solar sunrise/sunset cache from the GeoClue fix (or
+    // clear it when location is off, the fix is stale, or the sun never
+    // rises/sets). Cheap: runs on the minute tick, on fix updates, and on
+    // config reloads (midnight rollover included).
+    void refreshSolarTimes();
     // Watch the [theme] colors-file (matugen palette) so regenerating it —
     // typically on a wallpaper change — re-themes the bar live. No-op when no
     // palette file is configured or its directory doesn't exist yet.
@@ -127,6 +133,9 @@ private:
     NotificationActions notificationActions_{sessionBus_};
     SystemActions power_{loop_};
     PowerProfilesBackend powerProfiles_{systemBus_};
+    // City-accurate fix for the solar auto-palette (bar-only; the lock app
+    // never constructs this). Absent/denied → theme keeps fixed hours.
+    GeoClueBackend geoClue_{systemBus_};
     IdleInhibitor idleInhibitor_;  // init()'d after display_.connect()
     MprisController mpris_;
     // Application launcher index (bar-only). load()'ed in run(); the lock app

@@ -2,6 +2,8 @@
 // Split verbatim from tests/unit_tests.cpp; bodies unchanged.
 #include "test_framework.hpp"
 
+#include "system/SolarCalc.hpp"
+
 TEST(ThemeLoadThemeDefaults) {
     qypr::Config c;
     c.load("/nonexistent");
@@ -284,3 +286,103 @@ TEST(ThemeMatugenHomeExpansion) {
 // =============================================================================
 // Phase 2: Clock + Battery Indicator Tests
 // =============================================================================
+
+// Solar sunrise/sunset (NOAA): golden values with generous tolerances (the
+// algorithm itself is ~±1 min; the spread below covers equation-of-time and
+// date drift, not implementation error).
+TEST(ThemeSolarTimesGolden) {
+    // Equator, March equinox: ~06:04/18:11 UTC (equation-of-time shifts both
+    // off the round hour; verified against an independent sunrise-equation
+    // implementation to ±1 min).
+    const auto equinox =
+        qypr::solarTimesForDate(0.0, 0.0, qypr::CivilDate{.year = 2026, .month = 3, .day = 20}, 0);
+    EXPECT_TRUE(equinox.has_value());
+    if (equinox) {
+        EXPECT_NEAR(equinox->sunriseMin, (6 * 60) + 4, 6);
+        EXPECT_NEAR(equinox->sunsetMin, (18 * 60) + 11, 6);
+    }
+    // Berlin midsummer (CEST = UTC+120): long day, ~04:45/21:30 local.
+    const auto summer = qypr::solarTimesForDate(
+        52.52, 13.40, qypr::CivilDate{.year = 2026, .month = 6, .day = 21}, 120);
+    EXPECT_TRUE(summer.has_value());
+    if (summer) {
+        EXPECT_NEAR(summer->sunriseMin, (4 * 60) + 45, 15);
+        EXPECT_NEAR(summer->sunsetMin, (21 * 60) + 30, 15);
+        EXPECT_TRUE(summer->sunsetMin - summer->sunriseMin > 16 * 60);
+    }
+    // Berlin midwinter (CET = UTC+60): short day, ~08:00/16:00 local.
+    const auto winter = qypr::solarTimesForDate(
+        52.52, 13.40, qypr::CivilDate{.year = 2026, .month = 12, .day = 21}, 60);
+    EXPECT_TRUE(winter.has_value());
+    if (winter) {
+        EXPECT_NEAR(winter->sunriseMin, 8 * 60, 15);
+        EXPECT_NEAR(winter->sunsetMin, 16 * 60, 15);
+        EXPECT_TRUE(winter->sunsetMin - winter->sunriseMin < 9 * 60);
+    }
+    // Longitude shifts the window: 15° east ≈ an hour earlier (same meridian
+    // math, UTC clock).
+    const auto east =
+        qypr::solarTimesForDate(0.0, 15.0, qypr::CivilDate{.year = 2026, .month = 3, .day = 20}, 0);
+    EXPECT_TRUE(east.has_value());
+    if (equinox && east) {
+        EXPECT_NEAR(equinox->sunriseMin - east->sunriseMin, 60, 5);
+        EXPECT_NEAR(equinox->sunsetMin - east->sunsetMin, 60, 5);
+    }
+    // Polar night (Tromsø, December) and polar day (Tromsø, June): the sun
+    // never crosses the zenith → nullopt, and the fixed hours carry the mode.
+    EXPECT_FALSE(qypr::solarTimesForDate(69.65, 18.96,
+                                         qypr::CivilDate{.year = 2026, .month = 12, .day = 21}, 60)
+                     .has_value());
+    EXPECT_FALSE(qypr::solarTimesForDate(69.65, 18.96,
+                                         qypr::CivilDate{.year = 2026, .month = 6, .day = 21}, 120)
+                     .has_value());
+}
+
+// The solar cache takes over the auto window while location == auto, and
+// the fixed hours (or location = off) restore it. Invalid windows clear.
+TEST(ThemeSolarCacheOverridesFixedHours) {
+    qypr::Config c;
+    c.load(writeTempConfig(
+        "[theme]\npalette-mode = auto\npalette-sunrise = 7\npalette-sunset = 19\n"));
+    qypr::theme::loadTheme(c);
+    // No fix cached: the fixed hours rule.
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
+    // A solar fix takes over while location == auto …
+    qypr::theme::setSolarTimes((5 * 60) + 30, (20 * 60) + 45);
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 5);
+    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 20);
+    EXPECT_EQ(qypr::theme::resolveAutoPaletteMode(6, qypr::theme::effectiveSunriseHour(),
+                                                  qypr::theme::effectiveSunsetHour()),
+              std::string("light"));
+    EXPECT_EQ(qypr::theme::resolveAutoPaletteMode(21, qypr::theme::effectiveSunriseHour(),
+                                                  qypr::theme::effectiveSunsetHour()),
+              std::string("dark"));
+    // … clearing restores the fixed hours …
+    qypr::theme::clearSolarTimes();
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
+    // … and location = off ignores even a cached fix.
+    qypr::Config off;
+    off.load(writeTempConfig("[theme]\npalette-mode = auto\npalette-location = off\n"));
+    qypr::theme::loadTheme(off);
+    qypr::theme::setSolarTimes(300, 1200);
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
+    qypr::theme::clearSolarTimes();
+    // Out-of-range windows never drive the theme.
+    qypr::theme::setSolarTimes(-1, 1200);
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    qypr::theme::setSolarTimes(300, 1440);
+    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    // The location key is validated; an unknown value keeps the auto default.
+    qypr::Config bad;
+    bad.load(writeTempConfig("[theme]\npalette-location = sometimes\n"));
+    qypr::theme::loadTheme(bad);
+    EXPECT_EQ(qypr::theme::palette::location, std::string("auto"));
+    // Leave global state as the following tests expect (dark default, no fix).
+    qypr::theme::clearSolarTimes();
+    qypr::Config d;
+    d.load("/nonexistent");
+    qypr::theme::loadTheme(d);
+}

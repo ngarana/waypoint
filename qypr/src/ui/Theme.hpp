@@ -98,13 +98,26 @@ inline int shadowOffset = 2;
 // for "auto" — whether the clock currently calls for light or dark colours.
 //   dark  — always [theme] colors-file
 //   light — always [theme] colors-file-light (falls back to colors-file)
-//   auto  — light between sunriseHour and sunsetHour local time, dark outside;
-//           BarApp re-checks once a minute and re-themes on flips.
+//   auto  — light between sunrise and sunset, dark outside; BarApp re-checks
+//           once a minute and re-themes on flips. The window comes from the
+//           solar position at the GeoClue fix when one is cached (see
+//           location below), else from the configured fixed hours.
 namespace palette {
 inline std::string mode = "dark";      // configured: dark | light | auto
 inline std::string resolved = "dark";  // effective mode (== mode when not auto)
-inline int sunriseHour = 7;            // auto: light from this hour…
+inline int sunriseHour = 7;            // fallback: light from this hour…
 inline int sunsetHour = 19;            // …until this hour (local time)
+// Where the auto window comes from:
+//   auto — solar sunrise/sunset from the GeoClue fix when cached, else the
+//          fixed palette-sunrise/sunset hours (fallback).
+//   off  — always the fixed hours (pure clock, no location lookup).
+inline std::string location = "auto";  // configured: auto | off
+// Solar cache, fed by BarApp from the GeoClue fix (setSolarTimes) and
+// cleared when the fix goes stale. Survives loadTheme() — the fix outlives
+// config reloads.
+inline bool useSolar = false;
+inline int solarSunriseMin = 0;  // minutes since local midnight
+inline int solarSunsetMin = 0;
 inline bool isLight() {
     return resolved == "light";
 }
@@ -223,6 +236,17 @@ std::string resolveColorsPath(const Config& cfg, bool lightPalette = false);
 // Pure helper: "light" when sunrise <= hour < sunset, else "dark". Exposed
 // for the auto-palette unit tests.
 std::string resolveAutoPaletteMode(int hour, int sunriseHour, int sunsetHour);
+
+// Cache a solar sunrise/sunset window (minutes since local midnight, as
+// produced by solarTimesForDate). Out-of-range input clears the cache: an
+// invalid window must never drive the theme.
+void setSolarTimes(int sunriseMin, int sunsetMin);
+void clearSolarTimes();
+
+// Effective auto-window bounds (hours): the solar cache when location is
+// "auto" and a fix is cached, else the configured fixed hours.
+int effectiveSunriseHour();
+int effectiveSunsetHour();
 
 // Re-evaluate the auto palette mode against the current clock. Returns true
 // when the resolved mode flipped (the caller should re-apply the theme).

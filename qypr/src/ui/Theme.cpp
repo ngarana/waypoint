@@ -104,12 +104,15 @@ void loadTheme(const Config& cfg) {
 
     // ─── Palette mode ────────────────────────────────────────────────
     constexpr const char* kS = "theme";
-    // dark | light | auto. Resolved here (auto follows the local clock) and
-    // re-resolved by paletteAutoTick() while the bar runs.
+    // dark | light | auto. Resolved here (auto follows the solar window when
+    // a GeoClue fix is cached, else the fixed hours below) and re-resolved
+    // by paletteAutoTick() while the bar runs. The solar cache is NOT reset
+    // here — the fix outlives config reloads; BarApp refreshes it.
     palette::mode = "dark";
     palette::resolved = "dark";
     palette::sunriseHour = 7;
     palette::sunsetHour = 19;
+    palette::location = "auto";
     if (cfg.has(kS, "palette-mode")) {
         const std::string m = cfg.getString(kS, "palette-mode", "dark");
         if (m == "light" || m == "dark" || m == "auto") {
@@ -119,11 +122,20 @@ void loadTheme(const Config& cfg) {
                          m.c_str());
         }
     }
+    if (cfg.has(kS, "palette-location")) {
+        const std::string loc = cfg.getString(kS, "palette-location", "auto");
+        if (loc == "auto" || loc == "off") {
+            palette::location = loc;
+        } else {
+            std::fprintf(stderr, "qypr: theme: unknown palette-location '%s' (want auto|off)\n",
+                         loc.c_str());
+        }
+    }
     overrideInt(palette::sunriseHour, cfg, kS, "palette-sunrise");
     overrideInt(palette::sunsetHour, cfg, kS, "palette-sunset");
     palette::resolved =
         palette::mode == "auto"
-            ? resolveAutoPaletteMode(localHourNow(), palette::sunriseHour, palette::sunsetHour)
+            ? resolveAutoPaletteMode(localHourNow(), effectiveSunriseHour(), effectiveSunsetHour())
             : palette::mode;
 
     // ─── Matugen palette ─────────────────────────────────────────────
@@ -445,10 +457,36 @@ std::string resolveAutoPaletteMode(int hour, int sunriseHour, int sunsetHour) {
     return (hour >= sunriseHour && hour < sunsetHour) ? "light" : "dark";
 }
 
+void setSolarTimes(int sunriseMin, int sunsetMin) {
+    if (sunriseMin < 0 || sunriseMin >= 1440 || sunsetMin < 0 || sunsetMin >= 1440) {
+        clearSolarTimes();
+        return;
+    }
+    palette::useSolar = true;
+    palette::solarSunriseMin = sunriseMin;
+    palette::solarSunsetMin = sunsetMin;
+}
+
+void clearSolarTimes() {
+    palette::useSolar = false;
+    palette::solarSunriseMin = 0;
+    palette::solarSunsetMin = 0;
+}
+
+int effectiveSunriseHour() {
+    if (palette::location == "auto" && palette::useSolar) { return palette::solarSunriseMin / 60; }
+    return palette::sunriseHour;
+}
+
+int effectiveSunsetHour() {
+    if (palette::location == "auto" && palette::useSolar) { return palette::solarSunsetMin / 60; }
+    return palette::sunsetHour;
+}
+
 bool paletteAutoTick() {
     if (palette::mode != "auto") { return false; }
     const std::string want =
-        resolveAutoPaletteMode(localHourNow(), palette::sunriseHour, palette::sunsetHour);
+        resolveAutoPaletteMode(localHourNow(), effectiveSunriseHour(), effectiveSunsetHour());
     if (want == palette::resolved) { return false; }
     palette::resolved = want;
     std::fprintf(stderr, "qypr: theme: auto palette switched to %s\n", want.c_str());

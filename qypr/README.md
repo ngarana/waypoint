@@ -183,9 +183,16 @@ restart needed.
 - `dark` (default) — always `colors-file`.
 - `light` — always `colors-file-light` (falls back to `colors-file` when the
   light file is unset).
-- `auto` — light between `palette-sunrise`/`palette-sunset` (default 7:00 and
-  19:00, local time) and dark outside; the bar re-checks the clock every
-  minute and re-themes instantly when the mode flips.
+- `auto` — light between sunrise and sunset, dark outside; the bar
+  re-checks every minute and re-themes instantly when the mode flips. The
+  window is solar when GeoClue2 yields a location fix (city accuracy only —
+  street-level is never requested), else the fixed `palette-sunrise`/
+  `palette-sunset` hours (default 7:00/19:00 local). Set
+  `palette-location = off` for the pure-clock behaviour (no location
+  lookup). GeoClue authorises by desktop ID: whitelist `qypr-bar` in
+  `/etc/geoclue/geoclue.conf` (`[qypr-bar]`, `allowed=true`) or the bar
+  silently keeps the fixed hours — including on polar day/night, where no
+  sunrise/sunset exists.
 
 On light palettes the text shadow is disabled (opacity 0.6 → 0.0) so the
 dark glyphs stay crisp with no ghost shades behind them. Set an explicit

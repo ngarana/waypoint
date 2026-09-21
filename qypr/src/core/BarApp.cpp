@@ -10,6 +10,7 @@
 
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
+#include "system/SolarCalc.hpp"
 #include "ui/Theme.hpp"
 #include "ui/indicators/NotificationIndicator.hpp"  // previewNotificationCentre()
 #include "wayland/Seat.hpp"                         // Mod bits
@@ -127,10 +128,13 @@ int BarApp::run() {
     // bar.conf.
     watchPalette();
 
-    // Auto palette: re-check the clock once a minute; re-theme on a light/dark
-    // flip (paletteAutoTick returns true only when the resolved mode changed).
+    // Auto palette: refresh the solar window (midnight rollover, late
+    // GeoClue fix) and re-check the clock once a minute; re-theme on a
+    // light/dark flip (paletteAutoTick returns true only when the resolved
+    // mode changed).
     if (theme::palette::mode == "auto") {
         loop_.addTimer(60'000, /*repeat=*/true, [this] {
+            refreshSolarTimes();
             if (theme::paletteAutoTick()) {
                 theme::loadTheme(config_);
                 invalidate();
@@ -158,6 +162,18 @@ void BarApp::startBackends() {
     sni_.start();
     powerProfiles_.setOnChange([this] { invalidate(); });
     powerProfiles_.start();
+    // Location for the solar auto-palette: re-theme when the first fix lands
+    // (or a later one moves the window). Absent/denied GeoClue simply never
+    // fires — the fixed hours carry the mode.
+    geoClue_.setOnChange([this] {
+        refreshSolarTimes();
+        if (theme::paletteAutoTick()) {
+            theme::loadTheme(config_);
+            invalidate();
+        }
+    });
+    geoClue_.start();
+    refreshSolarTimes();
     notifications_.setOnChange([this] { invalidate(); });
     if (!notifications_.start(/*seedFromLog=*/false)) {
         std::fprintf(stderr, "qypr-bar: notification monitor unavailable\n");
@@ -319,6 +335,11 @@ void BarApp::reloadConfig() {
     // Reload theme (colours, fonts, spacing, style).
     theme::loadTheme(config_);
 
+    // The location mode may have flipped (auto↔off): refresh the solar cache
+    // against the new mode, then re-resolve if the window moved under us.
+    refreshSolarTimes();
+    if (theme::paletteAutoTick()) { theme::loadTheme(config_); }
+
     // Re-point the palette watcher: the colors-file path may have changed, and
     // its directory may now exist where it didn't at startup.
     watchPalette();
@@ -338,6 +359,25 @@ void BarApp::reloadConfig() {
     statusBar_.reloadModules(backends_, modules_ ? &*modules_ : nullptr);
 
     invalidate();
+}
+
+void BarApp::refreshSolarTimes() {
+    if (theme::palette::location != "auto") {
+        theme::clearSolarTimes();
+        return;
+    }
+    const auto& fix = geoClue_.fix();
+    if (!fix) {
+        theme::clearSolarTimes();
+        return;
+    }
+    const auto times =
+        solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
+    if (!times) {
+        theme::clearSolarTimes();  // polar day/night: fixed hours carry the mode
+        return;
+    }
+    theme::setSolarTimes(times->sunriseMin, times->sunsetMin);
 }
 
 void BarApp::syncOverlay() {
