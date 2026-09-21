@@ -1,4 +1,8 @@
-// PowerManager.hpp - System power actions via systemctl (port of PowerManager.qml).
+// SystemActions.hpp - Fixed system power actions via systemctl.
+//
+// (Renamed from PowerManager: waylaunch has an unrelated PowerManager of its
+// own, and this class manages no UI state — it only executes the lock screen's
+// fixed verbs. Port of the old PowerManager.qml.)
 //
 // Fire-and-forget: each action spawns `systemctl <verb>` (or `loginctl`) and
 // never waits for it — the action either takes over the machine or fails
@@ -28,15 +32,15 @@ namespace qypr {
 
 class EventLoop;
 
-class PowerManager {
+class SystemActions {
 public:
     // The loop reaps spawned children (pidfd + EventLoop::addFd) — it is not
     // optional: without it a child that exits would stay a zombie until qypr
     // exits.
-    explicit PowerManager(EventLoop& loop);
+    explicit SystemActions(EventLoop& loop);
 
-    PowerManager(const PowerManager&) = delete;
-    PowerManager& operator=(const PowerManager&) = delete;
+    SystemActions(const SystemActions&) = delete;
+    SystemActions& operator=(const SystemActions&) = delete;
 
     void suspend() { run("suspend"); }
     void reboot() { run("reboot"); }

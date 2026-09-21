@@ -6,7 +6,7 @@
 #include <string_view>
 
 #include "core/EventLoop.hpp"
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include "render/Painter.hpp"
 #include "ui/AudioController.hpp"
 #include "ui/Theme.hpp"
@@ -28,7 +28,7 @@ size_t utf8Count(std::string_view s) {
 }  // namespace
 
 LockScreen::LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam,
-                       PowerManager& power)
+                       SystemActions& power)
     : loop_(loop),
       host_(host),
       pam_(pam),
@@ -168,7 +168,7 @@ void LockScreen::showPowerConfirm(int index, int w, int h) {
     Rect fullCol = powerRowRect(w, h);
     double pillLeft = fullCol.x;
 
-    powerDialog_.show(cfg[index].icon, cfg[index].label, cfg[index].confirmLabel, std::move(action),
+    confirmPopover_.show(cfg[index].icon, cfg[index].label, cfg[index].confirmLabel, std::move(action),
                       anchor, pillLeft);
     collapsePower();
     host_.invalidate();
@@ -224,19 +224,19 @@ void LockScreen::onAuthResult(PamAuthenticator::Result result, const std::string
 // Keyboard (delegated from Shell)
 // -----------------------------------------------------------------------------
 void LockScreen::handleTextInput(const std::string& utf8) {
-    if (powerDialog_.active()) return;  // ignore typing while confirm dialog is up
+    if (confirmPopover_.active()) return;  // ignore typing while confirm dialog is up
     password_.append(utf8);
     reveal();
 }
 
 void LockScreen::handleSpecialKey(uint32_t sym, uint32_t modifiers) {
     // If the confirmation dialog is up, only Escape and Enter are meaningful.
-    if (powerDialog_.active()) {
+    if (confirmPopover_.active()) {
         if (sym == XKB_KEY_Escape) {
-            powerDialog_.dismiss();
+            confirmPopover_.dismiss();
             host_.invalidate();
         } else if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
-            powerDialog_.confirm();
+            confirmPopover_.confirm();
             host_.invalidate();
         }
         return;  // block all other keystrokes while dialog is shown
@@ -270,8 +270,8 @@ void LockScreen::handleSpecialKey(uint32_t sym, uint32_t modifiers) {
 // Pointer (delegated from Shell)
 // -----------------------------------------------------------------------------
 void LockScreen::handlePointerMotion(int w, int h, double x, double y) {
-    if (powerDialog_.active()) {
-        powerDialog_.updateHover(x, y, nowMs());
+    if (confirmPopover_.active()) {
+        confirmPopover_.updateHover(x, y, nowMs());
         host_.invalidate();
         return;
     }
@@ -292,8 +292,8 @@ void LockScreen::handlePointerButton(int w, int h, double x, double y, uint32_t 
     }
 
     // While the confirmation dialog is showing, let it consume the click.
-    if (powerDialog_.active()) {
-        powerDialog_.handlePress(x, y, nowMs());
+    if (confirmPopover_.active()) {
+        confirmPopover_.handlePress(x, y, nowMs());
         host_.invalidate();
         return;
     }
@@ -547,7 +547,7 @@ void LockScreen::draw(cairo_t* cr, int width, int height, int) {
     }
 
     // Power confirmation dialog — drawn above all UI, below the idle dim.
-    if (powerDialog_.active()) powerDialog_.draw(p, width, height, now);
+    if (confirmPopover_.active()) confirmPopover_.draw(p, width, height, now);
 }
 
 bool LockScreen::isAnimating() const {
@@ -557,7 +557,7 @@ bool LockScreen::isAnimating() const {
     for (const auto& b : powerButtons_)
         if (b.animating(now)) return true;
     if (alwaysPower_.animating(now)) return true;
-    if (powerDialog_.animating(now)) return true;
+    if (confirmPopover_.animating(now)) return true;
     if (notifications_.active() && notifications_.animating(now)) return true;
     return audio_ && audio_->animating(now);
 }

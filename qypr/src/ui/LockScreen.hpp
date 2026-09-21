@@ -16,18 +16,18 @@
 #include "ui/Clock.hpp"
 #include "ui/Notification.hpp"
 #include "ui/PasswordField.hpp"
-#include "ui/PowerDialog.hpp"
+#include "ui/ConfirmPopover.hpp"
 #include "ui/StatusMessage.hpp"
 
 namespace qypr {
 
 class EventLoop;
-class PowerManager;
+class SystemActions;
 class AudioController;
 
 class LockScreen {
 public:
-    LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, PowerManager& power);
+    LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power);
 
     // Optional audio panel, injected once MPRIS is available.
     void setAudioController(AudioController* audio) { audio_ = audio; }
@@ -54,7 +54,7 @@ public:
     // True while a modal (power confirmation dialog) should consume all
     // input. Queried by Shell for routing; LockScreen knows nothing about
     // what else exists.
-    bool modalActive() const { return powerDialog_.active(); }
+    bool modalActive() const { return confirmPopover_.active(); }
 
     // Called by Shell when any input arrives to drive the reveal state machine
     // (without touching idle state, which Shell manages).
@@ -90,7 +90,7 @@ private:
     EventLoop& loop_;
     RenderHost& host_;
     PamAuthenticator& pam_;
-    PowerManager& power_;
+    SystemActions& power_;
     AudioController* audio_ = nullptr;
 
     // State
@@ -117,7 +117,7 @@ private:
     NotificationView notifications_;
     std::array<ActionButton, 4> powerButtons_;
     ActionButton alwaysPower_;
-    PowerDialog powerDialog_;
+    ConfirmPopover confirmPopover_;
 
     bool pointerDown_ = false;
     int hideTimer_ = -1;

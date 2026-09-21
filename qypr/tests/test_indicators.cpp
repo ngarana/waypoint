@@ -911,7 +911,7 @@ TEST(SensitiveIndicatorsGatedByDefault) {
 }
 
 TEST(SessionAppletsAbsentWithoutTheirBackends) {
-    // The lock screen's App supplies no PowerManager and no NotificationMonitor.
+    // The lock screen's App supplies no SystemActions and no NotificationMonitor.
     // Both applets must then not exist at all — belt-and-braces with sensitive().
     qypr::SystemBackends const none{};
     qypr::PowerMenuIndicator const power(none);
@@ -926,7 +926,7 @@ TEST(SessionAppletsAbsentWithoutTheirBackends) {
 }
 TEST(SessionAppletsAppearWithBackends) {
     qypr::EventLoop loop;
-    qypr::PowerManager pm(loop);          // TESTING: actions are no-ops
+    qypr::SystemActions pm(loop);          // TESTING: actions are no-ops
     qypr::NotificationMonitor mon(loop);  // not started: empty, but present
     qypr::SystemBackends b{};
     b.power = &pm;

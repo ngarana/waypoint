@@ -157,7 +157,7 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/ui/ActionButton.cpp
     src/ui/PasswordField.cpp
     src/ui/Clock.cpp
-    src/ui/PowerDialog.cpp
+    src/ui/ConfirmPopover.cpp
     src/ui/StatusMessage.cpp
     src/wayland/LockSession.cpp
     src/wayland/WaylandDisplay.cpp

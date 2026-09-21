@@ -253,7 +253,7 @@ TEST(StatusBarPointerInput) {
 
     // macOS-style: each indicator opens its own popover; Quick Settings is
     // reached by clicking the Control Center (the "power" indicator in the
-    // right zone). With no PowerManager supplied (backends.power == nullptr)
+    // right zone). With no SystemActions supplied (backends.power == nullptr)
     // the panel cannot open, so a stray click on empty right-zone space is
     // a harmless no-op.
     double const chipX = bar.bounds.x + bar.bounds.w - 30;

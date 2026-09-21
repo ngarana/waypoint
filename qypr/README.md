@@ -223,7 +223,7 @@ src/
               Seat, ShmBuffer, Cursor
   render/     Painter (cairo + pango helpers)
   ui/         Theme, Widget, LockScreen, Clock, PasswordField, StatusMessage,
-              ActionButton, PowerDialog, AudioController, Notification,
+              ActionButton, ConfirmPopover, AudioController, Notification,
               Shell, IconResolver
   ui/statusbar/  StatusBar, StatusIndicator, IndicatorRegistry, QSTile,
               QuickSettingsPanel, PopoverManager, DetailedPopover
@@ -232,7 +232,7 @@ src/
               PowerMenuIndicator, SNITrayHost, VolumeIndicator, WifiIndicator,
               WorkspacesIndicator, ActiveWindowIndicator
   auth/       PamAuthenticator (PAM on a worker thread)
-  power/      PowerManager (systemctl)
+  power/      SystemActions (fixed systemctl verbs — lock screen fails closed)
   mpris/      MprisController (sdbus-c++)
   notifications/ NotificationMonitor (sd-bus monitor), NotificationLog,
               NotificationActions

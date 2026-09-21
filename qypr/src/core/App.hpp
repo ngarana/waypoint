@@ -10,7 +10,7 @@
 #include "core/Interfaces.hpp"
 #include "mpris/MprisController.hpp"
 #include "notifications/NotificationMonitor.hpp"
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include "system/BatteryBackend.hpp"
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
@@ -53,7 +53,7 @@ private:
     WaylandDisplay display_;
     LockSession lock_;
     PamAuthenticator pam_;
-    PowerManager power_{loop_};
+    SystemActions power_{loop_};
     MprisController mpris_;
     AudioController audio_;
     VideoPlayer video_;

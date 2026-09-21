@@ -65,9 +65,9 @@ TEST(PamAuthenticator) {
         qypr::SecureBuffer{}, [&](qypr::PamAuthenticator::Result, const std::string&) {});
     EXPECT_FALSE(started);
 }
-TEST(PowerManager) {
+TEST(SystemActions) {
     qypr::EventLoop loop;
-    qypr::PowerManager pm(loop);
+    qypr::SystemActions pm(loop);
     pm.run("suspend");
     pm.run("reboot");
     // Should run instantly and safely in mock mode

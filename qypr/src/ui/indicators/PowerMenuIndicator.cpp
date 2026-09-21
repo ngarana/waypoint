@@ -4,11 +4,11 @@
 // (see StatusBar::activateIndicator, which diverts "power" before any detailed
 // view is consulted), whose power tile runs `waylaunch --power`. The former
 // in-bar PowerMenuPopover was unreachable through every path and is deleted;
-// the lock screen keeps its own ui/PowerDialog, which a layer-shell overlay
+// the lock screen keeps its own ui/ConfirmPopover, which a layer-shell overlay
 // could never replace.
 #include "ui/indicators/PowerMenuIndicator.hpp"
 
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include "ui/Theme.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
 

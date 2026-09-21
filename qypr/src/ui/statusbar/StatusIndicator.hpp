@@ -31,7 +31,7 @@ class DndState;
 class DndState;
 class NightLightBackend;
 class Config;
-class PowerManager;
+class SystemActions;
 class PowerProfilesBackend;
 class NotificationMonitor;
 class NotificationActions;
@@ -60,7 +60,7 @@ struct SystemBackends {
     // lock screen leaves these null — it has its own in-lockscreen power dialog
     // and notification stack, and must never offer a shutdown button or reveal
     // notification contents from the bar.
-    PowerManager* power = nullptr;
+    SystemActions* power = nullptr;
     PowerProfilesBackend* powerProfiles = nullptr;  // net.hadess.PowerProfiles
     IdleInhibitor* idleInhibitor = nullptr;         // zwp_idle_inhibit ("keep awake")
     DesktopIndex* desktopIndex = nullptr;

@@ -25,7 +25,7 @@ class VideoPlayer;
 
 class Shell : public InputSink {
 public:
-    Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, PowerManager& power,
+    Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
           const SystemBackends& backends);
 
     // Inject optional subsystems (same API LockScreen had).

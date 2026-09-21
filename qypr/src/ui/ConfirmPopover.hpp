@@ -1,4 +1,4 @@
-// PowerDialog.hpp - Compact power-action confirmation popover.
+// ConfirmPopover.hpp - Compact power-action confirmation popover.
 //
 // Inspired by GNOME's End Session Dialog and Windows 11's inline confirmations:
 // no full-screen scrim, no centred modal. Instead a small glass card that
@@ -14,6 +14,13 @@
 // The card fades in/out. Clicking outside or letting the countdown expire
 // both dismiss without acting (safe default). Only an explicit Confirm click
 // executes the power action.
+//
+// Deliberate asymmetry with waylaunch's power overlay: the overlay's countdown
+// auto-CONFIRMS per user config, but the lock screen always fails CLOSED
+// (timeout → dismiss). Do not "unify" this — executing a power action without
+// an explicit, authenticated click would be a lock-screen hole. The execution
+// backends stay separate for the same reason: this side runs only fixed
+// systemctl verbs (power/SystemActions), never config-driven commands.
 
 #pragma once
 
@@ -27,7 +34,7 @@ namespace qypr {
 
 class Painter;
 
-class PowerDialog {
+class ConfirmPopover {
 public:
     bool active() const { return visible_ || fadeAnim_.target() > 0.001; }
 
@@ -49,8 +56,8 @@ public:
         return fadeAnim_.active(now) || confirmScale_.active(now) || cancelScale_.active(now);
     }
 
-    // Auto-confirm countdown duration in ms. 0 = disabled.
-    int autoConfirmMs = 8000;
+    // Fail-closed countdown in ms: expiry dismisses WITHOUT acting. 0 = disabled.
+    int autoDismissMs = 8000;
 
     // Exposed so the .cpp helper can reference them without a full include cycle.
     static constexpr double kCardW = 260.0;
@@ -79,7 +86,7 @@ private:
     Animated fadeAnim_{0};
     Animated confirmScale_{1.0};
     Animated cancelScale_{1.0};
-    Animated barAnim_{1.0};  // 1 → 0 over autoConfirmMs (remaining time)
+    Animated barAnim_{1.0};  // 1 → 0 over autoDismissMs (remaining time)
 
     bool confirmHovered_ = false;
     bool cancelHovered_ = false;

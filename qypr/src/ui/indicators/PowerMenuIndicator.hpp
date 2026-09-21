@@ -2,9 +2,9 @@
 //
 // Activating the indicator opens Quick Settings, whose power tile runs
 // `waylaunch --power` (the desktop's only power UI). Session-sensitive: the
-// lock screen must never offer these — it has its own PowerDialog behind the
+// lock screen must never offer these — it has its own ConfirmPopover behind the
 // reveal, and a shutdown button on a locked machine is a footgun. The
-// indicator hides itself entirely when no PowerManager is supplied
+// indicator hides itself entirely when no SystemActions is supplied
 // (qypr-lock supplies none).
 //
 // hasDetailedView() stays true so the open-indicator-detail path still routes
@@ -19,7 +19,7 @@
 
 namespace qypr {
 
-class PowerManager;
+class SystemActions;
 
 class PowerMenuIndicator : public StatusIndicator {
 public:
@@ -37,7 +37,7 @@ public:
     bool sensitive() const override { return true; }
 
 private:
-    PowerManager* power_ = nullptr;
+    SystemActions* power_ = nullptr;
 };
 
 }  // namespace qypr

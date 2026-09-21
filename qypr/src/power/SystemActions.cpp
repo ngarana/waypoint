@@ -1,6 +1,6 @@
-// PowerManager.cpp - see the header for why there is no fork() and no
+// SystemActions.cpp - see the header for why there is no fork() and no
 // process-wide SIGCHLD disposition (QL-5, QL-6).
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 
 #include <cstdio>
 
@@ -9,7 +9,7 @@
 
 namespace qypr {
 
-PowerManager::PowerManager(EventLoop& loop)
+SystemActions::SystemActions(EventLoop& loop)
     : loop_(loop),
       systemctl_(resolveToolPath("systemctl")),
       loginctl_(resolveToolPath("loginctl")) {
@@ -20,7 +20,7 @@ PowerManager::PowerManager(EventLoop& loop)
     }
 }
 
-void PowerManager::lock() {
+void SystemActions::lock() {
     if (loginctl_.empty()) {
         std::fprintf(stderr, "qypr: loginctl not found in PATH; lock action disabled\n");
         return;
@@ -32,7 +32,7 @@ void PowerManager::lock() {
 #endif
 }
 
-void PowerManager::run(const char* verb) {
+void SystemActions::run(const char* verb) {
 #ifdef TESTING
     (void)verb;  // TESTING: the action must not touch the test host
 #else

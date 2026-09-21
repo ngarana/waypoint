@@ -11,7 +11,7 @@
 
 namespace qypr {
 
-Shell::Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, PowerManager& power,
+Shell::Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
              const SystemBackends& backends)
     : loop_(loop),
       host_(host),

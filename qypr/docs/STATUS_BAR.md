@@ -74,7 +74,7 @@ are one continuous surface rather than two stacked panels.
      the rule that actually protects the footprint: a polled `wpctl` is a fork
      per tick, forever.
    - **User-initiated, one-shot launches are allowed** (decision D1): a launcher,
-     a `spawn-on-click` command, or `PowerManager`'s `systemctl` call is a
+      a `spawn-on-click` command, or `SystemActions`' `systemctl` call is a
      deliberate action with a bounded lifetime, not a monitoring strategy. A
      panel that cannot launch anything is not a panel replacement. Never spawn
      on a timer, and never to answer "what is the current state?".
@@ -123,7 +123,7 @@ are one continuous surface rather than two stacked panels.
 
 ```
 Shell (Root UI Compositor — coordinates inputs, layouts, and global idle dimming)
-├── LockScreen (Auth UI: Clock, PasswordField, AudioController, Notifications, PowerDialog)
+├── LockScreen (Auth UI: Clock, PasswordField, AudioController, Notifications, ConfirmPopover)
 └── StatusBar (Status Bar UI: zones, layout, popovers, quick settings)
     ├── LeftZone ─────────────────────────────────────────────
     │   └── ClockIndicator          POSIX time, own formatting (no LockScreen code)
@@ -1128,7 +1128,7 @@ remains is mostly *session* surface area (windows, media, notifications, power),
    The three biggest absences — window list, notification history, media controls
    — are what make a panel a panel. As predicted, **most of this was already built
    and merely lock-only**: `MprisController`, `NotificationMonitor` (+
-   `NotificationLog` backlog), and `PowerManager` were complete classes `BarApp`
+    `NotificationLog` backlog), and `SystemActions` were complete classes `BarApp`
    simply did not instantiate (surfaced in Phase 10); and `ToplevelBackend`
    **already tracked every toplevel**, so the taskbar (Phase 11) only had to expose
    the full list + add `activate`/`minimize`. All are session-sensitive, so none
@@ -1147,7 +1147,7 @@ tension with an existing principle, not an oversight.
 
 | # | Decision | Why it's contested | Recommendation |
 |---|---|---|---|
-| D1 | **May the bar spawn processes?** | Principle 2 says "no new processes" — but a launcher, "open pavucontrol", or clipboard→rofi inherently spawn, and a panel without them is not a replacement. Note `PowerManager` **already `fork`+`execlp`s `systemctl`**, so the codebase's real rule is narrower than the prose. | **Sharpen the principle, don't break it:** forbid spawning *to read state* (the actual footprint enemy: no `wpctl` polling); allow **user-initiated, one-shot** launches (`spawn-on-click`, launcher). Document the distinction in Principle 2. |
+| D1 | **May the bar spawn processes?** | Principle 2 says "no new processes" — but a launcher, "open pavucontrol", or clipboard→rofi inherently spawn, and a panel without them is not a replacement. Note `PowerManager` (since renamed `SystemActions`) **already `fork`+`execlp`s `systemctl`**, so the codebase's real rule is narrower than the prose. | **Sharpen the principle, don't break it:** forbid spawning *to read state* (the actual footprint enemy: no `wpctl` polling); allow **user-initiated, one-shot** launches (`spawn-on-click`, launcher). Document the distinction in Principle 2. |
 | D2 | **Config format** | No precedent in-repo (`sensitive_apps.conf` is ad-hoc lines). Adding a TOML/JSON lib fights the minimal-dependency ethos. | A **small hand-rolled INI/key-value parser** (~150 LOC, no new dependency), matching the existing `.conf` convention. Sections per module, `modules-left/center/right` ordering keys. |
 | D3 | **Runtime config reload** | Nice-to-have; `inotify` on the config file fits the epoll loop cleanly (push, not poll). | Ship Phase 9 **without** reload; add inotify later if wanted. Restarting a 1MB bar is cheap. |
 | D4 | **MPRIS polls 1×/sec** | `MprisController` refreshes on a timer — a standing violation of Principle 2 ("push, not poll") that is tolerable on the lock screen but not for an always-running panel. | Convert to `PropertiesChanged` push **as part of Phase 10**, before it is surfaced in the bar. |
@@ -1339,20 +1339,20 @@ exist**, merely never instantiated by `BarApp`.
 | File | Purpose |
 |------|---------|
 | `src/ui/indicators/NotificationIndicator.hpp/.cpp` | Bell + count; **history popover** (newest-first, app/title/body, critical accented) over the existing `NotificationMonitor`. DND mutes the glyph but keeps the count |
-| `src/ui/indicators/PowerMenuIndicator.hpp/.cpp` | Session menu over the existing `PowerManager`: Lock / Suspend / Hibernate / Restart / Shut Down |
-| `src/power/PowerManager.*` | Added `lock()` via `loginctl lock-session` (the standard path — qypr never launches itself); `run()` generalised to `runCmd(prog, arg)` |
+| `src/ui/indicators/PowerMenuIndicator.hpp/.cpp` | Session menu over the existing `SystemActions`: Lock / Suspend / Hibernate / Restart / Shut Down |
+| `src/power/SystemActions.*` | Added `lock()` via `loginctl lock-session` (the standard path — qypr never launches itself); `run()` generalised to `runCmd(prog, arg)` |
 | `src/ui/statusbar/StatusIndicator.hpp` | `SystemBackends.power` / `.notifications` — supplied only by `BarApp` |
-| `src/core/BarApp.*` | Owns `NotificationMonitor` (push, no backlog seed — that is the lock screen's concern) + `PowerManager` |
+| `src/core/BarApp.*` | Owns `NotificationMonitor` (push, no backlog seed — that is the lock screen's concern) + `SystemActions` |
 
 **Safety.** Destructive rows (everything but Lock) **arm on the first click and
 fire only on a second**, so a stray click on a panel button cannot power the
 machine off. A click elsewhere disarms. *(Verified by inspection + visually; not
-unit-tested — `PowerManager` is a no-op under `TESTING`, so a fired action is
+unit-tested — `SystemActions` is a no-op under `TESTING`, so a fired action is
 unobservable, and the popover lives in an anonymous namespace.)*
 
 **Double-gated privacy.** Both applets are session-sensitive **and** hide
 themselves when their backend is null. `qypr-lock` supplies neither, so they do
-not exist there at all — it keeps its own PowerDialog and notification stack
+not exist there at all — it keeps its own ConfirmPopover and notification stack
 behind the reveal. Verified: `--preview` shows no bell and no power button.
 
 **Verified live:** `notify-send` → bell counts 1, 2, 3 in real time; the history
@@ -1752,7 +1752,7 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 |---------|-------------|---------|
 | `sd-bus` | Yes (NotificationMonitor) | D-Bus for UPower, NetworkManager, BlueZ, logind |
 | `sdbus-c++` | Yes (MprisController) | Alternative D-Bus binding |
-| Nerd Font glyphs | Yes (ActionButton, PowerDialog) | Status bar icons |
+| Nerd Font glyphs | Yes (ActionButton, ConfirmPopover) | Status bar icons |
 | Cairo/Pango | Yes (entire UI) | Rendering |
 | `libpulse` | Yes (VolumeBackend via PulseLoop) | Event-driven volume via pipewire-pulse (no CLI spawning — principle 2) |
 | `sysfs` | No (new) | Backlight brightness fallback |

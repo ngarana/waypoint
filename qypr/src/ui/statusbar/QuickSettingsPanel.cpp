@@ -12,7 +12,7 @@
 #include "system/VolumeBackend.hpp"
 #include "system/DndState.hpp"
 #include "mpris/MprisController.hpp"
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <unistd.h>

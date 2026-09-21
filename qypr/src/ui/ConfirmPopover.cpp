@@ -1,6 +1,6 @@
-// PowerDialog.cpp
+// ConfirmPopover.cpp
 
-#include "ui/PowerDialog.hpp"
+#include "ui/ConfirmPopover.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -16,8 +16,8 @@ namespace qypr {
 // Card rect: right edge sits at anchoredX_, vertically centred on anchoredY_.
 // We clamp so it never goes above the top of the screen.
 static Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h) {
-    constexpr double kCardW = PowerDialog::kCardW;
-    constexpr double kCardH = PowerDialog::kCardH;
+    constexpr double kCardW = ConfirmPopover::kCardW;
+    constexpr double kCardH = ConfirmPopover::kCardH;
     constexpr double kGap = 10.0;  // gap between card right edge and pill left edge
     double x = anchoredX - kCardW - kGap;
     double y = anchoredY - kCardH / 2.0;
@@ -27,17 +27,17 @@ static Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h) {
     return {x, y, kCardW, kCardH};
 }
 
-Rect PowerDialog::cancelBtnRect(const Rect& card) const {
+Rect ConfirmPopover::cancelBtnRect(const Rect& card) const {
     const double btnW = (card.w - kPad * 2.0 - 8.0) / 2.0;
     return {card.x + kPad, card.y + card.h - kPad - kBtnH, btnW, kBtnH};
 }
 
-Rect PowerDialog::confirmBtnRect(const Rect& card) const {
+Rect ConfirmPopover::confirmBtnRect(const Rect& card) const {
     Rect c = cancelBtnRect(card);
     return {c.x + c.w + 8.0, c.y, c.w, kBtnH};
 }
 
-Rect PowerDialog::barRect(const Rect& card) const {
+Rect ConfirmPopover::barRect(const Rect& card) const {
     // Bar sits just above the button row.
     Rect c = cancelBtnRect(card);
     return {card.x + kPad, c.y - kBarH - 6.0, card.w - kPad * 2.0, kBarH};
@@ -47,7 +47,7 @@ Rect PowerDialog::barRect(const Rect& card) const {
 // Public API
 // ---------------------------------------------------------------------------
 
-void PowerDialog::show(const std::string& icon, const std::string& title,
+void ConfirmPopover::show(const std::string& icon, const std::string& title,
                        const std::string& confirmLabel, std::function<void()> onConfirm,
                        const Rect& anchorRect, double pillLeft) {
     icon_ = icon;
@@ -69,17 +69,17 @@ void PowerDialog::show(const std::string& icon, const std::string& title,
 
     // Start countdown bar full (1.0) and drain to 0.
     barAnim_.set(1.0);
-    if (autoConfirmMs > 0) barAnim_.animateTo(0.0, autoConfirmMs, ease::linear);
+    if (autoDismissMs > 0) barAnim_.animateTo(0.0, autoDismissMs, ease::linear);
 
     fadeAnim_.animateTo(1.0, theme::anim::fast, ease::inOutQuad);
 }
 
-void PowerDialog::dismiss() {
+void ConfirmPopover::dismiss() {
     visible_ = false;
     fadeAnim_.animateTo(0.0, theme::anim::fast, ease::inOutQuad);
 }
 
-void PowerDialog::confirm() {
+void ConfirmPopover::confirm() {
     if (onConfirm_) onConfirm_();
     dismiss();
 }
@@ -88,7 +88,7 @@ void PowerDialog::confirm() {
 // Input
 // ---------------------------------------------------------------------------
 
-bool PowerDialog::handlePress(double x, double y, int64_t /*now*/) {
+bool ConfirmPopover::handlePress(double x, double y, int64_t /*now*/) {
     if (!active()) return false;
     const Rect& card = cardBounds_;
     Rect cancel = cancelBtnRect(card);
@@ -112,7 +112,7 @@ bool PowerDialog::handlePress(double x, double y, int64_t /*now*/) {
     return true;  // consume clicks inside the card
 }
 
-void PowerDialog::updateHover(double x, double y, int64_t now) {
+void ConfirmPopover::updateHover(double x, double y, int64_t now) {
     if (!active()) return;
     const Rect& card = cardBounds_;
     Rect cancel = cancelBtnRect(card);
@@ -135,14 +135,14 @@ void PowerDialog::updateHover(double x, double y, int64_t now) {
 // Draw
 // ---------------------------------------------------------------------------
 
-void PowerDialog::draw(Painter& p, int w, int h, int64_t now) {
+void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
     if (!active()) return;
 
     const double alpha = clamp01(fadeAnim_.value(now));
     if (alpha < 0.001) return;
 
     // Auto-cancel: bar drained to zero and animation finished — dismiss without acting.
-    if (autoConfirmMs > 0 && !barAnim_.active(now) && barAnim_.target() < 0.001) {
+    if (autoDismissMs > 0 && !barAnim_.active(now) && barAnim_.target() < 0.001) {
         barAnim_.set(1.0);  // prevent re-trigger
         dismiss();
         return;
@@ -172,7 +172,7 @@ void PowerDialog::draw(Painter& p, int w, int h, int64_t now) {
     }
 
     // ── Countdown bar ────────────────────────────────────────────────────
-    if (autoConfirmMs > 0) {
+    if (autoDismissMs > 0) {
         const double remaining = clamp01(barAnim_.value(now));
         const Rect bar = barRect(card);
 

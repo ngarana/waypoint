@@ -111,7 +111,7 @@ extern int g_tests_failed;
 #include "core/EventLoop.hpp"
 #include "core/ConfigWatcher.hpp"
 #include "auth/PamAuthenticator.hpp"
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include "mpris/MprisController.hpp"
 #include "video/VideoPlayer.hpp"
 #include "wayland/WaylandDisplay.hpp"

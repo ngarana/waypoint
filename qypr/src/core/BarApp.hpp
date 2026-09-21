@@ -21,7 +21,7 @@
 #include "mpris/MprisController.hpp"
 #include "notifications/NotificationActions.hpp"
 #include "notifications/NotificationMonitor.hpp"
-#include "power/PowerManager.hpp"
+#include "power/SystemActions.hpp"
 #include "system/PowerProfilesBackend.hpp"
 #include "system/IdleInhibitor.hpp"
 #include "system/DesktopIndex.hpp"
@@ -125,7 +125,7 @@ private:
     // Dismissal must not ride the monitor connection (BecomeMonitor may never
     // send); it reuses the shared session bus instead.
     NotificationActions notificationActions_{sessionBus_};
-    PowerManager power_{loop_};
+    SystemActions power_{loop_};
     PowerProfilesBackend powerProfiles_{systemBus_};
     IdleInhibitor idleInhibitor_;  // init()'d after display_.connect()
     MprisController mpris_;

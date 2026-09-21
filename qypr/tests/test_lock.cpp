@@ -6,7 +6,7 @@ TEST(LockScreenInputHandling) {
     qypr::EventLoop loop;
     qypr::App app;
     qypr::PamAuthenticator pam(loop);
-    qypr::PowerManager power(loop);
+    qypr::SystemActions power(loop);
 
     qypr::LockScreen screen(loop, app, pam, power);
 
@@ -37,7 +37,7 @@ TEST(LockScreenUnlockGating) {
         void requestUnlock() override { ++unlocks; }
     } host;
     qypr::PamAuthenticator pam(loop);
-    qypr::PowerManager power(loop);
+    qypr::SystemActions power(loop);
     qypr::LockScreen screen(loop, host, pam, power);
 
     mock_pam_reset();
@@ -80,7 +80,7 @@ TEST(LockScreenWipesPasswordAfterSubmit) {
         void requestUnlock() override {}
     } host;
     qypr::PamAuthenticator pam(loop);
-    qypr::PowerManager power(loop);
+    qypr::SystemActions power(loop);
     qypr::LockScreen screen(loop, host, pam, power);
 
     mock_pam_reset();

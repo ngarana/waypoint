@@ -27,8 +27,8 @@
 | QL-2 | **Medium** | Wi-Fi radio, disconnect and saved-network switching reachable before authentication | `WifiIndicator.cpp:246-375` |
 | QL-3 | **Medium** (this host) | Password copies are never wiped; host swap and core dumps are unencrypted on disk | `LockScreen.cpp:197-231`, `PamAuthenticator.cpp:69-80` |
 | QL-4 | Low | SNI tray items can be activated before authentication | `SNITrayHost.cpp:127, 307, 322, 341` |
-| QL-5 | Low | Process-wide `SIGCHLD = SIG_IGN` leaks into spawned programs and is mutated concurrently by `pam_unix` | `PowerManager.cpp:10` |
-| QL-6 | Low | `fork()` + `execlp()` in a multithreaded process | `PowerManager.cpp:22-24` |
+| QL-5 | Low | Process-wide `SIGCHLD = SIG_IGN` leaks into spawned programs and is mutated concurrently by `pam_unix` | `SystemActions.cpp:10` (file renamed from `PowerManager.cpp`; finding since remediated) |
+| QL-6 | Low | `fork()` + `execlp()` in a multithreaded process | `SystemActions.cpp:22-24` (file renamed from `PowerManager.cpp`; finding since remediated) |
 | QL-7 | Info | Shell-command Quick Settings tiles are built into the lock process, unreachable only by accident | `StatusBar.cpp:88`, `QuickSettingsPanel.cpp:103, 274` |
 
 QL-1, QL-2, QL-4 and QL-7 share one root cause (§3) and one fix (§6, step 1).
@@ -210,8 +210,8 @@ under the QL-1 policy.
 
 ### QL-5 — Process-wide `SIGCHLD = SIG_IGN` · **Low**
 
-`PowerManager`'s constructor calls `signal(SIGCHLD, SIG_IGN)`
-(`PowerManager.cpp:10`) for the whole process, so its `systemctl` children are
+`SystemActions`' constructor (formerly `PowerManager`) calls `signal(SIGCHLD, SIG_IGN)`
+(`SystemActions.cpp:10`, ex-`PowerManager.cpp:10`) for the whole process, so its `systemctl` children are
 reaped automatically.
 
 **(a) It leaks into every spawned program.** Linux preserves ignored signal
@@ -219,7 +219,7 @@ dispositions across `execve`, so `systemctl` and `loginctl` start with `SIGCHLD`
 ignored, and any child *they* `waitpid()` for returns `ECHILD`. qypr has already
 hit exactly this: `QuickSettingsPanel.cpp:56-63` records grimblast failing with
 "Clipboard error", and fixes it there by restoring `SIG_DFL` in the child before
-`exec`. **`PowerManager::runCmd` never got the same fix.** Whether `systemctl`
+`exec`. **`SystemActions::runCmd` (formerly `PowerManager::runCmd`) never got the same fix.** Whether `systemctl`
 itself trips over it (e.g. on a polkit helper path) has not been verified.
 
 **(b) `pam_unix` changes it from another thread.** `qypr-lock` does not run as
@@ -237,7 +237,7 @@ state changed concurrently by two threads.
 
 ### QL-6 — `fork()` + `execlp()` in a multithreaded process · **Low**
 
-`PowerManager::runCmd` forks and then calls `execlp` (`PowerManager.cpp:22-24`).
+`SystemActions::runCmd` (formerly `PowerManager::runCmd`) forks and then calls `execlp` (`SystemActions.cpp:22-24`, ex-`PowerManager.cpp:22-24`).
 `qypr-lock` has other threads alive while this can run: the PAM worker during
 authentication, and libmpv's internal threads whenever the video wallpaper is
 playing. After `fork()` only the calling thread exists in the child, and any
