@@ -38,8 +38,8 @@ jobs:
           cmake --build common/build --parallel
       - name: Test (suites incl. I1–I4 lock invariants)
         run: |
-          ./qypr/build/qypr-test
+          ctest --test-dir qypr/build --output-on-failure
           ctest --test-dir waylaunch/build --output-on-failure
           ctest --test-dir common/build --output-on-failure
-      - name: Structural gates (I4 + Q5 link closure)
+      - name: Structural gates (I4 + Q5 + B1 link closure)
         run: ./scripts/check-invariants.sh qypr/build waylaunch/build

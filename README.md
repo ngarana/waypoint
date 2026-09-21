@@ -39,6 +39,7 @@ ctest --test-dir common/build     # shared units
 
 - **I4** — `qypr-lock` links no waylaunch content (indexer, extractors, providers).
 - **Q5** — the `waylaunch` binary links no qypr bar sources (Stage 3 rejection).
+- **B1** — `qypr-bar` links no lock-only stack (libmpv/libpam, video, PAM).
 
 Shared `common/` objects are explicitly allowed on both sides.
 

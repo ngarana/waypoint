@@ -38,10 +38,10 @@ cmake -S qypr -B qypr/build -G Ninja && cmake --build qypr/build --parallel
 cmake -S waylaunch -B waylaunch/build -G Ninja -DBUILD_TESTING=ON && cmake --build waylaunch/build --parallel
 cmake -S common -B common/build -G Ninja && cmake --build common/build --parallel
 
-./qypr/build/qypr-test                          # 122 unit tests (incl. I1–I4 lock invariants)
+ctest --test-dir qypr/build --output-on-failure      # 123 unit tests (incl. I1–I4 lock invariants)
 ctest --test-dir waylaunch/build --output-on-failure   # 26 suites
 ctest --test-dir common/build --output-on-failure      # blur_test, icon_test, desktop_test
-./scripts/check-invariants.sh                   # I4 + Q5 structural gates (needs built trees)
+./scripts/check-invariants.sh                   # I4 + Q5 + B1 structural gates (needs built trees)
 ./scripts/check-invariants.sh qypr/build waylaunch/build   # explicit dirs
 ```
 
@@ -70,6 +70,7 @@ Never declare work done with a red gate.
 | waylaunch pre-commit | `cd waylaunch && pre-commit run --all-files` |
 | Structural I4 | `qypr-lock` links no `waylaunch/` content — enforced by `scripts/check-invariants.sh` |
 | Structural Q5 | `waylaunch` links no `qypr/` bar sources — enforced by `scripts/check-invariants.sh` |
+| Structural B1 | `qypr-bar` links no lock-only stack (mpv/PAM) — enforced by `scripts/check-invariants.sh` |
 | Tests | all three suites above, green, with asserts live (see §3.1) |
 
 Rules:
@@ -93,14 +94,14 @@ Rules:
    (`IToplevelBackend`, `IPlacementBackend`, `toplevel/ToplevelBackend.hpp`)
    so the core stays testable without a compositor. New shared code lives
    in `common/` and is rebuilt + retested in **all** consumers before push.
-7. Structural violations (I4/Q5) are fixed by unlinking, never by
+7. Structural violations (I4/Q5/B1) are fixed by unlinking, never by
    allow-listing. `common/` is the only shared link surface.
 
 ### 3.1 Test-before-done checklist
 
 - [ ] `cmake --build` clean for every touched component (`-Wall -Wextra`,
       plus `-Wpedantic` on several waylaunch targets) — warning-free.
-- [ ] `qypr-test` / `ctest --test-dir waylaunch/build` /
+- [ ] `ctest --test-dir qypr/build` / `ctest --test-dir waylaunch/build` /
       `ctest --test-dir common/build` green as applicable.
 - [ ] `./scripts/check-invariants.sh` prints `INVARIANTS HOLD`.
 - [ ] format + tidy clean on every touched file (§3 table).

@@ -128,14 +128,78 @@ configure_file(
 # -----------------------------------------------------------------------------
 # Targets
 # -----------------------------------------------------------------------------
-file(GLOB_RECURSE QYPR_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
-# Entry points carry their own main() and are added per-target below, so no
-# executable ever links two of them; NotificationLog is recorder-only.
-list(REMOVE_ITEM QYPR_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/main.cpp"
-    "${CMAKE_SOURCE_DIR}/src/bar_main.cpp"
-    "${CMAKE_SOURCE_DIR}/src/recorder_main.cpp"
-    "${CMAKE_SOURCE_DIR}/src/notifications/NotificationLog.cpp"
+# Explicit per-target sources (ARCHITECTURE_REVIEW finding 1): every .cpp
+# lives in exactly one list below (shared, lock-only, or entry point), so a
+# newly added lock-only file can never silently leak into the bar through a
+# glob again. Keep each list sorted; entry points carry their own main() and
+# are added per-target, so no executable ever links two of them.
+set(QYPR_SHARED_SOURCES
+    src/core/BarApp.cpp
+    src/core/Config.cpp
+    src/core/ConfigWatcher.cpp
+    src/core/SecureBuffer.cpp
+    src/mpris/MprisController.cpp
+    src/notifications/NotificationActions.cpp
+    src/notifications/NotificationMonitor.cpp
+    src/power/SystemActions.cpp
+    src/system/BatteryBackend.cpp
+    src/system/BluetoothAgent.cpp
+    src/system/BluetoothBackend.cpp
+    src/system/BrightnessBackend.cpp
+    src/system/DbusMenuBackend.cpp
+    src/system/GeoClueBackend.cpp
+    src/system/IdleInhibitor.cpp
+    src/system/KeyboardLayout.cpp
+    src/system/NightLightBackend.cpp
+    src/system/PowerProfilesBackend.cpp
+    src/system/PulseLoop.cpp
+    src/system/SessionMapper.cpp
+    src/system/SNIBackend.cpp
+    src/system/StateCache.cpp
+    src/system/SystemBus.cpp
+    src/system/SystemStats.cpp
+    src/system/ToplevelBackend.cpp
+    src/system/VolumeBackend.cpp
+    src/system/WifiBackend.cpp
+    src/system/WorkspaceBackend.cpp
+    src/ui/indicators/ActiveWindowIndicator.cpp
+    src/ui/indicators/BatteryIndicator.cpp
+    src/ui/indicators/BluetoothIndicator.cpp
+    src/ui/indicators/BrightnessIndicator.cpp
+    src/ui/indicators/ClockIndicator.cpp
+    src/ui/indicators/DNDIndicator.cpp
+    src/ui/indicators/IdleInhibitorIndicator.cpp
+    src/ui/indicators/KeyboardLayoutIndicator.cpp
+    src/ui/indicators/LauncherIndicator.cpp
+    src/ui/indicators/MediaIndicator.cpp
+    src/ui/indicators/NightLightIndicator.cpp
+    src/ui/indicators/NotificationIndicator.cpp
+    src/ui/indicators/PagerIndicator.cpp
+    src/ui/indicators/PowerMenuIndicator.cpp
+    src/ui/indicators/SNITrayHost.cpp
+    src/ui/indicators/SystemMonitorIndicator.cpp
+    src/ui/indicators/TaskbarIndicator.cpp
+    src/ui/indicators/VolumeIndicator.cpp
+    src/ui/indicators/WifiIndicator.cpp
+    src/ui/indicators/WorkspacesIndicator.cpp
+    src/ui/Notification.cpp
+    src/ui/Theme.cpp
+    src/ui/statusbar/IndicatorRegistry.cpp
+    src/ui/statusbar/MenuPopover.cpp
+    src/ui/statusbar/PopoverManager.cpp
+    src/ui/statusbar/QSTile.cpp
+    src/ui/statusbar/QuickSettingsPanel.cpp
+    src/ui/statusbar/StatusBar.cpp
+    src/ui/statusbar/StatusIndicator.cpp
+    src/wayland/BarDisplay.cpp
+    src/wayland/BarWindow.cpp
+    src/wayland/Cursor.cpp
+    src/wayland/Output.cpp
+    src/wayland/Seat.cpp
+)
+# NotificationLog is recorder-only (never in the shared set).
+set(QYPR_RECORDER_SOURCES
+    src/notifications/NotificationLog.cpp
 )
 
 # Lock-only sources: the session-lock app and everything reachable only from it
@@ -165,10 +229,9 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/auth/PamAuthenticator.cpp
 )
 
-set(QYPR_BAR_SOURCES ${QYPR_SOURCES})
-foreach(f ${QYPR_LOCK_ONLY_SOURCES})
-    list(REMOVE_ITEM QYPR_BAR_SOURCES "${CMAKE_SOURCE_DIR}/${f}")
-endforeach()
+# qypr-bar is exactly the shared set: lock-only sources were never in it,
+# so no denylist step remains. (The B1 structural gate in
+# scripts/check-invariants.sh guards this from the link-line side too.)
 
 # Shared core (libwl-common subtree): canonical protocol XML (referenced by
 # qypr_gen_protocol above) + the EventLoop reactor. The subtree root goes on
@@ -191,7 +254,8 @@ set(WL_COMMON_WAYLAND_SOURCES "${WL_COMMON_DIR}/wayland/ShmBuffer.cpp")
 
 # 1. Main Lock Screen target (links all graphics, mpv, PAM, sdbus-c++, etc.)
 add_executable(qypr-lock
-    ${QYPR_SOURCES}
+    ${QYPR_SHARED_SOURCES}
+    ${QYPR_LOCK_ONLY_SOURCES}
     ${WL_COMMON_SOURCES}
     ${WL_COMMON_RENDER_SOURCES}
     ${WL_COMMON_WAYLAND_SOURCES}
@@ -225,7 +289,7 @@ target_link_libraries(qypr-lock PRIVATE
 # its UI, the video wallpaper and PAM are excluded (QYPR_LOCK_ONLY_SOURCES
 # above), so neither libmpv nor libpam is on the bar's startup path.
 add_executable(qypr-bar
-    ${QYPR_BAR_SOURCES}
+    ${QYPR_SHARED_SOURCES}
     ${WL_COMMON_SOURCES}
     ${WL_COMMON_RENDER_SOURCES}
     ${WL_COMMON_WAYLAND_SOURCES}
@@ -256,7 +320,7 @@ add_executable(qypr-record
     src/core/Config.cpp          # NotificationMonitor resolves its XDG config dir
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     src/notifications/NotificationMonitor.cpp
-    src/notifications/NotificationLog.cpp
+    ${QYPR_RECORDER_SOURCES}
     src/recorder_main.cpp
 )
 
@@ -287,7 +351,8 @@ add_executable(qypr-test
     tests/test_notifications.cpp
     tests/test_desktop.cpp
     tests/mocks.cpp
-    ${QYPR_SOURCES}
+    ${QYPR_SHARED_SOURCES}
+    ${QYPR_LOCK_ONLY_SOURCES}
     ${WL_COMMON_SOURCES}
     ${WL_COMMON_RENDER_SOURCES}
     ${WL_COMMON_WAYLAND_SOURCES}
@@ -295,6 +360,11 @@ add_executable(qypr-test
     src/notifications/NotificationLog.cpp
     src/recorder_main.cpp
     ${PROTO_SOURCES})
+
+# Registered with CTest (ARCHITECTURE_REVIEW drift fix): `ctest --test-dir
+# <build>` runs the suite; the bare binary still works for direct runs.
+enable_testing()
+add_test(NAME qypr-test COMMAND qypr-test)
 
 target_compile_definitions(qypr-test PRIVATE TESTING)
 
