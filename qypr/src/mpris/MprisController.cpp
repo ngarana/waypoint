@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "core/EventLoop.hpp"
+#include "SdbusApi.hpp"
 
 namespace qypr {
 
@@ -69,8 +70,12 @@ MprisController::MprisController() {
 #else
     try {
         conn_ = sdbus::createSessionBusConnection();
+#if QYPR_SDBUS_HAS_SERVICE_NAME
         dbusProxy_ = sdbus::createProxy(*conn_, sdbus::ServiceName{"org.freedesktop.DBus"},
                                         sdbus::ObjectPath{"/org/freedesktop/DBus"});
+#else
+        dbusProxy_ = sdbus::createProxy(*conn_, "org.freedesktop.DBus", "/org/freedesktop/DBus");
+#endif
     } catch (...) {
         conn_.reset();  // no session bus: controller stays inert
     }
@@ -118,7 +123,11 @@ void MprisController::enablePush(EventLoop& loop) {
     const int fd = conn_->getEventLoopPollData().fd;
     loop.addFd(fd, [this](uint32_t) {
         try {
+#if QYPR_SDBUS_HAS_SERVICE_NAME
             while (conn_->processPendingEvent()) {}
+#else
+            while (conn_->processPendingRequest()) {}
+#endif
         } catch (...) {
             // A broken session bus must not take the bar down; the media applet
             // simply stops updating.
@@ -131,7 +140,11 @@ void MprisController::enablePush(EventLoop& loop) {
 
 #ifndef TESTING
 std::unique_ptr<sdbus::IProxy> MprisController::playerProxy(const std::string& name) {
+#if QYPR_SDBUS_HAS_SERVICE_NAME
     return sdbus::createProxy(*conn_, sdbus::ServiceName{name}, sdbus::ObjectPath{kObjectPath});
+#else
+    return sdbus::createProxy(*conn_, name, kObjectPath);
+#endif
 }
 
 std::vector<std::string> MprisController::listPlayers() {

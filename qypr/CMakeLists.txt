@@ -110,6 +110,21 @@ configure_file(
     "${CMAKE_BINARY_DIR}/generated/Version.hpp"
     @ONLY)
 
+# sdbus-c++ v1 vs v2 API: v2 introduced the ServiceName/ObjectPath strong
+# types and renamed processPendingRequest() to processPendingEvent(). CI
+# images ship v1, developer machines v2 — detect, don't assume.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_LIBRARIES PkgConfig::SDBUS)
+check_cxx_source_compiles(
+    "#include <sdbus-c++/sdbus-c++.h>
+     int main() { sdbus::ServiceName s{\"x\"}; (void)s; return 0; }"
+    QYPR_SDBUS_HAS_SERVICE_NAME)
+unset(CMAKE_REQUIRED_LIBRARIES)
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/core/SdbusApi.hpp.in"
+    "${CMAKE_BINARY_DIR}/generated/SdbusApi.hpp"
+    @ONLY)
+
 # -----------------------------------------------------------------------------
 # Targets
 # -----------------------------------------------------------------------------
