@@ -459,12 +459,16 @@ Extraction candidates, in dependency order:
    `third-party/libwl-common` subtree in both repos** (subtree root on the
    include path, so `#include "core/EventLoop.hpp"` is spelled identically
    everywhere; qypr drops `src/core/EventLoop.*`, waylaunch's
-   `LauncherUI::run()` moves off its hand-rolled 5-fd poll array). Two
+   `LauncherUI::run()` moves off its hand-rolled 5-fd poll array, then the
+   resident dropdown daemon moves off its 4-fd poll loop too — with dynamic
+   fd sync for Hyprland reconnects and shed/rebuild lifecycles). Three
    lessons: (a) the reactor does not pair libwayland read intents for you —
    the first migration hung under the keyboard grab (unpaired prepare_read
    spins in dispatch_pending; tracked via `wl_read_pending_` with
-   cancel-self-heal); (b) waylaunch's dropdown poll loop is still native and
-   migrates as a follow-up slice.
+   cancel-self-heal); (b) epoll dispatch order is undefined, so non-Wayland
+   callbacks must release the intent up front and the Wayland callback must
+   re-take it (order-proof pairing); (c) periodic work that lived in the
+   poll body moves to prepare, and geometry sampling keeps a repeat tick.
 3. `Spawn` — the I3 primitive: `posix_spawn` with absolute paths,
    `POSIX_SPAWN_SETSIGDEF`, and `pidfd` reaping through `EventLoop`. Start from
    waylaunch's `search/subprocess.cpp`; it replaces qypr's three `fork` call
