@@ -23,7 +23,7 @@ std::vector<ListItem> CalculatorProvider::query(const ProviderQuery& q) {
 
 bool CalculatorProvider::activate(const ListItem& it) {
     if (it.kind != ItemKind::Calculator) return false;
-    if (!it.path.empty()) Clipboard::copy_text(it.path);
+    if (!it.path.empty()) Clipboard::copy_text(it.path, event_loop_);
     return true;
 }
 

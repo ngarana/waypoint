@@ -4,6 +4,10 @@
 #include <string>
 #include <vector>
 
+namespace qypr {
+class EventLoop;
+}
+
 namespace waylaunch {
 
 // The query handed to a provider. `lower` is the lowercased `text`, precomputed
@@ -34,6 +38,13 @@ class ResultProvider {
     // then closes the launcher); false to let another handler try. Providers key
     // off the item's kind/fields to recognise their own results.
     virtual bool activate(const ListItem&) = 0;
+
+    // Reactor for pidfd child-reaping (shared I3 spawn). Set at registration;
+    // null (tests, offline use) keeps the legacy fork-based spawn path.
+    void set_event_loop(qypr::EventLoop* loop) { event_loop_ = loop; }
+
+  protected:
+    qypr::EventLoop* event_loop_ = nullptr;
 };
 
 } // namespace waylaunch

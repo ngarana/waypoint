@@ -138,8 +138,8 @@ done:
 bool FileProvider::activate(const ListItem& it) {
     if (it.kind != ItemKind::File && it.kind != ItemKind::Folder) return false;
     if (!it.path.empty()) {
-        Clipboard::copy_file_path(it.path);
-        Subprocess::spawn_detached({"xdg-open", it.path});
+        Clipboard::copy_file_path(it.path, event_loop_);
+        Subprocess::spawn_reaped(event_loop_, {"xdg-open", it.path});
     }
     return true;
 }

@@ -1,4 +1,6 @@
 #include "waylaunch/subprocess.h"
+#include "core/EventLoop.hpp"
+#include "core/Process.hpp"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -272,6 +274,22 @@ void Subprocess::spawn_detached(const std::vector<std::string>& argv) {
         int status;
         waitpid(pid, &status, 0);
     }
+}
+
+// Shared-spawn adapter: resolve argv[0] once (I3 absolute-path rule) and reap
+// through the loop. Null loop keeps the legacy fork path so offline/test use
+// never needs a reactor.
+void Subprocess::spawn_reaped(qypr::EventLoop* loop, const std::vector<std::string>& argv) {
+    if (argv.empty()) return;
+    if (loop == nullptr) {
+        spawn_detached(argv);
+        return;
+    }
+    const std::string path = qypr::resolveToolPath(argv[0]);
+    if (path.empty()) return;
+    std::vector<std::string> resolved = argv;
+    resolved[0] = path;
+    qypr::spawnReaped(*loop, path, resolved, /*newSession=*/true);
 }
 
 // Single supervised child (new session) that stays ours for waitpid/SIGCHLD

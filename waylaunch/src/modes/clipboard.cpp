@@ -11,16 +11,19 @@ namespace waylaunch {
 // returns — it blocks forever, and since every activation runs through here
 // first, the whole launcher (and its exclusive keyboard grab) hangs with it.
 // wl-copy takes the content as a trailing argument, so no stdin pipe is
-// needed at all: spawn_detached() (fire-and-forget, no pipes) is correct here.
-bool Clipboard::copy_text(const std::string& text) {
+// needed at all: spawn_reaped() (pidfd-reaped, no pipes) is correct here —
+// and unlike Subprocess::run() it never waits on pipe EOF, so wl-copy's
+// self-daemonizing (it inherits fds and never closes them) cannot hang the
+// launcher and its exclusive keyboard grab the way run() did.
+bool Clipboard::copy_text(const std::string& text, qypr::EventLoop* loop) {
     if (!Subprocess::command_exists("wl-copy")) return false;
-    Subprocess::spawn_detached({"wl-copy", "--type", "text/plain", text});
+    Subprocess::spawn_reaped(loop, {"wl-copy", "--type", "text/plain", text});
     return true;
 }
 
-bool Clipboard::copy_file_path(const std::string& path) {
+bool Clipboard::copy_file_path(const std::string& path, qypr::EventLoop* loop) {
     if (!Subprocess::command_exists("wl-copy")) return false;
-    Subprocess::spawn_detached({"wl-copy", "--type", "text/uri-list", path});
+    Subprocess::spawn_reaped(loop, {"wl-copy", "--type", "text/uri-list", path});
     return true;
 }
 
