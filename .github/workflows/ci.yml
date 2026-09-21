@@ -1,0 +1,45 @@
+name: waypoint suite
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned LLVM toolchain
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y clang-format-22 clang-tidy-22 ninja-build
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake g++ pkg-config ninja-build wayland-protocols \
+            libwayland-dev libxkbcommon-dev libcairo2-dev \
+            libpango1.0-dev libfontconfig1-dev librsvg2-dev \
+            libsqlite3-dev libzstd-dev libmagic-dev \
+            libpam0g-dev libmpv-dev libpulse-dev libudev-dev \
+            libsystemd-dev libsdbus-c++-dev libtomlplusplus-dev \
+            nlohmann-json3-dev
+      - name: Configure (Ninja — Makefiles race the shared protocol codegen)
+        run: |
+          cmake -S qypr -B qypr/build -G Ninja
+          cmake -S waylaunch -B waylaunch/build -G Ninja -DBUILD_TESTING=ON
+          cmake -S common -B common/build -G Ninja
+      - name: Build
+        run: |
+          cmake --build qypr/build --parallel
+          cmake --build waylaunch/build --parallel
+          cmake --build common/build --parallel
+      - name: Test (suites incl. I1–I4 lock invariants)
+        run: |
+          ./qypr/build/qypr-test
+          ctest --test-dir waylaunch/build --output-on-failure
+          ctest --test-dir common/build --output-on-failure
+      - name: Structural gates (I4 + Q5 link closure)
+        run: ./scripts/check-invariants.sh qypr/build waylaunch/build
