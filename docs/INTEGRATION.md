@@ -10,10 +10,11 @@
 > invariants this revision relies on), and qypr's `docs/ROADMAP.md` /
 > `docs/STATUS_BAR.md`.
 >
-> **Last updated:** 2026-09-19 (revision 5). Status: **decided and
-> executing.** All §9 questions settled (see resolutions inline); Stage 1
-> and Stage 2 done, Stage 3 rejected, Stage 4 (monorepo `ngarana/waypoint`)
-> in progress.
+> **Last updated:** 2026-09-19 (revision 6). Status: **complete through
+> Stage 4.** All §9 questions settled; Stages 1–2 executed, Stage 3
+> rejected, Stage 4 live at `ngarana/waypoint` (CI green). Remaining
+> work is follow-up slices (provider loop-plumbing done; dropdown loop
+> done), not open decisions.
 >
 > **Revision 3 (2026-09-19) notes, not a re-measurement:**
 > 1. waylaunch HEAD moved to `main@4243893`, which adds
@@ -333,11 +334,11 @@ filling a gap.
 
 ### 4.4 Timing
 
-*(Re-verified 2026-09-15.)* Both repositories are active: qypr on
-`qol@27d7de1` with five local branches, waylaunch on
-`feat/dropdown-host@485d9f0` with six and uncommitted work in progress. Stages 1
-and 2 touch few files and tolerate this. A structural merge (Stage 4) still
-freezes or rebases both.
+*(Superseded 2026-09-19 — historical record only.)* Both repositories were
+active: qypr on `qol@27d7de1`, waylaunch on `feat/dropdown-host@485d9f0`.
+The structural merge (Stage 4) has since executed as `ngarana/waypoint`
+via subtree grafts — no freeze or rebase was needed; both histories are
+preserved and `git log --follow` works across the grafts.
 
 ---
 
@@ -345,9 +346,9 @@ freezes or rebases both.
 
 | Option | What it is | Verdict |
 |---|---|---|
-| **A. Full monorepo merge** | One repo, shared core, separate binaries | **Viable, not yet recommended** — no longer blocked (§4.1). The cost is convention churn (§4.3) and release coupling (§7). Optional Stage 4 |
-| **B. Shared core library** | Extract `libwl-common`; both repos consume it (subtree/submodule) | **Recommended, Stage 2** — bounded churn |
-| **C. Runtime feature dedup** | Keep both repos; delete duplicate *features*; cross-exec | **Recommended, Stage 1** — days, near-zero risk |
+| **A. Full monorepo merge** | One repo, shared core, separate binaries | **Executed 2026-09-19 as `ngarana/waypoint`** (rev 6); conventions kept per-directory, binaries stay separate |
+| **B. Shared core library** | Extract `libwl-common`; both repos consume it (subtree/submodule) | **Executed — `ngarana/libwl-common`, consumed via per-repo subtrees, then folded into the monorepo as `common/`** |
+| **C. Runtime feature dedup** | Keep both repos; delete duplicate *features*; cross-exec | **Executed 2026-09-19 (Stage 1)** |
 | **D. Status quo** | Nothing | **Rejected** — duplication is growing (ROADMAP Phase 15), and the palette has already drifted |
 
 The options compose in order: C removes the remaining duplicate UI code, B
