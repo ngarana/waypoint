@@ -44,7 +44,7 @@ specs live in [STATUS_BAR.md](STATUS_BAR.md); this document sequences the work.
 | 12 | **Clock calendar popover** — config-driven format, month calendar, timezones | **Done** — verified live (config drives `format` / `tooltip-format` / `timezones`; month grid with week numbers, prev/next/Today nav, scroll between months; secondary timezones listed below the grid) |
 | 13 | **Tray completeness** — `com.canonical.dbusmenu` right-click menus (absorbs Phase 6's tray items), `SecondaryActivate`, scroll, overflow "hidden items", async fetch | **Done** — dbusmenu opens, item activation fires, `SecondaryActivate` on middle-click, `Scroll(dx,dy)` forwarded to the under-cursor item, and an overflow chevron + popover list the "Passive" SNI items hidden from the strip per spec |
 | 14 | **Widget depth** — network connection picker, BT device list, per-app audio + device switching, power profiles, multi-display brightness | Planned |
-| 15 | **Utility indicators** — launcher, clipboard, keyboard layout, idle inhibitor, system monitors | Planned |
+| 15 | **Utility indicators** — ~~launcher~~ (redirects to `waylaunch`, Stage 1 — done), clipboard, keyboard layout, idle inhibitor, system monitors | Planned (minus launcher) |
 
 **Objective check.** Phases 1–13 closed the *engine* and the *session + widget
 depth* gaps against the stated objective — **a full KDE-Plasma-calibre panel
@@ -143,4 +143,4 @@ Full matrix and the architectural decisions (D1–D6) are in
 | 12 | Calendar matches `cal` for the current month; prev/next/Today nav moves the displayed month; scroll advances; week numbers + secondary timezones render; config drives `format` / `tooltip-format` / `timezones` |
 | 13 | **nm-applet's real menu opens and an item actuates** (the item that Phase 5 could not reach); overflow chevron shows/hides items; middle-click `SecondaryActivate` fires; `Scroll(dx,dy)` reaches the under-cursor item |
 | 14 | Connect to a real network from the picker; connect a real BT device; move a live stream to another sink and mute one app |
-| 15 | Each indicator proven against its real source (launcher spawns; clipboard captures a copy; layout switch reflects; inhibitor blocks a real idle cycle; monitors match `top`/`df`) |
+| 15 | Each indicator proven against its real source (launcher spawns `waylaunch`; clipboard captures a copy; layout switch reflects; inhibitor blocks a real idle cycle; monitors match `top`/`df`) |
