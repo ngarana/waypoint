@@ -12,7 +12,7 @@
 
 struct sd_bus_message;
 struct sd_bus_slot;
-struct sd_bus_error;
+#include <systemd/sd-bus.h>  // sd_bus_error is a typedef here, not a struct
 
 namespace qypr {
 
