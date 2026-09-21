@@ -45,7 +45,7 @@ bool AppProvider::activate(const ListItem& it) {
     if (it.kind != ItemKind::Application) return false;
     // it.path is the .desktop Exec line — run it via a shell so arg/env prefixes
     // work. It is a command, not a file.
-    if (!it.path.empty()) Subprocess::spawn_reaped(event_loop_, {"/bin/sh", "-c", it.path});
+    if (!it.path.empty()) Subprocess::launch(event_loop_, {"/bin/sh", "-c", it.path});
     return true;
 }
 

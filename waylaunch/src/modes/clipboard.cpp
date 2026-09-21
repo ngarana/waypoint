@@ -17,13 +17,13 @@ namespace waylaunch {
 // launcher and its exclusive keyboard grab the way run() did.
 bool Clipboard::copy_text(const std::string& text, qypr::EventLoop* loop) {
     if (!Subprocess::command_exists("wl-copy")) return false;
-    Subprocess::spawn_reaped(loop, {"wl-copy", "--type", "text/plain", text});
+    Subprocess::launch(loop, {"wl-copy", "--type", "text/plain", text});
     return true;
 }
 
 bool Clipboard::copy_file_path(const std::string& path, qypr::EventLoop* loop) {
     if (!Subprocess::command_exists("wl-copy")) return false;
-    Subprocess::spawn_reaped(loop, {"wl-copy", "--type", "text/uri-list", path});
+    Subprocess::launch(loop, {"wl-copy", "--type", "text/uri-list", path});
     return true;
 }
 
