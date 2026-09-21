@@ -245,6 +245,12 @@ commands       = true
 file_roots     = ["~"]
 max_file_results = 6
 
+[theme]
+# mode = "dark" | "light" | "auto". auto follows the solar day/night at your
+# GeoClue fix (city accuracy only; dark fallback — whitelist waylaunch in
+# /etc/geoclue/geoclue.conf). Same sun as the qypr bar/lock, resolved
+# independently per process.
+mode = "dark"
 [theme.colors]
 background = "#1e1e2e"
 foreground = "#cdd6f4"

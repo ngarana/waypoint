@@ -192,7 +192,10 @@ restart needed.
   lookup). GeoClue authorises by desktop ID: whitelist `qypr-bar` in
   `/etc/geoclue/geoclue.conf` (`[qypr-bar]`, `allowed=true`) or the bar
   silently keeps the fixed hours — including on polar day/night, where no
-  sunrise/sunset exists.
+  sunrise/sunset exists. The lock screen and every waylaunch overlay
+  (`mode = "auto"` in `waylaunch.toml`) follow the same solar window from
+  their own GeoClue clients — one suite-wide switch, no cross-process theme
+  bus (a bar crash must never take the lock or Alt+Tab with it).
 
 On light palettes the text shadow is disabled (opacity 0.6 → 0.0) so the
 dark glyphs stay crisp with no ghost shades behind them. Set an explicit

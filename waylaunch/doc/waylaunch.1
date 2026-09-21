@@ -117,7 +117,10 @@ Darkening overlay alpha over the blurred backdrop.
 Theme name.
 .TP
 \fBmode\fR (string, default: \fB"dark"\fR)
-Color scheme mode.
+Color scheme mode: \fB"dark"\fR, \fB"light"\fR, or \fB"auto"\fR (solar
+day/night at the GeoClue fix, city accuracy; dark fallback when location
+is unavailable — whitelist \fBwaylaunch\fR in
+\fI/etc/geoclue/geoclue.conf\fR).
 .SS [theme.colors]
 .TP
 \fBbackground\fR (string, default: \fB"#1e1e2e"\fR)

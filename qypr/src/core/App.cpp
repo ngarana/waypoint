@@ -7,7 +7,10 @@
 #include <cstdio>
 #include <string>
 
+#include "core/Config.hpp"
+#include "core/SolarCalc.hpp"
 #include "ui/Notification.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
@@ -55,6 +58,14 @@ App::App()
 }
 
 int App::run() {
+    // Repo-wide theme: the lock follows the same palette as the bar —
+    // solar auto-switch included — instead of the compiled defaults. A
+    // missing config keeps those defaults; the solar fallback (fixed hours)
+    // covers a missing/denied GeoClue on top.
+    Config config;
+    if (config.load()) { std::fprintf(stderr, "qypr-lock: config %s\n", config.path().c_str()); }
+    theme::loadTheme(config);
+
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-lock: no Wayland display or no ext-session-lock support\n");
         return 1;
@@ -86,6 +97,27 @@ int App::run() {
     bluetooth_.start();
     volume_.start();
     sni_.start();
+
+    // Location for the solar auto-palette, same as the bar. A sunrise during
+    // a long lock re-themes the screen; absent/denied GeoClue never fires.
+    geoClue_.setOnChange([this, &config] {
+        refreshSolarTimes();
+        if (theme::paletteAutoTick()) {
+            theme::loadTheme(config);
+            invalidate();
+        }
+    });
+    geoClue_.start();
+    refreshSolarTimes();
+    if (theme::palette::mode == "auto") {
+        loop_.addTimer(60'000, /*repeat=*/true, [this, &config] {
+            refreshSolarTimes();
+            if (theme::paletteAutoTick()) {
+                theme::loadTheme(config);
+                invalidate();
+            }
+        });
+    }
 
     // Start video playback (non-fatal if it fails).
     if (video_.init()) {
@@ -204,6 +236,25 @@ int App::videoTest(int seconds) {
 
 void App::setIdleTimeout(int seconds) {
     if (seconds > 0) { shell_.setIdleTimeout(static_cast<int64_t>(seconds) * 1000); }
+}
+
+void App::refreshSolarTimes() {
+    if (theme::palette::location != "auto") {
+        theme::clearSolarTimes();
+        return;
+    }
+    const auto& fix = geoClue_.fix();
+    if (!fix) {
+        theme::clearSolarTimes();
+        return;
+    }
+    const auto times =
+        solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
+    if (!times) {
+        theme::clearSolarTimes();  // polar day/night: fixed hours carry the mode
+        return;
+    }
+    theme::setSolarTimes(times->sunriseMin, times->sunsetMin);
 }
 
 void App::invalidate() {

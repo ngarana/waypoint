@@ -779,7 +779,10 @@ void LauncherUI::quit() {
 // ---------------------------------------------------------------------------
 
 Theme LauncherUI::build_theme() {
-    const auto& tc = config_->get().theme;
+    auto tc = config_->get().theme;
+    // Solar mode: "auto" resolves against the GeoClue window (dark fallback),
+    // so every overlay — launcher, switcher, power — follows the same sun.
+    tc.mode = solar_.effective_mode(tc.mode);
     // Matugen source: Material tokens overlaid on the static [theme.colors]
     // (cached by mtime, so this stays cheap enough to call every frame).
     const ColorConfig cc = (matugen_ != nullptr) ? matugen_->resolve(tc) : tc.colors;
@@ -823,7 +826,9 @@ void LauncherUI::poll_theme() {
         Config fresh;
         if (fresh.load(config_path_)) config_->get().theme = fresh.get().theme;
     }
-    if (matugen_->poll(config_->get().theme)) needs_redraw_ = true;
+    auto tc = config_->get().theme;
+    tc.mode = solar_.effective_mode(tc.mode);
+    if (matugen_->poll(tc)) needs_redraw_ = true;
 }
 
 // ---------------------------------------------------------------------------

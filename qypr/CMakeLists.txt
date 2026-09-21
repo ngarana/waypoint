@@ -179,6 +179,7 @@ set(WL_COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 set(WL_COMMON_SOURCES
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     "${WL_COMMON_DIR}/core/Process.cpp"
+    "${WL_COMMON_DIR}/core/SolarCalc.cpp"
     "${WL_COMMON_DIR}/system/DesktopIndex.cpp")
 # Render helpers: bar/lock/test only. qypr-record never draws (linking cairo
 # into it would drag the graphics stack into a daemon).

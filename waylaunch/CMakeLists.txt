@@ -20,6 +20,7 @@ pkg_check_modules(LIBRSVG REQUIRED librsvg-2.0)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(ZSTD REQUIRED libzstd)   # compressed doc store (NFR5)
 pkg_check_modules(LIBMAGIC libmagic)   # optional: MIME sniffing (falls back to ext)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)   # sd-bus GeoClue client (solar theme)
 find_package(Threads REQUIRED)
 find_package(tomlplusplus 3 CONFIG REQUIRED)
 
@@ -171,6 +172,9 @@ set(SOURCES
     src/util/search_util.cpp
     src/config/config.cpp
     src/config/matugen_theme.cpp
+    src/system/solar.cpp
+    src/system/geoclue.cpp
+    ${LIBWL_COMMON}/core/SolarCalc.cpp
     src/switcher/wlr_toplevel_backend.cpp
     src/switcher/hyprland_focus.cpp
     src/switcher/app_switcher_manager.cpp
@@ -213,6 +217,7 @@ target_include_directories(waylaunch PRIVATE
     ${PANGO_INCLUDE_DIRS}
     ${FONTCONFIG_INCLUDE_DIRS}
     ${LIBRSVG_INCLUDE_DIRS}
+    ${SYSTEMD_INCLUDE_DIRS}
 )
 
 target_link_libraries(waylaunch PRIVATE
@@ -224,6 +229,7 @@ target_link_libraries(waylaunch PRIVATE
     ${PANGO_LIBRARIES}
     ${FONTCONFIG_LIBRARIES}
     ${LIBRSVG_LIBRARIES}
+    ${SYSTEMD_LIBRARIES}   # sd-bus GeoClue client (solar theme)
     rt   # for shm_open
     m    # math
 )
@@ -235,6 +241,7 @@ target_compile_options(waylaunch PRIVATE
     ${PANGO_CFLAGS}
     ${FONTCONFIG_CFLAGS}
     ${LIBRSVG_CFLAGS}
+    ${SYSTEMD_CFLAGS}
     -Wall -Wextra -Wpedantic
 )
 
@@ -415,6 +422,17 @@ if(BUILD_TESTING)
     target_include_directories(history_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
     target_compile_options(history_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME history_test COMMAND history_test)
+
+    # Solar theme mode: pure decision logic + shared NOAA math, no D-Bus.
+    add_executable(solar_mode_test tests/solar_mode_test.cpp src/system/solar.cpp
+        src/system/geoclue.cpp
+        ${LIBWL_COMMON}/core/SolarCalc.cpp)
+    target_include_directories(solar_mode_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON} ${SYSTEMD_INCLUDE_DIRS})
+    target_link_libraries(solar_mode_test PRIVATE ${SYSTEMD_LIBRARIES})
+    target_compile_options(solar_mode_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG
+        ${SYSTEMD_CFLAGS})
+    add_test(NAME solar_mode_test COMMAND solar_mode_test)
 
     add_executable(provider_test tests/provider_test.cpp
         src/providers/calculator_provider.cpp

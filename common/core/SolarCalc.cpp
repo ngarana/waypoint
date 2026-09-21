@@ -1,5 +1,5 @@
 // SolarCalc.cpp - NOAA sunrise/sunset implementation.
-#include "system/SolarCalc.hpp"
+#include "core/SolarCalc.hpp"
 
 #include <array>
 #include <cmath>

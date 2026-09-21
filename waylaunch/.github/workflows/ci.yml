@@ -25,7 +25,7 @@ jobs:
             cmake g++ pkg-config wayland-protocols libwayland-dev \
             libxkbcommon-dev libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev librsvg2-dev libsqlite3-dev \
-            libzstd-dev libmagic-dev nlohmann-json3-dev libtomlplusplus-dev
+            libsystemd-dev libzstd-dev libmagic-dev nlohmann-json3-dev libtomlplusplus-dev
       - name: clang-format check
         run: |
           clang-format-22 --dry-run --Werror \
@@ -57,7 +57,7 @@ jobs:
             cmake g++ pkg-config wayland-protocols libwayland-dev \
             libxkbcommon-dev libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev librsvg2-dev libsqlite3-dev \
-            libzstd-dev libmagic-dev nlohmann-json3-dev libtomlplusplus-dev
+            libsystemd-dev libzstd-dev libmagic-dev nlohmann-json3-dev libtomlplusplus-dev
       - name: Configure
         run: cmake -S . -B build -DBUILD_TESTING=ON
       - name: Build

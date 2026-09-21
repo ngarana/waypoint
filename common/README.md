@@ -21,6 +21,7 @@ wiring stay in each consumer — only the *data and units* below are shared.
 | `core/EventLoop.hpp` / `.cpp` | qypr's epoll reactor | fd/timer/post multiplexing; `addFd`/`addTimer`/`post`/`addPrepare` |
 | `core/Process.hpp` / `.cpp` | qypr's I3 spawn primitive | `posix_spawn`, absolute paths, `SIGDEF`, pidfd reaping; `env_add`/`devnull_stdio` options for hook commands |
 | `core/Types.hpp` | qypr's UI value types | `Color`, `Rect`, easing, `Animated`; header-only |
+| `core/SolarCalc.hpp` / `.cpp` | sunrise/sunset (NOAA) | pure date math for the solar auto-palette; `nullopt` on polar day/night |
 | `render/Painter.hpp` / `.cpp` | qypr's cairo/pango helpers | `fillGlass` takes an explicit `solid` flag so the unit stays theme-free |
 | `render/BackdropBlur.hpp` / `.cpp` | waylaunch's screencopy blur, ported | downsample + separable box blur; fixed a latent null-surface crash found by `blur_test` |
 | `render/IconResolver.*` | merged superset | theme chain + spec metadata ordering, sized SVG rasterization, URIs/heuristics, bounded miss cache |

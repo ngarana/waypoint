@@ -15,6 +15,7 @@
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
 #include "system/DndState.hpp"
+#include "system/GeoClueBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/SystemBus.hpp"
 #include "system/VolumeBackend.hpp"
@@ -35,7 +36,6 @@ public:
 
     // Idle seconds before the video pauses and the screen dims (default 60).
     void setIdleTimeout(int seconds);
-
     // Render idle + revealed frames to PNGs (no Wayland lock) for visual
     // verification and previewing. Writes <path> and <path>-idle.png.
     int preview(const std::string& path, int width = 1920, int height = 1080);
@@ -49,6 +49,10 @@ public:
     void requestUnlock() override;
 
 private:
+    // Recompute the solar sunrise/sunset cache from the GeoClue fix (or
+    // clear it when location is off, the fix is stale, or polar day-night).
+    void refreshSolarTimes();
+
     EventLoop loop_;
     WaylandDisplay display_;
     LockSession lock_;
@@ -70,6 +74,9 @@ private:
     BluetoothBackend bluetooth_{systemBus_};
     VolumeBackend volume_{loop_};
     SNIBackend sni_{sessionBus_};
+    // City-accurate fix for the solar auto-palette (same source as the bar).
+    // Absent/denied → the lock keeps the fixed theme hours.
+    GeoClueBackend geoClue_{systemBus_};
     DndState dnd_;
     SystemBackends backends_{.battery = &battery_,
                              .volume = &volume_,

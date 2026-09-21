@@ -27,8 +27,8 @@ cmake -S common -B common/build -G Ninja && cmake --build common/build --paralle
 ## Test
 
 ```sh
-./qypr/build/qypr-test            # 122 unit tests (incl. I1–I4 lock invariants)
-ctest --test-dir waylaunch/build  # 26 suites
+./qypr/build/qypr-test            # 123 unit tests (incl. I1–I4 lock invariants)
+ctest --test-dir waylaunch/build  # 27 suites
 ctest --test-dir common/build     # shared units
 ./scripts/check-invariants.sh     # I4 + Q5 structural gates (see below)
 ```

@@ -2,7 +2,7 @@
 // Split verbatim from tests/unit_tests.cpp; bodies unchanged.
 #include "test_framework.hpp"
 
-#include "system/SolarCalc.hpp"
+#include "core/SolarCalc.hpp"
 
 TEST(ThemeLoadThemeDefaults) {
     qypr::Config c;
@@ -287,56 +287,8 @@ TEST(ThemeMatugenHomeExpansion) {
 // Phase 2: Clock + Battery Indicator Tests
 // =============================================================================
 
-// Solar sunrise/sunset (NOAA): golden values with generous tolerances (the
-// algorithm itself is ~±1 min; the spread below covers equation-of-time and
-// date drift, not implementation error).
-TEST(ThemeSolarTimesGolden) {
-    // Equator, March equinox: ~06:04/18:11 UTC (equation-of-time shifts both
-    // off the round hour; verified against an independent sunrise-equation
-    // implementation to ±1 min).
-    const auto equinox =
-        qypr::solarTimesForDate(0.0, 0.0, qypr::CivilDate{.year = 2026, .month = 3, .day = 20}, 0);
-    EXPECT_TRUE(equinox.has_value());
-    if (equinox) {
-        EXPECT_NEAR(equinox->sunriseMin, (6 * 60) + 4, 6);
-        EXPECT_NEAR(equinox->sunsetMin, (18 * 60) + 11, 6);
-    }
-    // Berlin midsummer (CEST = UTC+120): long day, ~04:45/21:30 local.
-    const auto summer = qypr::solarTimesForDate(
-        52.52, 13.40, qypr::CivilDate{.year = 2026, .month = 6, .day = 21}, 120);
-    EXPECT_TRUE(summer.has_value());
-    if (summer) {
-        EXPECT_NEAR(summer->sunriseMin, (4 * 60) + 45, 15);
-        EXPECT_NEAR(summer->sunsetMin, (21 * 60) + 30, 15);
-        EXPECT_TRUE(summer->sunsetMin - summer->sunriseMin > 16 * 60);
-    }
-    // Berlin midwinter (CET = UTC+60): short day, ~08:00/16:00 local.
-    const auto winter = qypr::solarTimesForDate(
-        52.52, 13.40, qypr::CivilDate{.year = 2026, .month = 12, .day = 21}, 60);
-    EXPECT_TRUE(winter.has_value());
-    if (winter) {
-        EXPECT_NEAR(winter->sunriseMin, 8 * 60, 15);
-        EXPECT_NEAR(winter->sunsetMin, 16 * 60, 15);
-        EXPECT_TRUE(winter->sunsetMin - winter->sunriseMin < 9 * 60);
-    }
-    // Longitude shifts the window: 15° east ≈ an hour earlier (same meridian
-    // math, UTC clock).
-    const auto east =
-        qypr::solarTimesForDate(0.0, 15.0, qypr::CivilDate{.year = 2026, .month = 3, .day = 20}, 0);
-    EXPECT_TRUE(east.has_value());
-    if (equinox && east) {
-        EXPECT_NEAR(equinox->sunriseMin - east->sunriseMin, 60, 5);
-        EXPECT_NEAR(equinox->sunsetMin - east->sunsetMin, 60, 5);
-    }
-    // Polar night (Tromsø, December) and polar day (Tromsø, June): the sun
-    // never crosses the zenith → nullopt, and the fixed hours carry the mode.
-    EXPECT_FALSE(qypr::solarTimesForDate(69.65, 18.96,
-                                         qypr::CivilDate{.year = 2026, .month = 12, .day = 21}, 60)
-                     .has_value());
-    EXPECT_FALSE(qypr::solarTimesForDate(69.65, 18.96,
-                                         qypr::CivilDate{.year = 2026, .month = 6, .day = 21}, 120)
-                     .has_value());
-}
+// Solar goldens live with the shared unit (common/tests/solar_test.cpp) —
+// this TU covers only the bar's wiring: cache, fallback, and config.
 
 // The solar cache takes over the auto window while location == auto, and
 // the fixed hours (or location = off) restore it. Invalid windows clear.

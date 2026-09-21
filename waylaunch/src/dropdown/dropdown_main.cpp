@@ -12,6 +12,7 @@
 #include "waylaunch/dropdown/tab_strip.h"
 #include "waylaunch/matugen_theme.h"
 #include "waylaunch/renderer.h"
+#include "waylaunch/solar.h"
 #include "waylaunch/subprocess.h"
 #include "waylaunch/wayland_core.h"
 
@@ -150,6 +151,9 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
     // launcher overlays; repaints within one poll quantum of a wallpaper
     // change). Cached by mtime, so per-tick cost is a couple of stats.
     MatugenTheme matugen;
+    // Solar day/night for [theme] mode=auto, warmed once here (daemon
+    // startup, not first toggle) so GeoClue activation never delays a show.
+    solar_tracker solar;
 
     FocusGuard guard;
     HyprlandEventStream events;
@@ -250,7 +254,9 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
         collect_tabs();
         Buffer* buf = wayland->acquire_buffer();
         if (buf == nullptr) return;
-        const ColorConfig strip_colors = matugen.resolve(repo_config.get().theme);
+        auto strip_theme = repo_config.get().theme;
+        strip_theme.mode = solar.effective_mode(strip_theme.mode);
+        const ColorConfig strip_colors = matugen.resolve(strip_theme);
         TabStrip::Colors colors{
             .background = Color::from_hex(strip_colors.background),
             .foreground = Color::from_hex(strip_colors.foreground),
@@ -650,6 +656,7 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
 
     // First press appears (gap-3 fix): boot the session on start.
     reload_config(true);
+    solar.warm(); // GeoClue fix now, so the first strip paint already follows the sun
     if (!dropdown_enabled) {
         std::cout << "waylaunch: dropdown overlay disabled ([dropdown].enabled is false)\n";
         return 0;
@@ -854,9 +861,11 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
         reload_config(false);
         // Live strip theming: a wallpaper (matugen) or [theme] edit repaints
         // the visible strip within one reactor quantum. reload_config() above
-        // already refreshed repo_config.
-        if (matugen.poll(repo_config.get().theme) &&
-            manager.current_state() == DropdownState::Visible) {
+        // already refreshed repo_config. Solar mode resolves here too, so a
+        // sunrise flips the strip without a config edit.
+        auto poll_theme = repo_config.get().theme;
+        poll_theme.mode = solar.effective_mode(poll_theme.mode);
+        if (matugen.poll(poll_theme) && manager.current_state() == DropdownState::Visible) {
             strip_needs_render = true;
         }
         events.ensure_connected(std::chrono::steady_clock::now());

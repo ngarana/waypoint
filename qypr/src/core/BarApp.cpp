@@ -8,9 +8,9 @@
 #include <filesystem>
 #include <string>
 
+#include "core/SolarCalc.hpp"
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
-#include "system/SolarCalc.hpp"
 #include "ui/Theme.hpp"
 #include "ui/indicators/NotificationIndicator.hpp"  // previewNotificationCentre()
 #include "wayland/Seat.hpp"                         // Mod bits
