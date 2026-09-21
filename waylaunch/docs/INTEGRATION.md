@@ -482,7 +482,12 @@ Extraction candidates, in dependency order:
    Deliberately NOT shared: waylaunch's piped `Subprocess` (capture, not
    detach) and the extractor `clone3`/`fork` (sandbox namespaces
    `posix_spawn` cannot express). New shared-API coverage: env + devnull
-   live-spawn test in qypr's suite.
+   live-spawn test in qypr's suite. Follow-up: provider/assistant launches
+   (`AppProvider`, `CommandProvider`, `FileProvider`, `ContentProvider`,
+   clipboard, reveal-in-files) now go through `Subprocess::spawn_reaped`
+   with the loop threaded from registration (null loop keeps the legacy
+   path); only the supervised dropdown child and sandbox clone3 still
+   fork by design.
 4. `Painter` — qypr's cairo/pango helpers, extended with waylaunch's
    screencopy-backed blur. **Done 2026-09-19 as `render/Painter.*`,
    `core/Types.hpp` and `render/BackdropBlur.*` in libwl-common** (qypr
