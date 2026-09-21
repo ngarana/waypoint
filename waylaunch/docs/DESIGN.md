@@ -99,7 +99,7 @@ flowchart LR
   LUI -- edits query --> US[update_search]
   US -- Apps --> AL[AppLauncher.scan+search]
   US -- Files --> FW[FileWorkerLoop (std::thread)]
-  FW -- writes results_fd_ --> ML[Main poll() loop]
+  FW -- writes results_fd_ --> ML[Main event loop (shared EventLoop)]
   ML -- reads eventfd --> AR[apply_file_results]
   AR --> RI[rebuild_items]
   AL --> RI
@@ -108,7 +108,7 @@ flowchart LR
 ```
 
 **Rendering only happens on the main thread.** The worker thread writes to an
-`eventfd`; the main `poll()` loop reads it and calls `render_frame()`. This
+`eventfd`; the main event loop reads it and calls `render_frame()`. This
 fixes the original data race.
 
 ---
@@ -138,7 +138,7 @@ fixes the original data race.
   `std::thread` that `sleep_for(debounce_ms)`; `cancel()` `join()`ed it.~~ The
   current worker blocks on a `std::condition_variable` and uses a generation
   counter to drop stale results — no `sleep_for` + `join()`. The remaining
-  simplification (a `timerfd` in the main `poll()`) is tracked in §7.
+  simplification (a `timerfd` in the main loop) is tracked in §7.
 
 ### 3.3 SOLID
 
@@ -189,7 +189,7 @@ actual current risk.
 
 | ID | Severity | File / symbol | Problem | Status |
 |----|----------|---------------|---------|--------|
-| B1 | **High** | `search_manager.cpp` → `launcher_ui.cpp:update_items` | Search **worker thread calls `render_frame()`**, touching Cairo + Wayland concurrently with the main-thread `wl_display_dispatch`. | **Fixed.** Worker writes to `results_fd_` (eventfd); main `poll()` loop renders on main thread. |
+| B1 | **High** | `search_manager.cpp` → `launcher_ui.cpp:update_items` | Search **worker thread calls `render_frame()`**, touching Cairo + Wayland concurrently with the main-thread `wl_display_dispatch`. | **Fixed.** Worker writes to `results_fd_` (eventfd); the main event loop renders on main thread. |
 | B2 | **High** | `launcher_ui.cpp:refresh_applications` | Constructs a new `AppLauncher` and **re-scans every XDG dir and re-parses every `.desktop` file on every keystroke**. | **Fixed.** `scan_apps()` runs once at startup; keystrokes filter cached `apps_`. |
 | B3 | **High** | `launcher_ui.cpp:launch_selected` | Launch via `system("xdg-open ...")` with unescaped paths. | **Fixed.** `launch_selected()` uses `spawn_detached()` = `fork()` → `setsid()` → `fork()` → `execvp()` with a proper `argv` vector. No `system()` in `src/`. |
 | B4 | Medium | `search_manager.cpp:cancel` | `cancel()` `join()`s the in-flight worker, stalling the UI thread. | **Fixed.** Worker blocks on `std::condition_variable`; stale results dropped by generation counter. |
@@ -207,7 +207,7 @@ Keep the good primitives and add three small seams.
 ### 5.1 Module boundaries
 
 ```
-core/         WaylandCore (private state), Buffer, event loop (poll over wl_fd + timerfd + result_fd)
+core/         WaylandCore (private state), Buffer, event loop (shared EventLoop over wl_fd + timerfd + result_fd)
 gfx/          Renderer (immediate-mode Cairo/Pango primitives + with_layout helper), IconLoader (XDG theme resolver + librsvg)
 input/        KeyMap: config bindings → Action enum (replaces hardcoded on_key + revives config)
 app/          SpotlightController: query/selection state, orchestrates providers, owns layout
