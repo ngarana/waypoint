@@ -78,6 +78,13 @@ check_link_free "$QYPR_BUILD" "qypr-lock" '(/waylaunch/|waylaunch_content)' \
 # Q5: the waylaunch binary must not pull in anything under qypr/.
 check_link_free "$WL_BUILD" "waylaunch" '(/qypr/)' "Q5 waylaunch free of qypr-bar objects"
 
+# B1: qypr-bar must not link the lock-only stack (libmpv/libpam or the
+# lock-only translation units). The CMake source lists are the primary
+# boundary (explicit per-target lists, no glob); this verifies the shipped
+# artifact, so a mis-sorted file fails loudly instead of slowing cold boot.
+check_link_free "$QYPR_BUILD" "qypr-bar" '(libmpv|libpam|VideoPlayer|PamAuthenticator)' \
+    "B1 qypr-bar free of lock-only objects"
+
 if [[ "$FAIL" -ne 0 ]]; then
     echo "INVARIANTS FAILED"
     exit 1
