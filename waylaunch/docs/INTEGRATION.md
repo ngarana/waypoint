@@ -547,16 +547,21 @@ shared unit on its path (`EventLoop`, `Spawn`, `BackdropBlur`, `ShmBuffer`,
 minimized-dot, not a bar class). The bar→switcher direction stays an exec
 boundary (`waylaunch --switch`), never a link or lifetime coupling.
 
-### Stage 4 — monorepo (optional, no longer blocked)
+### Stage 4 — monorepo (executed 2026-09-19 as `ngarana/waypoint`)
 
-One repository with a `common/` directory and separate binaries. Worth doing only
-if Stage 2 has already moved most shared seams, so the remaining churn is small.
-Preconditions:
+One repository with a `common/` directory and separate binaries. Built from
+the Stage 2 subtrees (no remaining churn by construction). The standalone
+`waylaunch`/`lockscreen`/`libwl-common` remotes stay for reference.
+Preconditions, as decided:
 
-- I1–I4 run as CI gates (the security review's §6 tests), including a CMake
-  check that the `qypr-lock` target does not link `waylaunch_content` (I4).
-- A decision on the convention split (§4.3) — or an explicit choice to keep both
-  styles per directory.
+- I1–I4 as CI gates: the qypr suite (122 tests incl. the review's §6 and
+  the `LockInteractionAllowList` Q2 contract) plus
+  `scripts/check-invariants.sh`, which verifies the shipped link lines —
+  I4 (`qypr-lock` free of waylaunch objects) and Q5 (`waylaunch` free of
+  bar objects). `waypoint/.github/workflows/ci.yml` runs all three
+  components' suites plus the gates.
+- Convention split: **both styles kept per directory** (recorded in the
+  waypoint README) — no mass rename, no `git blame` churn.
 
 ### Explicitly not doing
 
