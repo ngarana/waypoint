@@ -57,6 +57,12 @@ module combines several of the following:
   lists, the B1 lock-only-object gate, qypr's CTest registration
   (`ctest --test-dir qypr/build` runs `qypr-test`), and a
   documentation-path gate.
+- **Lock-screen seams** (step 9): `LockController`, `LockInput`, `LockLayout`,
+  `LockRenderer`, and `PowerMenuController` now separate authentication and
+  reveal policy, event mapping, geometry, Cairo drawing, and fixed power
+  actions while preserving the `LockScreen` host contract and `SecureBuffer`
+  password path. `LockLayoutGeometryMultipleSizes` and
+  `PowerMenuRequiresExplicitConfirmation` exercise the extracted seams.
 - Earlier review findings closed alongside those: one shared process API
   (`a3443ba`), unified desktop-entry and toplevel models (`f179bfc`), and the
   stale nested waylaunch test graph removed (`60c60a9`).
@@ -97,7 +103,7 @@ shared aggregate contains those pointers.
 | P0 | StatusIndicator | Done | Capability bundles and bundle-based factories on both hosts | — (complete) |
 | P1 | Theme (residual) | Done | Palette source/readers extracted from `Theme.cpp`; widget-level cascade test added | — (complete) |
 | P1 | BarApp / App / Shell | Done | Runtime controllers extracted (`BarRuntime`, `LockRuntime`, `ConfigRuntime`, etc.) | — (complete) |
-| P1 | LockScreen | Open | Authentication, reveal state, idle timers, power actions, layout, and drawing are coupled | `LockController`, `LockLayout`, `PowerMenuController` |
+| P1 | LockScreen | Done | Authentication, reveal state, idle timers, power actions, layout, and drawing are separated behind lock-only seams | — (complete) |
 | P1 | WifiBackend | Open | D-Bus chains, discovery, state reduction, and connect operations share one class | `NetworkManagerClient`, `WifiSnapshotReducer`, `WifiOperations` |
 | P1 | BluetoothBackend | Open | BlueZ parsing, discovery, pairing, and operation state share one class | `BluezClient`, `BluetoothSnapshotReducer`, `BluetoothOperations` |
 | P1 | NotificationMonitor | Open | Transport, parsing, privacy policy, storage, and backlog correlation share one class | `NotificationTransport`, `NotificationParser`, `NotificationStore` |
@@ -293,17 +299,17 @@ embedded in them. Existing seams to build on:
 objects. This also makes preview and test modes less dependent on full daemon
 startup.
 
-## P1: decompose `LockScreen` (Open)
+## P1: decompose `LockScreen` — Done
 
-[`LockScreen.cpp`](../qypr/src/ui/LockScreen.cpp#L30) (576+134 lines) combines
-authentication callbacks, reveal/collapse state, hide timers, pointer hit
-testing, password submission, power-menu expansion and confirmation, layout,
-and complete Cairo rendering. Several widgets are already extracted and
-injected: `Clock`, `PasswordField`, `StatusMessage`, `NotificationView`,
-`ActionButton`, `ConfirmPopover`, and an optional `AudioController`. The pure
-geometry helpers `powerRowRect()`, `powerButtonRect()`, and `powerAnchorRect()`
-([`LockScreen.cpp`](../qypr/src/ui/LockScreen.cpp#L397)) already show that a
-`LockLayout` extraction is feasible.
+Before step 9, [`LockScreen.cpp`](../qypr/src/ui/LockScreen.cpp) (576+134
+lines) combined authentication callbacks, reveal/collapse state, hide timers,
+pointer hit testing, password submission, power-menu expansion and
+confirmation, layout, and complete Cairo rendering. Several widgets were
+already extracted and injected: `Clock`, `PasswordField`, `StatusMessage`,
+`NotificationView`, `ActionButton`, `ConfirmPopover`, and an optional
+`AudioController`. The former pure geometry helpers
+`powerRowRect()`, `powerButtonRect()`, and `powerAnchorRect()` showed that a
+`LockLayout` extraction was feasible; they now live in that component.
 
 ### Proposed components
 
@@ -319,6 +325,21 @@ The controller must own authentication and lock policy; the renderer must not
 be able to invoke `SystemActions` or unlock directly. The `SecureBuffer`
 password discipline (QL-3 in the lock security review) must survive the split
 unchanged.
+
+What landed:
+
+- [`LockController`](../qypr/src/ui/LockController.hpp) owns reveal state,
+  hide/tick timers, PAM submission, auth-result handling, and the only unlock
+  request path.
+- [`LockInput`](../qypr/src/ui/LockInput.hpp) preserves modal priority and
+  routes keyboard, pointer, notification, audio, and power events.
+- [`LockLayout`](../qypr/src/ui/LockLayout.hpp) owns output-size and power-pill
+  geometry; its tests run without Wayland or D-Bus.
+- [`LockRenderer`](../qypr/src/ui/LockRenderer.hpp) owns lock widgets and
+  Cairo composition, while [`PowerMenuController`](../qypr/src/ui/PowerMenuController.hpp)
+  owns the explicit fixed-action allow-list and fail-closed confirmation.
+- `LockScreen` remains the Shell-facing composition host, and all new sources
+  stay in `QYPR_LOCK_ONLY_SOURCES`.
 
 ## P1: split D-Bus backends into protocol, model, and operations (Open)
 
@@ -493,7 +514,7 @@ Avoid extracting code merely to reduce line count in these areas:
 7. ~~Replace `SystemBackends` with capability bundles and bundle-based factories
    on both hosts~~ — done.
 8. ~~Move bar and lock startup/reload/theme logic into runtime controllers~~ — done.
-9. Split `LockScreen` state/input/layout/rendering while preserving lock policy.
+9. ~~Split `LockScreen` state/input/layout/rendering while preserving lock policy~~ — done.
 10. Decompose Wi-Fi, Bluetooth, and notification protocol adapters.
 11. Separate SNI protocol state from tray presentation.
 12. Extract shared Wayland connection primitives.
@@ -512,7 +533,7 @@ Every extraction should add or preserve tests at the lowest practical level:
 - lock policy: tests proving unsafe capabilities are unavailable, not merely
   invisible
 - rendering: existing qypr preview/golden tests
-- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 135
+- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 137
   tests), `ctest --test-dir waylaunch/build`, `ctest --test-dir common/build`,
   `./scripts/check-invariants.sh` (I4, Q5, B1), and
   `./scripts/check-doc-paths.sh`.

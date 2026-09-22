@@ -234,14 +234,20 @@ set(QYPR_RECORDER_SOURCES
 set(QYPR_LOCK_ONLY_SOURCES
     src/core/App.cpp
     src/core/LockRuntime.cpp
-    src/ui/Shell.cpp
-    src/ui/ShellInputRouter.cpp
-    src/ui/LockScreen.cpp
     src/ui/AudioController.cpp
     src/ui/ActionButton.cpp
     src/ui/PasswordField.cpp
     src/ui/Clock.cpp
     src/ui/ConfirmPopover.cpp
+    src/ui/LockController.cpp
+    src/ui/LockInput.cpp
+    src/ui/LockLayout.cpp
+    src/ui/LockRenderer.cpp
+    src/ui/LockScreen.cpp
+    src/ui/PasswordField.cpp
+    src/ui/PowerMenuController.cpp
+    src/ui/Shell.cpp
+    src/ui/ShellInputRouter.cpp
     src/ui/StatusMessage.cpp
     src/wayland/LockSession.cpp
     src/wayland/WaylandDisplay.cpp

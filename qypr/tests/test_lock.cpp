@@ -44,8 +44,8 @@ TEST(LockScreenUnlockGating) {
     mock_pam_set_expected_password("open-sesame");
 
     auto submit = [&](const std::string& pw) {
-        screen.password_.clear();
-        screen.password_.append(pw);  // private, exposed for this test TU
+        screen.password().clear();
+        screen.password().append(pw);
         screen.submitPassword();
         while (pam.busy()) {}   // wait for the auth worker to finish
         loop.dispatchPosted();  // run onAuthResult on the loop thread
@@ -54,8 +54,8 @@ TEST(LockScreenUnlockGating) {
     // Wrong password: no unlock, error surfaced, secret wiped.
     submit("wrong");
     EXPECT_EQ(host.unlocks, 0);
-    EXPECT_TRUE(screen.hasError_);
-    EXPECT_TRUE(screen.password_.empty());
+    EXPECT_TRUE(screen.hasError());
+    EXPECT_TRUE(screen.password().empty());
 
     // PAM subsystem error (not a plain auth failure): still no unlock.
     mock_pam_force_rc(PAM_USER_UNKNOWN);
@@ -66,7 +66,7 @@ TEST(LockScreenUnlockGating) {
     // Correct password: unlocks exactly once and enters the unlocking state.
     submit("open-sesame");
     EXPECT_EQ(host.unlocks, 1);
-    EXPECT_TRUE(screen.unlocking_);
+    EXPECT_TRUE(screen.unlocking());
 }
 
 // A monitor hot-plugged while the session is locked must be covered by a lock
@@ -104,6 +104,54 @@ TEST(LockScreenWipesPasswordAfterSubmit) {
     while (pam.busy()) {}
     loop.dispatchPosted();
     EXPECT_TRUE(secret.empty());
+}
+
+TEST(LockLayoutGeometryMultipleSizes) {
+    const qypr::LockLayout layout;
+    const qypr::Size clock{.w = 300.0, .h = 100.0};
+    const qypr::Size status{.w = 160.0, .h = 20.0};
+
+    for (const auto [width, height] :
+         {std::pair{800, 600}, std::pair{1920, 1080}, std::pair{3440, 1440}}) {
+        const auto result = layout.compute(width, height, clock, status);
+        const auto row = layout.powerRowRect(width, height);
+        const auto anchor = layout.powerAnchorRect(width, height);
+
+        EXPECT_NEAR(row.x + row.w, width - layout.theme().spacing.xlarge, 0.001);
+        EXPECT_NEAR(row.y + row.h, height - layout.theme().spacing.xlarge, 0.001);
+        EXPECT_TRUE(anchor.y > row.y);
+        EXPECT_NEAR(result.password.w, layout.centerColumnWidth(width), 0.001);
+        EXPECT_NEAR(result.audioTop, result.statusTop + status.h + layout.theme().spacing.small,
+                    0.001);
+
+        for (int i = 1; i < qypr::LockLayout::kNumPowerActions; ++i) {
+            EXPECT_TRUE(result.powerButtons.at(static_cast<size_t>(i)).y >
+                        result.powerButtons.at(static_cast<size_t>(i - 1)).y);
+        }
+    }
+}
+
+TEST(PowerMenuRequiresExplicitConfirmation) {
+    struct SpyInvalidator : qypr::Invalidator {
+        void invalidate() override { ++invalidations; }
+        int invalidations = 0;
+    } host;
+    qypr::EventLoop loop;
+    qypr::SystemActions power(loop);
+    const qypr::LockLayout layout;
+    qypr::PowerMenuController menu(host, power, layout);
+    menu.layout(800, 600);
+
+    const auto anchor = layout.powerAnchorRect(800, 600);
+    menu.handlePress(anchor.cx(), anchor.cy(), qypr::nowMs());
+    EXPECT_TRUE(menu.expanded());
+
+    const auto action = layout.powerButtonRect(0, 800, 600);
+    menu.handlePress(action.cx(), action.cy(), qypr::nowMs());
+    EXPECT_TRUE(menu.modalActive());
+
+    menu.dismissModal();
+    EXPECT_FALSE(menu.modalActive());
 }
 
 // QL-5/QL-6: helpers are resolved once at startup (no PATH lookup inside the
