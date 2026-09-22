@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "toplevel/ToplevelStates.hpp"
+
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 
 namespace qypr {
@@ -149,12 +151,11 @@ void ToplevelBackend::onHandleAppId(TlHandle* h, const char* appId) {
 }
 
 void ToplevelBackend::onHandleState(TlHandle* h, const uint32_t* states, size_t n) {
-    h->active = false;
-    h->minimized = false;
-    for (size_t i = 0; (states != nullptr) && i < n; ++i) {
-        if (states[i] == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED) { h->active = true; }
-        if (states[i] == ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED) { h->minimized = true; }
-    }
+    // Shared protocol decoding (common/toplevel/ToplevelStates): the bar
+    // only tracks active/minimized, the rest is ignored at this boundary.
+    const ToplevelStates decoded = decodeToplevelStates(states, n);
+    h->active = decoded.active;
+    h->minimized = decoded.minimized;
 }
 
 void ToplevelBackend::onHandleDone(TlHandle* /*unused*/) {

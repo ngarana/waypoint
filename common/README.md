@@ -28,6 +28,7 @@ wiring stay in each consumer — only the *data and units* below are shared.
 | `system/DesktopIndex.*` | qypr's index + waylaunch's `searchKey` | extra metadata fields, `setSearchPaths` override, `desktopPath` |
 | `wayland/ShmBuffer.*` | qypr's memfd shm wrapper | busy/release tracking included |
 | `toplevel/ToplevelBackend.hpp` | waylaunch's observer seam, verbatim | rename waits for the second implementer (bar-hosted switcher) |
+| `toplevel/ToplevelStates.hpp` / `.cpp` | shared foreign-toplevel state decoding | one spelling of the 0–3 protocol flags, mapped onto each client's model at its boundary |
 
 Shared code follows qypr conventions (`namespace qypr`, `PascalCase`,
 `camelBack`), including in waylaunch, which consumes it as-is.

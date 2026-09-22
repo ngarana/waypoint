@@ -1,6 +1,7 @@
 #include "waylaunch/switcher/wlr_toplevel_backend.h"
 #include "core/EventLoop.hpp"
 #include "core/Process.hpp"
+#include "toplevel/ToplevelStates.hpp"
 #include "waylaunch/switcher/hyprland_focus.h"
 #include <algorithm>
 #include <cstdlib>
@@ -13,10 +14,8 @@
 
 namespace waylaunch {
 
-constexpr uint32_t STATE_MAXIMIZED = 0;
-constexpr uint32_t STATE_MINIMIZED = 1;
-constexpr uint32_t STATE_ACTIVATED = 2;
-constexpr uint32_t STATE_FULLSCREEN = 3;
+// Protocol flag values now live in exactly one place:
+// common/toplevel/ToplevelStates.hpp (see handle_toplevel_state below).
 
 namespace {
 
@@ -211,24 +210,19 @@ void WlrForeignToplevelBackend::handle_toplevel_state(zwlr_foreign_toplevel_hand
     uintptr_t id = reinterpret_cast<uintptr_t>(handle);
     for (auto& win : window_cache_) {
         if (win.handle_id == id) {
-            win.is_active = false;
-            win.is_minimized = false;
-            win.is_maximized = false;
-            win.is_fullscreen = false;
-
+            // Shared protocol decoding (common/toplevel/ToplevelStates):
+            // one spelling of the flag values, mapped onto this client's
+            // model at its boundary.
+            qypr::ToplevelStates decoded{
+                .active = false, .minimized = false, .maximized = false, .fullscreen = false};
             if (state && state->data) {
-                uint32_t* entries = static_cast<uint32_t*>(state->data);
-                size_t count = state->size / sizeof(uint32_t);
-                for (size_t i = 0; i < count; ++i) {
-                    switch (entries[i]) {
-                        case STATE_ACTIVATED: win.is_active = true; break;
-                        case STATE_MINIMIZED: win.is_minimized = true; break;
-                        case STATE_MAXIMIZED: win.is_maximized = true; break;
-                        case STATE_FULLSCREEN: win.is_fullscreen = true; break;
-                        default: break;
-                    }
-                }
+                decoded = qypr::decodeToplevelStates(static_cast<uint32_t*>(state->data),
+                                                     state->size / sizeof(uint32_t));
             }
+            win.is_active = decoded.active;
+            win.is_minimized = decoded.minimized;
+            win.is_maximized = decoded.maximized;
+            win.is_fullscreen = decoded.fullscreen;
             notify_updated(win);
             break;
         }

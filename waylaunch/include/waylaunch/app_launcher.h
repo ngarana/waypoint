@@ -6,22 +6,10 @@
 
 namespace waylaunch {
 
-struct DesktopEntry {
-    std::string name;
-    std::string exec;
-    std::string icon;
-    std::string categories;
-    std::string comment;
-    std::string generic_name;
-    std::string desktop_path; // source .desktop file (for "reveal in files")
-    bool no_display = false;
-    bool hidden = false;
-    // Lowercased "name generic comment categories", built once at scan time so
-    // search() is a single find() per entry instead of re-lowercasing 4 fields
-    // on every keystroke.
-    std::string search_key;
-};
-
+// AppLauncher owns the shared libwl-common desktop index and its scan roots.
+// Results are the common qypr::DesktopEntry model directly — no local copy
+// struct (ARCHITECTURE_REVIEW finding 6): every field the provider reads
+// (name/exec/icon/comment/desktopPath/...) lives in exactly one place.
 class AppLauncher {
   public:
     AppLauncher();
@@ -30,7 +18,7 @@ class AppLauncher {
     void scan();
     void set_search_paths(const std::vector<std::string>& paths);
 
-    std::vector<DesktopEntry> search(const std::string& query) const;
+    std::vector<const qypr::DesktopEntry*> search(const std::string& query) const;
 
   private:
     std::vector<std::string> get_desktop_dirs() const;

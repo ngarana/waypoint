@@ -42,21 +42,8 @@ void AppLauncher::scan() {
     index_.load();
 }
 
-std::vector<DesktopEntry> AppLauncher::search(const std::string& query) const {
-    std::vector<DesktopEntry> results;
-    for (const qypr::DesktopEntry* e : index_.search(query)) {
-        DesktopEntry out;
-        out.name = e->name;
-        out.exec = e->exec;
-        out.icon = e->icon;
-        out.categories = e->categories;
-        out.comment = e->comment;
-        out.generic_name = e->genericName;
-        out.desktop_path = e->desktopPath;
-        out.search_key = e->searchKey;
-        results.push_back(std::move(out));
-    }
-    return results;
+std::vector<const qypr::DesktopEntry*> AppLauncher::search(const std::string& query) const {
+    return index_.search(query);
 }
 
 } // namespace waylaunch

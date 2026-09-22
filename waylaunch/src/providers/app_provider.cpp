@@ -16,15 +16,15 @@ std::string to_lower(std::string s) {
 std::vector<ListItem> AppProvider::query(const ProviderQuery& q) {
     std::vector<ListItem> out;
     if (!apps_) return out;
-    for (const auto& e : apps_->search(q.text)) {
+    for (const qypr::DesktopEntry* e : apps_->search(q.text)) {
         ListItem it;
         it.kind = ItemKind::Application;
-        it.name = e.name;
-        it.path = e.exec;
-        it.reveal_path = e.desktop_path; // right-click → reveal the .desktop file
-        it.description = e.comment.empty() ? e.generic_name : e.comment;
-        it.icon_name = e.icon;
-        std::string n = to_lower(e.name);
+        it.name = e->name;
+        it.path = e->exec;
+        it.reveal_path = e->desktopPath; // right-click → reveal the .desktop file
+        it.description = e->comment.empty() ? e->genericName : e->comment;
+        it.icon_name = e->icon;
+        std::string n = to_lower(e->name);
         size_t pos = n.find(q.lower);
         if (pos == 0) it.score = 1000.0F - static_cast<float>(std::min<size_t>(n.size(), 500));
         else if (pos != std::string::npos)
@@ -32,7 +32,7 @@ std::vector<ListItem> AppProvider::query(const ProviderQuery& q) {
         else it.score = 50.0F; // matched via comment/category
         if (history_)
             it.score +=
-                history_->frecency(e.desktop_path.empty() ? "app:" + e.name : e.desktop_path);
+                history_->frecency(e->desktopPath.empty() ? "app:" + e->name : e->desktopPath);
         out.push_back(std::move(it));
     }
     std::ranges::stable_sort(
