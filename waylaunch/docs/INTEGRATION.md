@@ -540,7 +540,7 @@ the I1–I4 tests.
 Adopt qypr's `.clang-format` and naming **for the shared library only**, so the
 convention churn is bounded to the extracted files and neither product's history
 is rewritten wholesale. Both sides already write to interfaces
-(`qypr/core/Interfaces.hpp`; waylaunch's `IToplevelBackend` /
+(`qypr/src/core/Interfaces.hpp`; waylaunch's `IToplevelBackend` /
 `IPowerActionBackend` / `ResultProvider`), so the seams exist.
 
 ### Stage 3 — fold the switcher into `qypr-bar` (optional)

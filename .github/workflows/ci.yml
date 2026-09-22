@@ -43,3 +43,5 @@ jobs:
           ctest --test-dir common/build --output-on-failure
       - name: Structural gates (I4 + Q5 + B1 link closure)
         run: ./scripts/check-invariants.sh qypr/build waylaunch/build
+      - name: Doc path check (no dangling source references)
+        run: ./scripts/check-doc-paths.sh
