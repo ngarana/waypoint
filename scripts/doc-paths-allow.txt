@@ -9,6 +9,8 @@ src/search/finder_search.cpp
 src/core/keyboard_shortcuts.cpp
 modes/file_search.cpp
 modes/content_search.cpp
+# ARCHITECTURE_REVIEW.md finding 2: removed-file log (superseded test project).
+src/search/search_manager.cpp
 # CONTENT_SEARCH.md: OOXML member paths inside office zip archives.
 word/document.xml
 xl/sharedStrings.xml
