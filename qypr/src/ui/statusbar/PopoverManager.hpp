@@ -1,21 +1,40 @@
-// PopoverManager.hpp - Manages popover lifecycle, animations, and input routing.
+// PopoverManager.hpp - Manages popover lifecycle, anchoring, auto-dismiss,
+// animations, and input routing.
 #pragma once
 
 #include "ui/statusbar/DetailedPopover.hpp"
+#include <functional>
 #include <memory>
 
 namespace qypr {
+
+class EventLoop;
 
 class PopoverManager {
 public:
     PopoverManager() = default;
     ~PopoverManager() = default;
 
+    // Bind the bar's event loop so auto-dismiss timers can be armed. Called
+    // once from the StatusBar constructor; without a loop, resetAutoDismiss
+    // is a no-op (standalone unit tests construct the manager bare).
+    void setEventLoop(EventLoop* loop) { loop_ = loop; }
+
     // Open a new popover, closing the active one first
     void open(std::unique_ptr<DetailedPopover> popover, double anchorX, double anchorY);
     // Open a non-owning popover (caller retains lifetime). Used for qsPanel_.
     void openBorrowed(DetailedPopover* popover, double anchorX, double anchorY);
     void closeActive();
+
+    // Point a popover away from the anchored screen edge (down for a top bar,
+    // up for a bottom bar); 6px gap past the strip.
+    void anchorToStrip(DetailedPopover& pop, bool bottom, const Rect& strip) const;
+
+    // (Re)arm the active popover's auto-dismiss timer from autoDismissMs().
+    // Interaction paths call this; a resting pointer does not. No-op when the
+    // popover opts out (autoDismissMs() == 0) or no event loop is bound.
+    // `onDismiss` runs when the timer fires (typically close + invalidate).
+    void resetAutoDismiss(std::function<void()> onDismiss = {});
 
     // Propagate the standalone bar's backdrop policy to current and future
     // popovers, including a borrowed Quick Settings panel.
@@ -53,6 +72,13 @@ private:
 
     bool backdropEnabled_ = false;
     double backdropAlpha_ = -1.0;
+
+    // Auto-dismiss: inactivity timer for transient popovers. -1 when unarmed.
+    EventLoop* loop_ = nullptr;
+    int dismissTimer_ = -1;
+    std::function<void()> onDismiss_;
+
+    void cancelAutoDismiss();
 };
 
 }  // namespace qypr

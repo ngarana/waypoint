@@ -189,13 +189,21 @@ set(QYPR_SHARED_SOURCES
     src/ui/PaletteReader.cpp
     src/ui/PaletteSource.cpp
     src/ui/Theme.cpp
+    src/ui/statusbar/IndicatorHost.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
     src/ui/statusbar/MenuPopover.cpp
     src/ui/statusbar/PopoverManager.cpp
     src/ui/statusbar/QSTile.cpp
+    src/ui/statusbar/QSTileFactory.cpp
+    src/ui/statusbar/QuickSettingsInput.cpp
+    src/ui/statusbar/QuickSettingsLayout.cpp
     src/ui/statusbar/QuickSettingsPanel.cpp
     src/ui/statusbar/StatusBar.cpp
+    src/ui/statusbar/StatusBarInput.cpp
+    src/ui/statusbar/StatusBarLayout.cpp
     src/ui/statusbar/StatusIndicator.cpp
+    src/ui/statusbar/TileRenderer.cpp
+    src/ui/statusbar/TooltipController.cpp
     src/wayland/BarDisplay.cpp
     src/wayland/BarWindow.cpp
     src/wayland/Cursor.cpp

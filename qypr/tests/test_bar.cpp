@@ -308,8 +308,8 @@ TEST(StatusBarAnimating) {
     EXPECT_TRUE(!bar.animating(10000));
 
     // Hover over an indicator and draw to trigger its hover animation
-    if (!bar.rightIndicators_.empty()) {
-        auto& ind = bar.rightIndicators_.front();
+    if (!bar.indicators_.right().empty()) {
+        auto& ind = bar.indicators_.right().front();
         bar.handlePointerMotion(ind->bounds.x + 5, ind->bounds.y + 5, 10001);
         cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1920, 1080);
         cairo_t* cr = cairo_create(surf);
@@ -361,14 +361,14 @@ TEST(QuickSettingsPanelSecondaryRouting) {
     panel.draw(p, qypr::nowMs() + 10000);
 
     // Right-click the Wi-Fi tile → the network picker callback fires.
-    const qypr::Rect wf = panel.findTileBounds("Wi-Fi");
+    const qypr::Rect wf = panel.boundsFor(qypr::QSTile::Role::Wifi);
     EXPECT_TRUE(wf.valid());
     EXPECT_TRUE(panel.handleSecondaryClick(wf.x + (wf.w / 2.0), wf.y + (wf.h / 2.0)));
     EXPECT_TRUE(pickerOpened);
     EXPECT_FALSE(detailOpened);
 
     // Right-click the Bluetooth tile → its attached detail action fires.
-    const qypr::Rect bb = panel.findTileBounds("Bluetooth");
+    const qypr::Rect bb = panel.boundsFor(qypr::QSTile::Role::Bluetooth);
     EXPECT_TRUE(bb.valid());
     EXPECT_TRUE(panel.handleSecondaryClick(bb.x + (bb.w / 2.0), bb.y + (bb.h / 2.0)));
     EXPECT_TRUE(detailOpened);
@@ -426,7 +426,7 @@ TEST(StatusBarRightClickOnQSTileOpensDetail) {
     // The test binary's static-init order runs every TEST body before the
     // indicator TUs self-register, so the global registry is empty here —
     // inject the wifi indicator the way the registry would have.
-    bar.rightIndicators_.push_back(std::make_unique<qypr::WifiIndicator>(backends));
+    bar.indicators_.right().push_back(std::make_unique<qypr::WifiIndicator>(backends));
     bar.layout(1920, 1080);
 
     // Open Quick Settings, then right-click the Wi-Fi tile: the network
@@ -439,7 +439,7 @@ TEST(StatusBarRightClickOnQSTileOpensDetail) {
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
     bar.quickSettings().draw(p, qypr::nowMs() + 10000);
-    const qypr::Rect wf = bar.quickSettings().findTileBounds("Wi-Fi");
+    const qypr::Rect wf = bar.quickSettings().boundsFor(qypr::QSTile::Role::Wifi);
     EXPECT_TRUE(wf.valid());
     bar.handlePointerButton(wf.x + (wf.w / 2.0), wf.y + (wf.h / 2.0), 0x111, true, 1000);
     EXPECT_TRUE(bar.hasOpenOverlay());
@@ -546,7 +546,8 @@ TEST(ThemePropagatesToStatusBarChildren) {
 
     // Every indicator in every zone sees the cascaded state.
     int indicators = 0;
-    for (auto* list : {&bar.leftIndicators_, &bar.centerIndicators_, &bar.rightIndicators_}) {
+    for (auto* list :
+         {&bar.indicators_.left(), &bar.indicators_.center(), &bar.indicators_.right()}) {
         for (auto& ind : *list) {
             EXPECT_EQ(ind->theme().font.family, std::string("PropagatedFont"));
             EXPECT_NEAR(ind->theme().colors.primary.r, 0x01 / 255.0, 0.01);
@@ -571,12 +572,210 @@ TEST(ThemePropagatesToStatusBarChildren) {
     bar.setTheme(second);
     EXPECT_EQ(bar.theme().font.family, std::string("SecondFont"));
     EXPECT_EQ(bar.quickSettings().theme().font.family, std::string("SecondFont"));
-    for (auto* list : {&bar.leftIndicators_, &bar.centerIndicators_, &bar.rightIndicators_}) {
-        for (auto& ind : *list) {
-            EXPECT_EQ(ind->theme().font.family, std::string("SecondFont"));
-        }
+    for (auto* list :
+         {&bar.indicators_.left(), &bar.indicators_.center(), &bar.indicators_.right()}) {
+        for (auto& ind : *list) { EXPECT_EQ(ind->theme().font.family, std::string("SecondFont")); }
     }
     for (auto& tile : bar.quickSettings().tiles_) {
         EXPECT_EQ(tile->theme().font.family, std::string("SecondFont"));
     }
+}
+
+// -----------------------------------------------------------------------------
+// Pure layout tests (QYPR_DECOMPOSITION_PLAN step 5)
+// computeStatusBarLayout tested across multiple screen widths and both edges.
+// -----------------------------------------------------------------------------
+TEST(StatusBarLayoutMultipleWidthsAndEdges) {
+    qypr::LayoutRequest req;
+    req.geom.height = 36.0;
+    req.geom.edgeMargin = 10.0;
+    req.geom.sideMargin = 20.0;
+    req.pad = 8.0;
+    req.spacing = 6.0;
+
+    // Items: left (1 shown, 1 hidden), center (1 shown), right (2 shown)
+    req.left = {{.width = 40.0, .shown = true}, {.width = 50.0, .shown = false}};
+    req.center = {{.width = 100.0, .shown = true}};
+    req.right = {{.width = 30.0, .shown = true}, {.width = 40.0, .shown = true}};
+
+    for (int const width : {1920, 1366, 800}) {
+        req.screenW = width;
+        req.screenH = 600;
+
+        // 1. Top bar
+        req.geom.bottom = false;
+        auto const topRes = qypr::computeStatusBarLayout(req);
+        EXPECT_NEAR(topRes.bounds.x, 20.0, 0.001);
+        EXPECT_NEAR(topRes.bounds.y, 10.0, 0.001);
+        EXPECT_NEAR(topRes.bounds.w, width - 40.0, 0.001);
+        EXPECT_NEAR(topRes.bounds.h, 36.0, 0.001);
+
+        // Hidden item in left zone must get zero rect
+        EXPECT_NEAR(topRes.left[1].w, 0.0, 0.001);
+        EXPECT_NEAR(topRes.left[1].h, 0.0, 0.001);
+
+        // Shown items must have y == 10.0 and h == 36.0
+        EXPECT_NEAR(topRes.left[0].y, 10.0, 0.001);
+        EXPECT_NEAR(topRes.left[0].w, 40.0, 0.001);
+        EXPECT_NEAR(topRes.center[0].y, 10.0, 0.001);
+        EXPECT_NEAR(topRes.center[0].w, 100.0, 0.001);
+
+        // Right group bounds must contain right[0] and right[1]
+        EXPECT_TRUE(topRes.rightGroupBounds.w > 0.0);
+        EXPECT_NEAR(topRes.rightGroupBounds.y, 10.0, 0.001);
+        EXPECT_NEAR(topRes.rightGroupBounds.h, 36.0, 0.001);
+
+        // 2. Bottom bar
+        req.geom.bottom = true;
+        auto const botRes = qypr::computeStatusBarLayout(req);
+        double const expectedBotY = 600.0 - 10.0 - 36.0;  // 554.0
+        EXPECT_NEAR(botRes.bounds.x, 20.0, 0.001);
+        EXPECT_NEAR(botRes.bounds.y, expectedBotY, 0.001);
+        EXPECT_NEAR(botRes.bounds.w, width - 40.0, 0.001);
+        EXPECT_NEAR(botRes.bounds.h, 36.0, 0.001);
+
+        EXPECT_NEAR(botRes.left[0].y, expectedBotY, 0.001);
+        EXPECT_NEAR(botRes.center[0].y, expectedBotY, 0.001);
+        EXPECT_NEAR(botRes.rightGroupBounds.y, expectedBotY, 0.001);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Pure hit-test and lock-interactivity tests (QYPR_DECOMPOSITION_PLAN step 5)
+// -----------------------------------------------------------------------------
+TEST(StatusBarInputHitTestAndGating) {
+    struct TestInd : public qypr::StatusIndicator {
+        TestInd(const std::string& id, bool sens, bool lockInter)
+            : qypr::StatusIndicator(id, qypr::Zone::Left, 0),
+              sens_(sens),
+              lockInter_(lockInter) {}
+        std::string icon() const override { return ""; }
+        std::string tooltip() const override { return ""; }
+        void draw(qypr::Painter&, int64_t) override {}
+        double measureWidth(qypr::Painter&) override { return 30.0; }
+        bool sensitive() const override { return sens_; }
+        bool lockInteractive() const override { return lockInter_; }
+        bool sens_;
+        bool lockInter_;
+    };
+
+    std::vector<std::unique_ptr<qypr::StatusIndicator>> zone;
+    auto ind1 = std::make_unique<TestInd>("normal", false, false);
+    ind1->bounds = {.x = 10.0, .y = 5.0, .w = 40.0, .h = 30.0};
+    zone.push_back(std::move(ind1));
+
+    auto ind2 = std::make_unique<TestInd>("sensitive", true, false);
+    ind2->bounds = {.x = 60.0, .y = 5.0, .w = 40.0, .h = 30.0};
+    zone.push_back(std::move(ind2));
+
+    auto ind3 = std::make_unique<TestInd>("lock_interactive", false, true);
+    ind3->bounds = {.x = 110.0, .y = 5.0, .w = 40.0, .h = 30.0};
+    zone.push_back(std::move(ind3));
+
+    // Outside all bounds
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 0.0, 0.0, false) == nullptr);
+
+    // Hit normal indicator
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 20.0, 15.0, false) == zone[0].get());
+
+    // Sensitive indicator: hidden on lock screen (sessionContentVisible = false)
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 70.0, 15.0, false) == nullptr);
+    // Shown when sessionContentVisible = true
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 70.0, 15.0, true) == zone[1].get());
+
+    // Interactivity gating:
+    // With requireInteractive = true on lock screen (sessionContentVisible = false):
+    // normal is not lock-interactive -> nullptr
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 20.0, 15.0, false, true) == nullptr);
+    // lock_interactive indicator is interactive -> found
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 120.0, 15.0, false, true) == zone[2].get());
+    // With sessionContentVisible = true, both are interactive
+    EXPECT_TRUE(qypr::StatusBarInput::hitTest(zone, 20.0, 15.0, true, true) == zone[0].get());
+}
+
+// -----------------------------------------------------------------------------
+// Pure QS layout tests (QYPR_DECOMPOSITION_PLAN step 6)
+// -----------------------------------------------------------------------------
+TEST(QuickSettingsLayoutComputation) {
+    qypr::QSLayoutMetrics m{
+        .panelW = 380.0,
+        .pad = 14.0,
+        .gap = 8.0,
+        .gridRowH = 76.0,
+    };
+
+    std::vector<std::unique_ptr<qypr::QSTile>> tiles;
+    // 4 toggle tiles -> 2 rows (3 in first, 1 in second)
+    for (int i = 0; i < 4; ++i) {
+        tiles.push_back(std::make_unique<qypr::QSToggleTile>(
+            "Tile" + std::to_string(i), "", []() { return true; }, []() {}, nullptr,
+            qypr::Color{0, 0, 0, 0}, qypr::QSTile::Role::Custom));
+    }
+
+    double const h = qypr::QuickSettingsLayout::computeContentHeight(
+        m, /*hasHeader=*/true, /*hasWifiCombo=*/false, tiles, /*hasVolume=*/true,
+        /*hasMedia=*/false);
+    // Expected height:
+    // pad (14) + header (52) + gap (8) + (2 rows * 76 + 1 gap * 8 = 160) +
+    // gap (8) + volume (52) + pad (14) = 308
+    EXPECT_NEAR(h, 308.0, 0.001);
+
+    qypr::Rect const popBounds{.x = 100.0, .y = 50.0, .w = 380.0, .h = h};
+    auto const res = qypr::QuickSettingsLayout::layout(popBounds, m, nullptr, nullptr, nullptr,
+                                                       tiles, nullptr, nullptr);
+
+    // Verify grid layout:
+    // contentW = 380 - 28 = 352
+    // colW = (352 - 16) / 3 = 112
+    double const expectedColW = (352.0 - 16.0) / 3.0;
+    // Tile 0 (row 0, col 0)
+    EXPECT_NEAR(tiles[0]->bounds.x, 100.0 + 14.0, 0.001);
+    EXPECT_NEAR(tiles[0]->bounds.w, expectedColW, 0.001);
+    EXPECT_NEAR(tiles[0]->bounds.h, 76.0, 0.001);
+
+    // Tile 1 (row 0, col 1)
+    EXPECT_NEAR(tiles[1]->bounds.x, 100.0 + 14.0 + expectedColW + 8.0, 0.001);
+
+    // Tile 3 (row 1, col 0)
+    EXPECT_NEAR(tiles[3]->bounds.x, 100.0 + 14.0, 0.001);
+    EXPECT_TRUE(tiles[3]->bounds.y > tiles[0]->bounds.y);
+
+    // Close button bounds
+    EXPECT_NEAR(res.closeBounds.x, 100.0 + 380.0 - 14.0 - 24.0, 0.001);
+    EXPECT_NEAR(res.closeBounds.y, 50.0 + 8.0, 0.001);
+}
+
+// -----------------------------------------------------------------------------
+// QS Tile Factory and Role Bounds tests (QYPR_DECOMPOSITION_PLAN step 6)
+// -----------------------------------------------------------------------------
+TEST(QuickSettingsRoleBoundsAndFactoryFallbacks) {
+    qypr::EventLoop loop;
+    qypr::SystemBackends const backends{};  // null backends -> fallback tiles
+    qypr::QuickSettingsPanel panel;
+
+    panel.buildTiles(loop, backends, []() {});
+    panel.anchorX = 500;
+    panel.anchorY = 50;
+    panel.open();
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 600, 600);
+    cairo_t* cr = cairo_create(surf);
+    qypr::Painter p(cr);
+    panel.draw(p, 1000);
+
+    // Role-based lookups must succeed for all standard roles provided by fallbacks
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Wifi).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Bluetooth).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Brightness).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Dnd).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::KeepAwake).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::NightLight).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Screenshot).valid());
+    EXPECT_TRUE(panel.boundsFor(qypr::QSTile::Role::Volume).valid());
+
+    // Unmatched role returns invalid rect
+    EXPECT_FALSE(panel.boundsFor(qypr::QSTile::Role::Custom).valid());
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
 }

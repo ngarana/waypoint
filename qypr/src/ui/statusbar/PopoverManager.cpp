@@ -1,5 +1,6 @@
 // PopoverManager.cpp - Popover manager implementation
 #include "ui/statusbar/PopoverManager.hpp"
+#include "core/EventLoop.hpp"
 #include "render/Painter.hpp"
 
 #include <algorithm>
@@ -8,6 +9,7 @@ namespace qypr {
 
 void PopoverManager::open(std::unique_ptr<DetailedPopover> popover, double anchorX,
                           double anchorY) {
+    cancelAutoDismiss();
     if (borrowed_) {
         borrowed_->close();
         borrowedClosing_ = borrowed_;
@@ -29,6 +31,7 @@ void PopoverManager::open(std::unique_ptr<DetailedPopover> popover, double ancho
 }
 
 void PopoverManager::openBorrowed(DetailedPopover* popover, double anchorX, double anchorY) {
+    cancelAutoDismiss();
     if (borrowedClosing_ == popover) borrowedClosing_ = nullptr;  // reopened mid-close
     if (active_) {
         transitioning_ = std::move(active_);
@@ -52,7 +55,45 @@ void PopoverManager::setBackdrop(bool enabled, double alpha) {
     if (borrowedClosing_) borrowedClosing_->setBackdrop(enabled, alpha);
 }
 
+void PopoverManager::anchorToStrip(DetailedPopover& pop, bool bottom, const Rect& strip) const {
+    // growUp makes getBounds() extend upward from the anchor instead of down.
+    pop.growUp = bottom;
+    pop.anchorY = bottom ? strip.y - 6.0 : strip.y + strip.h + 6.0;
+}
+
+void PopoverManager::cancelAutoDismiss() {
+    if (loop_ != nullptr && dismissTimer_ >= 0) { loop_->removeTimer(dismissTimer_); }
+    dismissTimer_ = -1;
+    onDismiss_ = {};
+}
+
+void PopoverManager::resetAutoDismiss(std::function<void()> onDismiss) {
+    cancelAutoDismiss();
+    DetailedPopover const* p = active();
+    if (p == nullptr || loop_ == nullptr) { return; }
+    const int ms = p->autoDismissMs();
+    if (ms <= 0) { return; }  // popover does not opt into auto-dismiss (e.g. QS)
+
+    onDismiss_ = std::move(onDismiss);
+    dismissTimer_ = loop_->addTimer(ms, /*repeat=*/false, [this] {
+        dismissTimer_ = -1;  // the loop already removed the one-shot fd
+        DetailedPopover const* cur = active();
+        if (cur == nullptr || cur->autoDismissMs() <= 0) {
+            return;  // gone or not transient
+        }
+        // Inactivity timer, not hover: a parked pointer is not interaction.
+        auto cb = std::move(onDismiss_);
+        onDismiss_ = {};
+        if (cb) {
+            cb();
+        } else {
+            closeActive();
+        }
+    });
+}
+
 void PopoverManager::closeActive() {
+    cancelAutoDismiss();
     if (borrowed_) {
         borrowed_->close();
         borrowedClosing_ = borrowed_;  // keep drawing it through the fade-out
