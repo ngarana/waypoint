@@ -123,6 +123,8 @@ extern int g_tests_failed;
 #include "notifications/NotificationMonitor.hpp"
 #include "notifications/NotificationLog.hpp"
 #include "ui/Theme.hpp"
+#include "ui/PaletteSource.hpp"
+#include "ui/PaletteReader.hpp"
 #include "ui/Widget.hpp"
 #include "ui/Clock.hpp"
 #include "ui/PasswordField.hpp"

@@ -183,6 +183,8 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/WifiIndicator.cpp
     src/ui/indicators/WorkspacesIndicator.cpp
     src/ui/Notification.cpp
+    src/ui/PaletteReader.cpp
+    src/ui/PaletteSource.cpp
     src/ui/Theme.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
     src/ui/statusbar/MenuPopover.cpp

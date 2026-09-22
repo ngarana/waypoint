@@ -9,9 +9,12 @@
 // Matugen support: `[theme] colors-file` (alias `matugen`) points at a
 // matugen-generated palette (Material You colours derived from the wallpaper).
 // loadThemeState() applies it before the explicit colour keys, so hand-tuned
-// overrides still win.
+// overrides still win. Path resolution and format decoding live in
+// PaletteSource.hpp / PaletteReader.hpp.
 
 #pragma once
+
+#include <string>
 
 #include "core/Types.hpp"
 
@@ -274,29 +277,15 @@ private:
 // touched, so tests construct expected States directly. Hosts assign the
 // result into their owned State (same object, fresh contents — outstanding
 // references stay valid).
+//
+// Pipeline: palette-file path (PaletteSource) → format decode + token map
+// (PaletteReader, reusing common/render/MatugenTokens) → typed [theme]
+// overrides. This function owns only defaults + overrides; palette I/O is
+// not inlined here.
 State loadThemeState(const Config& cfg, const AutoPalette& palette);
-
-// Resolve the [theme] colors-file / matugen key to a filesystem path.
-// Returns "" when the key is unset or empty. `~` is expanded against $HOME
-// and relative paths resolve against the loaded config file's directory
-// (the same rule as the `import` directive). `lightPalette` selects the
-// light-palette keys (colors-file-light / matugen-light).
-std::string resolveColorsPath(const Config& cfg, bool lightPalette = false);
 
 // Current local wall-clock hour (0–23), for the auto palette mode.
 int localHourNow();
-
-// Parse a matugen-generated palette file and apply its colour tokens onto
-// the given State. Understood formats (auto-detected, may be mixed in one
-// file):
-//   CSS custom properties      --primary: #aabbcc;
-//   GTK/GDK palette            @define-color primary #aabbcc;
-//   flat JSON / CSS quoted     "primary": "#aabbcc"
-//   matugen JSON scheme        "primary": { "hex": "#aabbcc", ... }
-// Token names are matched case-insensitively; leading `--` is stripped.
-// Returns the number of colours actually applied (0 when the file is
-// missing, unreadable, or carries no recognised tokens).
-int applyColorsFile(const std::string& path, State& state);
 
 }  // namespace theme
 }  // namespace qypr

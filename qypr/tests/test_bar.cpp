@@ -511,3 +511,72 @@ TEST(IndicatorWithNoBackendRendersImmediately) {
     EXPECT_TRUE(battery.visible);
     EXPECT_TRUE(wifi.visible);
 }
+
+// -----------------------------------------------------------------------------
+// Widget-level theme propagation (QYPR_DECOMPOSITION_PLAN step 4.5)
+// A host-owned State must reach every widget it is cascaded to — indicators,
+// the QS panel, and its tiles — not just loadThemeState() return values.
+// -----------------------------------------------------------------------------
+TEST(ThemePropagatesToStatusBarChildren) {
+    qypr::EventLoop loop;
+    struct DummyHost : qypr::RenderHost {
+        void invalidate() override {}
+        void requestUnlock() override {}
+    } host;
+
+    qypr::SystemBackends backends{};
+    backends.sessionSurface = true;  // build internal QS tiles (header/power/…)
+    qypr::StatusBar bar(loop, host, backends);
+
+    qypr::theme::State live{};
+    live.colors.primary = qypr::Color::fromHex("#010203");
+    live.font.family = "PropagatedFont";
+    live.statusbar.height = 42.0;
+    live.statusbar.barTintAlpha = 0.55;
+
+    bar.setTheme(live);
+
+    // StatusBar owns a copy (derived panelSurfaceAlpha folded in)…
+    EXPECT_EQ(bar.theme().font.family, std::string("PropagatedFont"));
+    EXPECT_NEAR(bar.theme().statusbar.height, 42.0, 0.01);
+    EXPECT_NEAR(bar.theme().colors.primary.r, 0x01 / 255.0, 0.01);
+    EXPECT_NEAR(bar.theme().statusbar.barTintAlpha, 0.55, 0.01);
+    // …and the copy (not the host's object) is what children read.
+    EXPECT_TRUE(&bar.theme() != &live);
+
+    // Every indicator in every zone sees the cascaded state.
+    int indicators = 0;
+    for (auto* list : {&bar.leftIndicators_, &bar.centerIndicators_, &bar.rightIndicators_}) {
+        for (auto& ind : *list) {
+            EXPECT_EQ(ind->theme().font.family, std::string("PropagatedFont"));
+            EXPECT_NEAR(ind->theme().colors.primary.r, 0x01 / 255.0, 0.01);
+            ++indicators;
+        }
+    }
+    EXPECT_TRUE(indicators > 0);
+
+    // The QS panel and every tile it owns (grid + header/power/…) follow.
+    EXPECT_EQ(bar.quickSettings().theme().font.family, std::string("PropagatedFont"));
+    int tiles = 0;
+    for (auto& tile : bar.quickSettings().tiles_) {
+        EXPECT_EQ(tile->theme().font.family, std::string("PropagatedFont"));
+        ++tiles;
+    }
+    EXPECT_TRUE(tiles > 0);
+
+    // A second re-theme re-cascades without rebuilding the widget tree.
+    qypr::theme::State second{};
+    second.font.family = "SecondFont";
+    second.colors.primary = qypr::Color::fromHex("#aabbcc");
+    bar.setTheme(second);
+    EXPECT_EQ(bar.theme().font.family, std::string("SecondFont"));
+    EXPECT_EQ(bar.quickSettings().theme().font.family, std::string("SecondFont"));
+    for (auto* list : {&bar.leftIndicators_, &bar.centerIndicators_, &bar.rightIndicators_}) {
+        for (auto& ind : *list) {
+            EXPECT_EQ(ind->theme().font.family, std::string("SecondFont"));
+        }
+    }
+    for (auto& tile : bar.quickSettings().tiles_) {
+        EXPECT_EQ(tile->theme().font.family, std::string("SecondFont"));
+    }
+}

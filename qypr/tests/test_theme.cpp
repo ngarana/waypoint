@@ -3,6 +3,8 @@
 #include "test_framework.hpp"
 
 #include "core/SolarCalc.hpp"
+#include "ui/PaletteReader.hpp"
+#include "ui/PaletteSource.hpp"
 
 // Apply a config with a deterministic noon resolution; returns the owned
 // design value. Tests assert on the returned State — never on shared
@@ -364,4 +366,46 @@ TEST(ThemeSolarCacheOverridesFixedHours) {
     bad.load(writeTempConfig("[theme]\npalette-location = sometimes\n"));
     AutoPalette palBad = AutoPalette::fromConfig(bad, 12);
     EXPECT_EQ(palBad.location, std::string("auto"));
+}
+
+// Palette format decoding is unit-testable without a Config or State
+// (QYPR_DECOMPOSITION_PLAN step 4: PaletteReader extraction).
+TEST(PaletteReaderParsesMatugenFormats) {
+    // CSS custom properties + GTK define-color + nested JSON + flat JSON
+    // may appear in one file; first occurrence of a token wins; names are
+    // normalised (lower-case, `--` stripped, `_` → `-`).
+    const std::string mixed =
+        ":root {\n"
+        "  --primary: #aabbcc;\n"
+        "  --on_surface: #ddeeff;\n"  // matugen underscore name
+        "}\n"
+        "@define-color error #ff5544;\n"
+        "{\n"
+        "  \"tertiary\": { \"hex\": \"#66d9a0\" },\n"
+        "  \"surface_container\": \"#223344\"\n"
+        "}\n"
+        "outline: #556677;\n";
+    const auto tokens = qypr::theme::parsePalette(mixed);
+    EXPECT_EQ(tokens.at("primary"), std::string("#aabbcc"));
+    EXPECT_EQ(tokens.at("on-surface"), std::string("#ddeeff"));
+    EXPECT_EQ(tokens.at("error"), std::string("#ff5544"));
+    EXPECT_EQ(tokens.at("tertiary"), std::string("#66d9a0"));
+    EXPECT_EQ(tokens.at("surface-container"), std::string("#223344"));
+    EXPECT_EQ(tokens.at("outline"), std::string("#556677"));
+
+    // applyPaletteTokens maps candidates through MatugenTokens and returns
+    // how many colours landed; unknown tokens write nothing.
+    qypr::theme::State st;
+    const int applied = qypr::theme::applyPaletteTokens(tokens, st);
+    EXPECT_TRUE(applied > 0);
+    EXPECT_NEAR(st.colors.primary.r, 0xaa / 255.0, 0.01);
+    EXPECT_NEAR(st.colors.text.r, 0xdd / 255.0, 0.01);  // on-surface → text
+    EXPECT_NEAR(st.colors.error.r, 0xff / 255.0, 0.01);
+    EXPECT_NEAR(st.colors.success.g, 0xd9 / 255.0, 0.01);  // tertiary → success
+    EXPECT_NEAR(st.colors.surface.r, 0x22 / 255.0, 0.01);
+
+    const auto empty = qypr::theme::parsePalette("not-a-palette");
+    EXPECT_TRUE(empty.empty());
+    qypr::theme::State untouched;
+    EXPECT_EQ(qypr::theme::applyPaletteTokens(empty, untouched), 0);
 }

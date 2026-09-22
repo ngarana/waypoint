@@ -295,15 +295,18 @@ made tests and multiple application instances order-dependent.
 token file. Inject a `ThemeState` value into widgets rather than relying on
 mutable global state.
 
-**Status:** Resolved in scope (`2e88b39`, `e57963f`, `b3793ce`, `fcc0dea`).
-qypr's `theme::State` is injected through `ThemeAware::setTheme()/theme()`;
-the globals, `toGlobals()`, and `loadTheme()` are deleted, and tests construct
-states directly. Waylaunch owns `[theme]` through `ThemeManager`, and both
-projects resolve semantic colours through the shared `pickMatugenToken`
+**Status:** Resolved in scope (`2e88b39`, `e57963f`, `b3793ce`, `fcc0dea`,
+palette extraction). qypr's `theme::State` is injected through
+`ThemeAware::setTheme()/theme()`; the globals, `toGlobals()`, and
+`loadTheme()` are deleted, and tests construct states directly. Waylaunch owns
+`[theme]` through `ThemeManager`, and both projects resolve semantic colours
+through the shared `pickMatugenToken`
 ([`MatugenTokens.hpp`](../common/render/MatugenTokens.hpp#L19)). The two
-configuration formats remain separate, as this review intended. Residual: the
-palette-file readers still share `Theme.cpp` with state building (tracked in
-the decomposition plan).
+configuration formats remain separate, as this review intended. Palette-file
+I/O and format decoding now live in
+[`PaletteSource.hpp`](../qypr/src/ui/PaletteSource.hpp) /
+[`PaletteReader.hpp`](../qypr/src/ui/PaletteReader.hpp); `loadThemeState()`
+owns only defaults plus typed overrides.
 
 ### 11. Wayland infrastructure is only partially shared
 
@@ -352,7 +355,7 @@ All of the drift recorded at review time is now fixed, and a gate keeps it
 from returning:
 
 - The root README describes `Process` (not `Spawn`) and reports the current
-  suite counts (125 qypr tests, 28 waylaunch suites, 8 shared suites).
+  suite counts (127 qypr tests, 28 waylaunch suites, 8 shared suites).
 - qypr documentation no longer references files that moved into `common`.
 - The removed `waylaunch/tests/CMakeLists.txt` and its `search_manager.cpp`
   reference are gone; `docs/DESIGN.md` keeps the file only in historical
@@ -370,7 +373,7 @@ Status re-checked 2026-09-22 against the same tree (code baseline `9954082`),
 with session and system buses available:
 
 - `ctest --test-dir qypr/build`: `qypr-test` passed — the single registered
-  target wraps 125 test cases (5.6 s).
+  target wraps 127 test cases (5.6 s).
 - `ctest --test-dir waylaunch/build`: 28/28 suites passed.
 - `ctest --test-dir common/build`: 8/8 suites passed (blur, desktop, icon,
   matugen tokens, painter, process, solar, toplevel state).

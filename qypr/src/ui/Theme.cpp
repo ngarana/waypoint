@@ -1,20 +1,18 @@
 // Theme.cpp - Runtime theme loading from bar.conf [theme] section.
+//
+// Palette-file path resolution, format decoding, and token→colour mapping
+// live in PaletteSource / PaletteReader (QYPR_DECOMPOSITION_PLAN step 4).
+// This TU owns only: compiled defaults, typed [theme] overrides, and the
+// AutoPalette day/night value.
 #include "ui/Theme.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 #include <ctime>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <map>
-#include <optional>
-#include <regex>
 #include <string>
-#include <vector>
 
 #include "core/Config.hpp"
-#include "render/MatugenTokens.hpp"
+#include "ui/PaletteReader.hpp"
+#include "ui/PaletteSource.hpp"
 
 namespace qypr::theme {
 
@@ -237,200 +235,6 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     overrideInt(state.audio.progressHeight, cfg, kS, "audio-progress-height");
     overrideInt(state.audio.volumeSliderWidth, cfg, kS, "audio-volume-slider-width");
     return state;
-}
-
-// -----------------------------------------------------------------------------
-// Matugen (Material You) palette support
-//
-// matugen (github.com/InioX/matugen) derives a Material Design 3 colour scheme
-// from the wallpaper and renders it through user templates. Rather than
-// shipping our own template, we read whichever file the user already points
-// matugen at and map the well-known M3 token names onto the bar's palette.
-// -----------------------------------------------------------------------------
-
-namespace {
-
-// Pull every `token -> #hex` pair out of a palette file's text. Handles the
-// formats matugen templates actually produce (they may be mixed in one file):
-//   "token": { "hex": "#aabbcc", ... }   matugen's JSON scheme format
-//   --token: #aabbcc;                    CSS custom properties
-//   @define-color token #aabbcc;         GTK/GDK palette files
-//   "token": "#aabbcc"                   flat JSON / quoted CSS values
-//   token: #aabbcc;                      plain CSS declarations
-// First occurrence of a token wins; names are lower-cased, `--` stripped.
-std::map<std::string, std::string> parsePalette(const std::string& content) {
-    // #RRGGBB or #AARRGGBB (what Color::fromHex understands).
-    static const std::string kHex = "(#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?)";
-
-    std::map<std::string, std::string> tokens;
-    const auto record = [&tokens](std::string name, const std::string& hex) {
-        if (name == "hex") {
-            return;  // noise from the nested-JSON format
-        }
-        while (!name.empty() && name.front() == '-') { name.erase(0, 1); }
-        for (char& c : name) {
-            if (c >= 'A' && c <= 'Z') { c = static_cast<char>(c + 32); }
-            if (c == '_') {
-                c = '-';  // matugen emits on_surface / surface_container_high
-            }
-        }
-        if (!name.empty()) {
-            tokens.emplace(name, hex);  // first occurrence wins
-        }
-    };
-
-    // 1. Nested matugen JSON scheme: "token": { ..., "hex": "#..." }.
-    static const std::regex kNested(R"rx("([A-Za-z0-9_-]+)"\s*:\s*\{[^{}]*?"hex"\s*:\s*")rx" +
-                                        kHex + "\"",
-                                    std::regex::optimize);
-    // 2. @define-color, CSS custom properties, and quoted flat JSON values.
-    static const std::regex kCss(R"rx(@define-color\s+([A-Za-z0-9_-]+)\s+)rx" + kHex +
-                                     R"rx(|--([A-Za-z0-9_-]+)\s*:\s*)rx" + kHex +
-                                     R"rx(|"([A-Za-z0-9_-]+)"\s*:\s*")rx" + kHex + "\"",
-                                 std::regex::optimize);
-    // 3. Plain unquoted CSS declarations: `background: #112233;`
-    static const std::regex kPlain("([A-Za-z0-9_-]+)\\s*:\\s*" + kHex, std::regex::optimize);
-
-    for (std::sregex_iterator it(content.begin(), content.end(), kNested), last; it != last; ++it) {
-        record((*it)[1].str(), (*it)[2].str());
-    }
-    for (std::sregex_iterator it(content.begin(), content.end(), kCss), last; it != last; ++it) {
-        const std::smatch& m = *it;
-        if (m[1].matched) { record(m[1].str(), m[2].str()); }
-        if (m[3].matched) { record(m[3].str(), m[4].str()); }
-        if (m[5].matched) { record(m[5].str(), m[6].str()); }
-    }
-    for (std::sregex_iterator it(content.begin(), content.end(), kPlain), last; it != last; ++it) {
-        record((*it)[1].str(), (*it)[2].str());
-    }
-    return tokens;
-}
-
-}  // namespace
-
-namespace {
-
-// Material You token -> bar colour. Each entry tries its candidate tokens in
-// order and keeps the current value when none are present, so narrow custom
-// templates (a few `--background`/`--primary` lines) still theme the bar.
-struct PaletteMapping {
-    Color State::Colors::* target;
-    std::vector<const char*> tokens;
-    // >= 0: alpha applied when the matched hex carries none of its own
-    // (#RRGGBB). < 0: keep whatever alpha the hex provided (default 1.0).
-    double alpha = -1.0;
-};
-
-const std::vector<PaletteMapping>& paletteMappings() {
-    static const std::vector<PaletteMapping> kMappings = {
-        // Core surfaces & text. `background` prefers a dedicated background
-        // token, then falls back to the M3 `surface` tone.
-        {.target = &State::Colors::background,
-         .tokens = {"background", "surface", "surface-container-lowest"}},
-        {.target = &State::Colors::surface,
-         .tokens = {"surface-container", "surface-container-low", "secondary-container",
-                    "surface"}},
-        {.target = &State::Colors::surfaceHover,
-         .tokens = {"surface-container-high", "surface-container-highest", "surface-container"}},
-        {.target = &State::Colors::primary,
-         .tokens = {"primary", "primary-fixed", "primary-container"}},
-        // The glow is a translucent primary unless the template ships its own
-        // 8-digit (AARRGGBB) value.
-        {.target = &State::Colors::primaryGlow,
-         .tokens = {"primary-glow", "primary"},
-         .alpha = 0.25},
-        {.target = &State::Colors::text,
-         .tokens = {"on-surface", "foreground", "on-primary-container", "text"}},
-        {.target = &State::Colors::textSubtle,
-         .tokens = {"on-surface-variant", "outline", "text-secondary"}},
-        {.target = &State::Colors::textMuted,
-         .tokens = {"outline", "outline-variant", "text-muted"}},
-        {.target = &State::Colors::error, .tokens = {"error"}},
-        // M3 has no success/warning hues; tertiary (and secondary for a
-        // warning-ish tone) are the usual stand-ins. `success`/`warning`
-        // custom keys win when a template defines them.
-        {.target = &State::Colors::success, .tokens = {"success", "tertiary"}},
-        {.target = &State::Colors::warning, .tokens = {"warning", "secondary"}},
-        // Accent strip (app tiles, status dots, pager chips). Matugen palettes
-        // are effectively two-accent, so accents fan out from the M3 roles.
-        {.target = &State::Colors::blue, .tokens = {"blue", "primary"}},
-        {.target = &State::Colors::lavender, .tokens = {"lavender", "primary-container"}},
-        {.target = &State::Colors::mauve, .tokens = {"mauve", "tertiary"}},
-        {.target = &State::Colors::pink, .tokens = {"pink", "tertiary"}},
-        {.target = &State::Colors::red, .tokens = {"red", "error"}},
-        {.target = &State::Colors::peach, .tokens = {"peach", "secondary"}},
-        {.target = &State::Colors::yellow, .tokens = {"yellow", "warning"}},
-        {.target = &State::Colors::green, .tokens = {"green", "success"}},
-        {.target = &State::Colors::teal, .tokens = {"teal", "secondary-container"}},
-        {.target = &State::Colors::sky, .tokens = {"sky", "secondary"}},
-        {.target = &State::Colors::maroon, .tokens = {"maroon", "error-container"}},
-    };
-    return kMappings;
-}
-
-}  // namespace
-
-std::string resolveColorsPath(const Config& cfg, bool lightPalette) {
-    std::string raw = lightPalette ? cfg.getString("theme", "colors-file-light", "") : "";
-    if (raw.empty()) {
-        raw = cfg.getString("theme", lightPalette ? "matugen-light" : "colors-file", "");
-    }
-    if (!lightPalette && raw.empty()) { raw = cfg.getString("theme", "matugen", ""); }
-    // Tolerate quoted values.
-    while (!raw.empty() && (raw.front() == '"' || raw.front() == '\'')) { raw.erase(0, 1); }
-    while (!raw.empty() && (raw.back() == '"' || raw.back() == '\'')) { raw.pop_back(); }
-    if (raw.empty()) { return ""; }
-
-    if (raw.front() == '~') {
-        const char* home = std::getenv("HOME");
-        if ((home == nullptr) || ((*home) == 0)) {
-            return "";  // nowhere to expand against
-        }
-        raw = std::string(home) + raw.substr(1);
-    }
-
-    if (raw.front() != '/') {
-        // Relative paths follow `import` semantics: resolved against the
-        // directory of the loaded config file.
-        std::filesystem::path base = std::filesystem::path(cfg.path()).parent_path();
-        if (base.empty()) { base = std::filesystem::path(Config::configDir()); }
-        raw = (base / raw).string();
-    }
-    return raw;
-}
-
-int applyColorsFile(const std::string& path, State& state) {
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        std::fprintf(stderr, "qypr: theme: colours file not readable: %s\n", path.c_str());
-        return 0;
-    }
-    const std::string content((std::istreambuf_iterator<char>(f)),
-                              std::istreambuf_iterator<char>());
-    const auto tokens = parsePalette(content);
-
-    int applied = 0;
-    for (const auto& m : paletteMappings()) {
-        // Candidates are in priority order — shared first-present-non-empty
-        // lookup (common/render/MatugenTokens).
-        const std::string hit = pickMatugenToken(tokens, m.tokens);
-        if (!hit.empty()) {
-            Color c = Color::fromHex(hit);
-            if (m.alpha >= 0.0 && hit.size() == 7) {
-                c.a = m.alpha;  // no alpha in hex
-            }
-            (state.colors.*m.target) = c;
-            ++applied;
-        }
-    }
-
-    if (applied > 0) {
-        std::fprintf(stderr, "qypr: theme: matugen palette applied (%d colours from %s)\n", applied,
-                     path.c_str());
-    } else {
-        std::fprintf(stderr, "qypr: theme: no known colour tokens in %s\n", path.c_str());
-    }
-    return applied;
 }
 
 AutoPalette AutoPalette::fromConfig(const Config& cfg, int hourNow) {

@@ -11,6 +11,7 @@
 #include "core/SolarCalc.hpp"
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
+#include "ui/PaletteSource.hpp"
 #include "ui/Theme.hpp"
 #include "ui/indicators/NotificationIndicator.hpp"  // previewNotificationCentre()
 #include "wayland/Seat.hpp"                         // Mod bits

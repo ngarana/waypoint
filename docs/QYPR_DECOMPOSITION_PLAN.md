@@ -47,9 +47,15 @@ module combines several of the following:
 - **Shared matugen token lookup** (`b3793ce`): candidate-token resolution lives
   once in [`MatugenTokens.hpp`](../common/render/MatugenTokens.hpp#L19); qypr
   and waylaunch keep their own format parsers.
+- **Palette source/readers extracted** (step 4): path resolution and file I/O
+  in [`PaletteSource`](../qypr/src/ui/PaletteSource.hpp); CSS/GTK/JSON decode
+  and token→theme mapping in
+  [`PaletteReader`](../qypr/src/ui/PaletteReader.hpp). `loadThemeState()` is
+  defaults + typed overrides only. Tests: `PaletteReaderParsesMatugenFormats`,
+  `ThemePropagatesToStatusBarChildren` (widget-level cascade).
 - **Build, test, and doc gates** (`a25653c`, `f662b89`): explicit qypr source
   lists, the B1 lock-only-object gate, qypr's CTest registration
-  (`ctest --test-dir qypr/build` runs `qypr-test`, 125 tests), and a
+  (`ctest --test-dir qypr/build` runs `qypr-test`), and a
   documentation-path gate.
 - Earlier review findings closed alongside those: one shared process API
   (`a3443ba`), unified desktop-entry and toplevel models (`f179bfc`), and the
@@ -89,7 +95,7 @@ shared aggregate contains those pointers.
 | P0 | StatusBar | Open | 995-line host owns indicator hosting, layout, input, overlays, focus, and tooltips | `IndicatorHost`, `StatusBarLayout`, `StatusBarInput`, `TooltipController` |
 | P0 | Quick settings | Partial | Stable roles, but construction, layout, rendering, and input are still interleaved | `QSTileFactory`, `QuickSettingsLayout`, `QuickSettingsInput`, `TileRenderer` |
 | P0 | StatusIndicator | Partial | Capability interfaces exist; the `SystemBackends` bag and its factories do not use them | capability bundles, bundle-based registry factories |
-| P1 | Theme (residual) | Done* | Palette file I/O, multi-format parsing, and Matugen mapping still share `Theme.cpp` with state building | palette source/readers; widget-level theme-propagation test |
+| P1 | Theme (residual) | Done | Palette source/readers extracted from `Theme.cpp`; widget-level cascade test added | — (complete) |
 | P1 | BarApp / App / Shell | Open | Composition roots also own startup, reload, backend lifecycle, input, and policy | `BarRuntime`, `LockRuntime`, `ConfigRuntime`, `BackendLifecycle` |
 | P1 | LockScreen | Open | Authentication, reveal state, idle timers, power actions, layout, and drawing are coupled | `LockController`, `LockLayout`, `PowerMenuController` |
 | P1 | WifiBackend | Open | D-Bus chains, discovery, state reduction, and connect operations share one class | `NetworkManagerClient`, `WifiSnapshotReducer`, `WifiOperations` |
@@ -98,9 +104,6 @@ shared aggregate contains those pointers.
 | P2 | SNI stack | Open | Protocol mode, item registry, icons, and UI behavior split across mismatched layers | `SniProtocol`, `SniItemStore`, `TrayView` |
 | P2 | Wayland display stack | Open | Bar and lock hosts duplicate connection/registry concerns while owning surface policy | shared connection/registry layer, separate surface hosts |
 | P2 | StateCache | Open | Serialization, persistence, debouncing, and backend sampling share one class | `StateCacheCodec`, `StateCacheStore`, coordinator |
-
-\* The original theme target is complete; the residual row is the palette-module
-extraction described below.
 
 ## P0: decompose `StatusBar` (Open)
 
@@ -233,27 +236,24 @@ with most fields null.
 - No indicator factory can reach launcher, session-window, tray-menu, pairing,
   or shutdown operations it did not explicitly request.
 
-## P1: complete the theme extraction (residual)
+## P1: complete the theme extraction (residual) — Done
 
 The original target — value model, injection, no globals — has landed
-(`e57963f`). The remaining seam is inside
-[`Theme.cpp`](../qypr/src/ui/Theme.cpp#L47) (504 lines): `loadThemeState()`
-mixes default values and typed config overrides with palette-file application
-(`resolveColorsPath` :373, `applyColorsFile` :402) and file-scope readers
-(`parsePalette` :261, `paletteMappings` :324). `common/render/MatugenTokens`
-already owns the shared token lookup (`b3793ce`).
+(`e57963f`). The residual palette seam also landed:
 
-### Remaining decomposition
-
-1. Move path resolution and palette-file loading into a palette-source module.
-2. Move CSS/GTK/JSON decoding into format-specific readers.
-3. Move token-to-theme mapping out of `Theme.cpp`, reusing `MatugenTokens`.
-4. Keep `loadThemeState()` responsible only for defaults plus typed config
-   overrides.
-5. Add the missing widget-level test: a host-owned `State` reaches the widgets
-   it is cascaded to (`setTheme` on `StatusBar`/`Shell`/tiles), not just that
-   `loadThemeState()` returns the right values. Today `test_theme.cpp` covers
-   loading only and `test_bar.cpp` covers compiled constants.
+1. Path resolution and palette-file loading live in
+   [`PaletteSource`](../qypr/src/ui/PaletteSource.hpp) (`resolveColorsPath`,
+   `readPaletteFile`).
+2. CSS/GTK/JSON decoding and token→theme mapping live in
+   [`PaletteReader`](../qypr/src/ui/PaletteReader.hpp) (`parsePalette`,
+   `applyPaletteTokens`, `applyColorsFile`), reusing
+   [`MatugenTokens`](../common/render/MatugenTokens.hpp).
+3. [`loadThemeState()`](../qypr/src/ui/Theme.cpp) is only defaults plus typed
+   config overrides (plus the AutoPalette value API).
+4. Widget-level coverage: `ThemePropagatesToStatusBarChildren` proves a
+   host-owned `State` reaches indicators, the QS panel, and its tiles through
+   the `setTheme` cascade; `PaletteReaderParsesMatugenFormats` covers the
+   extracted readers without a full Config/State load.
 
 Each new theme field belongs to `State` only. Do not reintroduce a
 compatibility shim.
@@ -482,8 +482,10 @@ Avoid extracting code merely to reduce line count in these areas:
 2. ~~Introduce stable quick-settings tile roles~~ — done (`b0657f6`).
 3. ~~Split `StatusIndicator` capability interfaces~~ — done (`fcc0dea`);
    the capability *bundles* remain and fold into step 7.
-4. Extract the palette source/readers out of `Theme.cpp`, reusing
-   `MatugenTokens`, and add the widget-level theme-propagation test.
+4. ~~Extract the palette source/readers out of `Theme.cpp`, reusing
+   `MatugenTokens`, and add the widget-level theme-propagation test~~ — done
+   (`PaletteSource`/`PaletteReader`; `ThemePropagatesToStatusBarChildren`,
+   `PaletteReaderParsesMatugenFormats`).
 5. Extract `IndicatorHost`, `StatusBarLayout`, `StatusBarInput`, and
    `TooltipController`; extend `PopoverManager` with anchoring and dismissal.
 6. Split the quick-settings factory/model/layout/input/renderer and replace
@@ -510,7 +512,7 @@ Every extraction should add or preserve tests at the lowest practical level:
 - lock policy: tests proving unsafe capabilities are unavailable, not merely
   invisible
 - rendering: existing qypr preview/golden tests
-- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 125
+- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 127
   tests), `ctest --test-dir waylaunch/build`, `ctest --test-dir common/build`,
   `./scripts/check-invariants.sh` (I4, Q5, B1), and
   `./scripts/check-doc-paths.sh`.
