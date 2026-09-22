@@ -64,61 +64,35 @@ int App::run() {
     // covers a missing/denied GeoClue on top.
     Config config;
     if (config.load()) { std::fprintf(stderr, "qypr-lock: config %s\n", config.path().c_str()); }
-    palette_ = theme::AutoPalette::fromConfig(config, theme::localHourNow());
-    applyTheme(config);
 
-    if (!display_.connect()) {
-        std::fprintf(stderr, "qypr-lock: no Wayland display or no ext-session-lock support\n");
+    themeRuntime_.init(
+        config,
+        [this](const theme::State& s) {
+            shell_.setTheme(s);
+            audio_.setTheme(s);
+            notifications_.setTheme(s);
+        },
+        [this] { invalidate(); });
+
+    if (!lockRuntime_.acquire(
+            &shell_, [this](cairo_t* cr, int w, int h, int s) { shell_.draw(cr, w, h, s); },
+            [this] { return shell_.isAnimating(); })) {
         return 1;
     }
 
-    display_.setInputSink(&shell_);
-    display_.setRenderFn([this](cairo_t* cr, int w, int h, int s) { shell_.draw(cr, w, h, s); });
-    display_.setAnimatingFn([this] { return shell_.isAnimating(); });
-
-    lock_.setOnFinished([this] {
-        std::fprintf(stderr, "qypr-lock: session lock refused or lost\n");
-        loop_.quit();
-    });
-
-    if (!lock_.lock()) {
-        std::fprintf(stderr, "qypr-lock: failed to acquire session lock\n");
-        return 1;
-    }
-
-    // Start the notification monitor, seeded with the pre-lock backlog from a
-    // running --record service (non-fatal: it logs when unavailable).
-    notifications_.start(/*seedFromLog=*/true);
-
-    // Status bar backends: one startup fetch, push-only afterwards
-    // (non-fatal: the affected indicator stays hidden).
-    battery_.start();
-    brightness_.start();
-    wifi_.start();
-    bluetooth_.start();
-    volume_.start();
-    sni_.start();
+    lockRuntime_.startBackends(backends_, notifications_);
 
     // Location for the solar auto-palette, same as the bar. A sunrise during
     // a long lock re-themes the screen; absent/denied GeoClue never fires.
     geoClue_.setOnChange([this, &config] {
-        refreshSolarTimes();
-        if (palette_.tick(theme::localHourNow())) {
-            applyTheme(config);
+        if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
+            themeRuntime_.applyTheme(config);
             invalidate();
         }
     });
     geoClue_.start();
-    refreshSolarTimes();
-    if (palette_.mode == "auto") {
-        loop_.addTimer(60'000, /*repeat=*/true, [this, &config] {
-            refreshSolarTimes();
-            if (palette_.tick(theme::localHourNow())) {
-                applyTheme(config);
-                invalidate();
-            }
-        });
-    }
+    if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) { themeRuntime_.applyTheme(config); }
+    if (themeRuntime_.palette().mode == "auto") { themeRuntime_.startMinuteTimer(config); }
 
     // Start video playback (non-fatal if it fails).
     if (video_.init()) {
@@ -132,13 +106,15 @@ int App::run() {
 }
 
 int App::preview(const std::string& path, int width, int height) {
+    Config config;
+    config.load();
+    themeRuntime_.init(config, [this](const theme::State& s) {
+        shell_.setTheme(s);
+        audio_.setTheme(s);
+        notifications_.setTheme(s);
+    });
     shell_.setNotifications(demoNotifications());  // sample cards, preview only
-    battery_.start();     // live status bar state: battery, backlight, WiFi,
-    brightness_.start();  // Bluetooth, volume, and the SNI tray
-    wifi_.start();
-    bluetooth_.start();
-    volume_.start();
-    sni_.start();
+    lockRuntime_.startBackends(backends_, notifications_);
 
     // Volume connects asynchronously and the tray host fetches items over the
     // session bus; pump the loop briefly so the preview renders real state
@@ -239,39 +215,12 @@ void App::setIdleTimeout(int seconds) {
     if (seconds > 0) { shell_.setIdleTimeout(static_cast<int64_t>(seconds) * 1000); }
 }
 
-void App::applyTheme(const Config& config) {
-    theme_ = theme::loadThemeState(config, palette_);
-    shell_.setTheme(theme_);
-    audio_.setTheme(theme_);
-    notifications_.setTheme(theme_);
-}
-
-void App::refreshSolarTimes() {
-    if (palette_.location != "auto") {
-        palette_.clearSolarTimes();
-        return;
-    }
-    const auto& fix = geoClue_.fix();
-    if (!fix) {
-        palette_.clearSolarTimes();
-        return;
-    }
-    const auto times =
-        solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
-    if (!times) {
-        palette_.clearSolarTimes();  // polar day/night: fixed hours carry the mode
-        return;
-    }
-    palette_.setSolarTimes(times->sunriseMin, times->sunsetMin);
-}
-
 void App::invalidate() {
     display_.invalidateAll();
 }
 
 void App::requestUnlock() {
-    lock_.unlock();
-    loop_.quit();
+    lockRuntime_.unlockAndQuit();
 }
 
 }  // namespace qypr

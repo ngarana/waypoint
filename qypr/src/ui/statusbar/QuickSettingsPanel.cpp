@@ -107,29 +107,6 @@ Rect QuickSettingsPanel::boundsFor(QSTile::Role role) const {
     return {.x = 0, .y = 0, .w = 0, .h = 0};
 }
 
-Rect QuickSettingsPanel::findTileBounds(const std::string& tileTitle) const {
-    if (tileTitle == "Wi-Fi" || tileTitle == "WiFi") { return boundsFor(QSTile::Role::Wifi); }
-    if (tileTitle == "Bluetooth" || tileTitle == "BT") {
-        return boundsFor(QSTile::Role::Bluetooth);
-    }
-    if (tileTitle == "Do Not Disturb" || tileTitle.find("Disturb") != std::string::npos) {
-        return boundsFor(QSTile::Role::Dnd);
-    }
-    if (tileTitle == "Volume") { return boundsFor(QSTile::Role::Volume); }
-    if (tileTitle == "Night Light") { return boundsFor(QSTile::Role::NightLight); }
-    if (tileTitle == "Keep awake") { return boundsFor(QSTile::Role::KeepAwake); }
-    if (tileTitle == "Screenshot") { return boundsFor(QSTile::Role::Screenshot); }
-    if (wifiCombo_ && wifiCombo_->title() == tileTitle) { return wifiCombo_->bounds; }
-    for (const auto& t : tiles_) {
-        if (t && t->title() == tileTitle) { return t->bounds; }
-    }
-    if (volume_ && volume_->title() == tileTitle) { return volume_->bounds; }
-    if (media_ && (media_->title() == tileTitle || tileTitle == "Media")) { return media_->bounds; }
-    if (header_ && header_->title() == tileTitle) { return header_->bounds; }
-    if (power_ && power_->title() == tileTitle) { return power_->bounds; }
-    return {.x = 0, .y = 0, .w = 0, .h = 0};
-}
-
 // ─── Draw ─────────────────────────────────────────────────────────────────
 
 void QuickSettingsPanel::draw(Painter& p, int64_t now) {

@@ -27,10 +27,10 @@ namespace qypr {
 
 class EventLoop;
 
-class BarDisplay {
+class BarDisplay : public IBarSurfaceHost {
 public:
     BarDisplay(EventLoop& loop, int reservedHeight, bool bottom = false);
-    ~BarDisplay();
+    ~BarDisplay() override;
 
     BarDisplay(const BarDisplay&) = delete;
     BarDisplay& operator=(const BarDisplay&) = delete;

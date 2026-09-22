@@ -67,7 +67,6 @@ public:
     double gridRowH() const { return theme().statusbar.qsTileHeight; }
 
     Rect boundsFor(QSTile::Role role) const;
-    Rect findTileBounds(const std::string& tileTitle) const;
 
     QSTile* activeDragTile_ = nullptr;
     double curX_ = -1, curY_ = -1;

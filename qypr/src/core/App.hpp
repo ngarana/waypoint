@@ -20,6 +20,8 @@
 #include "system/SystemBus.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
+#include "core/LockRuntime.hpp"
+#include "core/ThemeRuntime.hpp"
 #include "ui/AudioController.hpp"
 #include "ui/Shell.hpp"
 #include "ui/Theme.hpp"
@@ -52,10 +54,6 @@ public:
     void requestUnlock() override;
 
 private:
-    // Recompute the solar sunrise/sunset cache from the GeoClue fix (or
-    // clear it when location is off, the fix is stale, or polar day-night).
-    void refreshSolarTimes();
-
     EventLoop loop_;
     WaylandDisplay display_;
     LockSession lock_;
@@ -81,21 +79,17 @@ private:
     // Absent/denied → the lock keeps the fixed theme hours.
     GeoClueBackend geoClue_{systemBus_};
     DndState dnd_;
-    SystemBackends backends_{.battery = &battery_,
+    SystemBackends backends_{.hasSession = false,
+                             .battery = &battery_,
                              .volume = &volume_,
                              .brightness = &brightness_,
                              .wifi = &wifi_,
                              .bluetooth = &bluetooth_,
-                             .sni = &sni_,
+                             .sni = nullptr,
                              .dnd = &dnd_};
 
-    // Owned day/night state (same contract as the bar): parsed from the
-    // config in run(), ticked by the loop, fed by the GeoClue fix.
-    theme::AutoPalette palette_;
-    // Owned design values: reassigned on every apply; cascaded to the shell,
-    // the audio controller, and the notification monitor.
-    theme::State theme_;
-    void applyTheme(const Config& config);
+    ThemeRuntime themeRuntime_{loop_};
+    LockRuntime lockRuntime_{loop_, display_, lock_};
 
     Shell shell_;
 };

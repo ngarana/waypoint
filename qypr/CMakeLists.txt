@@ -135,9 +135,14 @@ configure_file(
 # are added per-target, so no executable ever links two of them.
 set(QYPR_SHARED_SOURCES
     src/core/BarApp.cpp
+    src/core/BarBackendLifecycle.cpp
+    src/core/BarRuntime.cpp
+    src/core/BarSurfaceController.cpp
     src/core/Config.cpp
+    src/core/ConfigRuntime.cpp
     src/core/ConfigWatcher.cpp
     src/core/SecureBuffer.cpp
+    src/core/ThemeRuntime.cpp
     src/mpris/MprisController.cpp
     src/notifications/NotificationActions.cpp
     src/notifications/NotificationMonitor.cpp
@@ -228,7 +233,9 @@ set(QYPR_RECORDER_SOURCES
 # or PAM.
 set(QYPR_LOCK_ONLY_SOURCES
     src/core/App.cpp
+    src/core/LockRuntime.cpp
     src/ui/Shell.cpp
+    src/ui/ShellInputRouter.cpp
     src/ui/LockScreen.cpp
     src/ui/AudioController.cpp
     src/ui/ActionButton.cpp

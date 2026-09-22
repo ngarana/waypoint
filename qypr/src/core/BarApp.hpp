@@ -14,10 +14,15 @@
 #include <optional>
 #include <string>
 
+#include "core/BarBackendLifecycle.hpp"
+#include "core/BarRuntime.hpp"
+#include "core/BarSurfaceController.hpp"
 #include "core/Config.hpp"
+#include "core/ConfigRuntime.hpp"
 #include "core/ConfigWatcher.hpp"
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
+#include "core/ThemeRuntime.hpp"
 #include "mpris/MprisController.hpp"
 #include "notifications/NotificationActions.hpp"
 #include "notifications/NotificationMonitor.hpp"
@@ -80,46 +85,21 @@ private:
     void syncKeyboard();
     // Re-read bar.conf and re-apply all sections without a restart.
     void reloadConfig();
-    // Recompute the solar sunrise/sunset cache from the GeoClue fix (or
-    // clear it when location is off, the fix is stale, or the sun never
-    // rises/sets). Cheap: runs on the minute tick, on fix updates, and on
-    // config reloads (midnight rollover included).
-    void refreshSolarTimes();
-    // Watch the [theme] colors-file (matugen palette) so regenerating it —
-    // typically on a wallpaper change — re-themes the bar live. No-op when no
-    // palette file is configured or its directory doesn't exist yet.
-    void watchPalette();
+    void reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
+                      const std::optional<IndicatorRegistry::ModuleSelection>& newModules);
+
     // Rebuild the owned State from config_ + palette_ and cascade to the
     // status bar + monitor.
     void applyTheme();
 
-    // --- config helpers (used in the member-init list; see the ctor) ---
-    static Config loadConfig();
-    static BarGeometry readGeometry(const Config& c);
-    // std::nullopt when the config names no modules — StatusBar then falls back
-    // to every registered indicator (the compiled default bar).
-    static std::optional<IndicatorRegistry::ModuleSelection> readModules(const Config& c);
-    // Strip footprint = edge gap + bar height + a 6px breathing gap. This is the
-    // exclusive zone and the idle surface height.
-    static int reservedFor(const BarGeometry& g) {
-        return static_cast<int>(g.edgeMargin + g.height + 6.0);
-    }
-
     // Declaration order is initialisation order: config_ must precede
     // everything that reads it (geometry_, modules_, display_, statusBar_).
-    Config config_{loadConfig()};
-    BarGeometry geom_{readGeometry(config_)};
-    std::optional<IndicatorRegistry::ModuleSelection> modules_{readModules(config_)};
-    // Owned day/night state (ARCHITECTURE_REVIEW finding 10): parsed from the
-    // config, ticked by the loop, fed by the GeoClue fix. No palette globals.
-    theme::AutoPalette palette_{theme::AutoPalette::fromConfig(config_, theme::localHourNow())};
-    // Owned design values: reassigned from loadThemeState() on every apply
-    // (startup, reload, solar flip); widgets read this copy via the setTheme
-    // cascade, never globals.
-    theme::State theme_;
+    Config config_{ConfigRuntime::loadConfig()};
+    BarGeometry geom_{ConfigRuntime::readGeometry(config_)};
+    std::optional<IndicatorRegistry::ModuleSelection> modules_{ConfigRuntime::readModules(config_)};
 
     EventLoop loop_;
-    BarDisplay display_{loop_, reservedFor(geom_), geom_.bottom};
+    BarDisplay display_{loop_, ConfigRuntime::reservedFor(geom_), geom_.bottom};
 
     // One shared connection per bus (system + session), same as the lock app.
     SystemBus systemBus_{loop_};
@@ -179,17 +159,17 @@ private:
                              .sessionSurface = true};
 
     StatusBar statusBar_{loop_, *this, backends_, modules_ ? &*modules_ : nullptr};
-    ConfigWatcher configWatcher_{loop_};
-    // Watchers for the matugen palette files ([theme] colors-file and
-    // colors-file-light) — independent of bar.conf so a wallpaper change can
-    // re-theme the bar live. The light watcher only runs in auto/light modes.
-    ConfigWatcher paletteWatcher_{loop_};
-    ConfigWatcher paletteLightWatcher_{loop_};
     // Last-known indicator values, so the first frame shows real numbers instead
     // of neutral placeholders while the daemons are still starting.
     StateCache stateCache_;
-    int overlayHeight_ = 0;  // last surface height requested (logical px)
-    bool kbActive_ = false;  // current keyboard-grab state (launcher search box)
+
+    // Runtime coordinators
+    ConfigRuntime configRuntime_{loop_};
+    ThemeRuntime themeRuntime_{loop_};
+    BarSurfaceController surfaceController_{display_, loop_, ConfigRuntime::reservedFor(geom_)};
+    BarBackendLifecycle backendLifecycle_{loop_, backends_, stateCache_, geoClue_, *this};
+    BarRuntime runtime_{loop_,          display_,      surfaceController_,
+                        configRuntime_, themeRuntime_, backendLifecycle_};
 };
 
 }  // namespace qypr

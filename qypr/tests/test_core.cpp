@@ -1,6 +1,9 @@
 // test_core.cpp - Core: types, event loop, config/watcher, indicator registry.
 // Split verbatim from tests/unit_tests.cpp; bodies unchanged.
 #include "test_framework.hpp"
+#include "core/BarSurfaceController.hpp"
+#include "core/ConfigRuntime.hpp"
+#include "core/ThemeRuntime.hpp"
 
 TEST(Types) {
     // Color Hex Parsing
@@ -368,5 +371,142 @@ TEST(ClockFormatFromConfig) {
     def.poll(1'000'000);
     EXPECT_TRUE(def.label().find(':') != std::string::npos);
 
+    ::unlink(path.c_str());
+}
+
+TEST(BarSurfaceControllerOverlayAndKeyboard) {
+    struct MockHost : public qypr::IBarSurfaceHost {
+        int overlayH = 0;
+        bool kbInteractive = false;
+        int overlayCalls = 0;
+        int kbCalls = 0;
+
+        void setOverlayHeight(int logicalH) override {
+            overlayH = logicalH;
+            ++overlayCalls;
+        }
+        void setKeyboardInteractive(bool on) override {
+            kbInteractive = on;
+            ++kbCalls;
+        }
+    } host;
+
+    qypr::EventLoop loop;
+    qypr::BarSurfaceController controller(host, loop, 48);
+
+    EXPECT_EQ(controller.idleHeight(), 48);
+    EXPECT_EQ(controller.currentOverlayHeight(), 48);
+    EXPECT_FALSE(controller.isKeyboardActive());
+
+    // syncOverlay with 0 or smaller than idle height -> uses idle height
+    EXPECT_FALSE(controller.syncOverlay(0));   // already 48, no dispatch
+    EXPECT_FALSE(controller.syncOverlay(30));  // smaller than idle, clamped to 48 -> no dispatch
+    loop.dispatchPosted();
+    EXPECT_EQ(host.overlayCalls, 0);
+
+    // Expand overlay to 240
+    EXPECT_TRUE(controller.syncOverlay(240));
+    EXPECT_EQ(controller.currentOverlayHeight(), 240);
+    // Dispatched via loop post
+    loop.dispatchPosted();
+    EXPECT_EQ(host.overlayCalls, 1);
+    EXPECT_EQ(host.overlayH, 240);
+
+    // Idempotent syncOverlay
+    EXPECT_FALSE(controller.syncOverlay(240));
+    loop.dispatchPosted();
+    EXPECT_EQ(host.overlayCalls, 1);
+
+    // Contract back to 0 -> returns to idle height 48
+    EXPECT_TRUE(controller.syncOverlay(0));
+    EXPECT_EQ(controller.currentOverlayHeight(), 48);
+    loop.dispatchPosted();
+    EXPECT_EQ(host.overlayCalls, 2);
+    EXPECT_EQ(host.overlayH, 48);
+
+    // Keyboard interactivity sync
+    EXPECT_FALSE(controller.syncKeyboard(false));  // already false -> no change
+    EXPECT_EQ(host.kbCalls, 0);
+    EXPECT_TRUE(controller.syncKeyboard(true));
+    EXPECT_TRUE(controller.isKeyboardActive());
+    EXPECT_EQ(host.kbCalls, 1);
+    EXPECT_TRUE(host.kbInteractive);
+    EXPECT_FALSE(controller.syncKeyboard(true));  // already true -> no change
+    EXPECT_EQ(host.kbCalls, 1);
+    EXPECT_TRUE(controller.syncKeyboard(false));
+    EXPECT_FALSE(controller.isKeyboardActive());
+    EXPECT_EQ(host.kbCalls, 2);
+    EXPECT_FALSE(host.kbInteractive);
+}
+
+TEST(ConfigRuntimeGeometryAndModules) {
+    qypr::Config c;
+    const std::string path = writeTempConfig("[bar]\n"
+                                             "height = 42.0\n"
+                                             "margin = 10.0\n"
+                                             "margin-side = 16.0\n"
+                                             "position = bottom\n"
+                                             "modules-left = clock, launcher\n"
+                                             "modules-center = active-window\n"
+                                             "modules-right = wifi, battery\n");
+    c.load(path);
+
+    auto geom = qypr::ConfigRuntime::readGeometry(c);
+    EXPECT_NEAR(geom.height, 42.0, 0.001);
+    EXPECT_NEAR(geom.edgeMargin, 10.0, 0.001);
+    EXPECT_NEAR(geom.sideMargin, 16.0, 0.001);
+    EXPECT_TRUE(geom.bottom);
+
+    int reserved = qypr::ConfigRuntime::reservedFor(geom);
+    EXPECT_EQ(reserved, static_cast<int>(10.0 + 42.0 + 6.0));
+
+    auto mods = qypr::ConfigRuntime::readModules(c);
+    EXPECT_TRUE(mods.has_value());
+    EXPECT_EQ(static_cast<int>(mods->left.size()), 2);
+    EXPECT_EQ(mods->left.at(0), std::string("clock"));
+    EXPECT_EQ(mods->left.at(1), std::string("launcher"));
+    EXPECT_EQ(static_cast<int>(mods->center.size()), 1);
+    EXPECT_EQ(mods->center.at(0), std::string("active-window"));
+    EXPECT_EQ(static_cast<int>(mods->right.size()), 2);
+    EXPECT_EQ(mods->right.at(0), std::string("wifi"));
+    EXPECT_EQ(mods->right.at(1), std::string("battery"));
+    ::unlink(path.c_str());
+
+    // Empty modules returns nullopt
+    qypr::Config cEmpty;
+    const std::string emptyPath = writeTempConfig("[bar]\nheight = 36.0\n");
+    cEmpty.load(emptyPath);
+    auto noMods = qypr::ConfigRuntime::readModules(cEmpty);
+    EXPECT_FALSE(noMods.has_value());
+    ::unlink(emptyPath.c_str());
+}
+
+TEST(ThemeRuntimeLifecycleAndSolar) {
+    qypr::EventLoop loop;
+    qypr::ThemeRuntime runtime(loop);
+
+    qypr::Config c;
+    const std::string path = writeTempConfig("[theme]\n"
+                                             "palette-mode = dark\n"
+                                             "palette-location = auto\n");
+    c.load(path);
+
+    int themeChanges = 0;
+    runtime.init(c, [&](const qypr::theme::State& state) {
+        ++themeChanges;
+        (void)state;
+    });
+
+    EXPECT_EQ(themeChanges, 1);
+    EXPECT_EQ(runtime.palette().mode, std::string("dark"));
+
+    // Refresh solar times with a valid fix
+    qypr::GeoFix fix;
+    fix.latitude = 51.5074;
+    fix.longitude = -0.1278;
+    EXPECT_TRUE(runtime.refreshSolarTimes(fix));
+
+    // Clear solar times when fix is null
+    EXPECT_FALSE(runtime.refreshSolarTimes(std::nullopt));
     ::unlink(path.c_str());
 }

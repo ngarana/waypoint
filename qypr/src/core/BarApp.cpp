@@ -18,172 +18,62 @@
 
 namespace qypr {
 
-// -----------------------------------------------------------------------------
-// Config (Phase 9). Every knob falls back to the compiled default, so a missing
-// or partial bar.conf still yields exactly the bar we shipped before.
-// -----------------------------------------------------------------------------
-Config BarApp::loadConfig() {
-    Config c;
-    if (c.load()) { std::fprintf(stderr, "qypr-bar: config %s\n", c.path().c_str()); }
-    return c;
-}
-
-BarGeometry BarApp::readGeometry(const Config& c) {
-    BarGeometry g;  // defaults = theme constants (the lockscreen strip)
-    g.height = c.getDouble("bar", "height", g.height);
-    g.edgeMargin = c.getDouble("bar", "margin", g.edgeMargin);
-    g.sideMargin = c.getDouble("bar", "margin-side", g.sideMargin);
-    const std::string pos = c.getString("bar", "position", "top");
-    g.bottom = (pos == "bottom");
-    if (pos != "top" && pos != "bottom") {
-        std::fprintf(stderr, "qypr-bar: unknown position '%s' (want top|bottom); using top\n",
-                     pos.c_str());
-    }
-    return g;
-}
-
-std::optional<IndicatorRegistry::ModuleSelection> BarApp::readModules(const Config& c) {
-    const bool any = c.has("bar", "modules-left") || c.has("bar", "modules-center") ||
-                     c.has("bar", "modules-right");
-    if (!any) {
-        return std::nullopt;  // no module keys: keep the compiled default set
-    }
-
-    IndicatorRegistry::ModuleSelection sel;
-    sel.left = c.getList("bar", "modules-left");
-    sel.center = c.getList("bar", "modules-center");
-    sel.right = c.getList("bar", "modules-right");
-
-    // A typo silently drops a module, which is baffling in a bar you cannot
-    // introspect — so name the unknown ids and list what was available.
-    const auto known = IndicatorRegistry::instance().registeredIds();
-    for (const auto* zone : {&sel.left, &sel.center, &sel.right}) {
-        for (const auto& id : *zone) {
-            if (std::ranges::find(known, id) == known.end()) {
-                std::string all;
-                for (const auto& k : known) { all += (all.empty() ? "" : ", ") + k; }
-                std::fprintf(stderr, "qypr-bar: unknown module '%s' (have: %s)\n", id.c_str(),
-                             all.c_str());
-            }
-        }
-    }
-    return sel;
-}
-
 BarApp::BarApp() = default;
 
 int BarApp::run() {
-    // The bar owns its day/night state: apply the palette before anything
-    // draws (previously done inside loadConfig).
-    applyTheme();
-    if (!display_.connect()) {
-        std::fprintf(stderr, "qypr-bar: no Wayland display or no wlr-layer-shell support\n");
-        return 1;
-    }
+    themeRuntime_.init(
+        config_,
+        [this](const theme::State& s) {
+            statusBar_.setTheme(s);
+            notifications_.setTheme(s);
+        },
+        [this] { display_.invalidateAll(); });
 
-    display_.setInputSink(this);
-    display_.setRenderFn([this](cairo_t* cr, int w, int h, int s) { draw(cr, w, h, s); });
-    display_.setAnimatingFn([this] { return statusBar_.animating(nowMs()); });
+    return runtime_.run(
+        /*sink=*/this,
+        /*renderFn=*/[this](cairo_t* cr, int w, int h, int s) { draw(cr, w, h, s); },
+        /*animatingFn=*/[this] { return statusBar_.animating(nowMs()); },
+        /*setupProtocols=*/
+        [this] {
+            statusBar_.setSessionContentVisible(true);
+            const double alpha = config_.getDouble("bar", "backdrop", -1.0);
+            statusBar_.setBackdrop(alpha != 0.0, alpha);
+            statusBar_.setGeometry(geom_);
 
-    // This is the unlocked bar: reveal the session-sensitive WM widgets and
-    // start their backends on the same wl_display (they bind their own registry).
-    statusBar_.setSessionContentVisible(true);
-    // Give the chromeless strip a subtle backdrop so it stays legible over an
-    // arbitrary desktop wallpaper (the lock screen never does this). `backdrop`
-    // is 0..1; 0 restores the pure chromeless look.
-    const double alpha = config_.getDouble("bar", "backdrop", -1.0);
-    statusBar_.setBackdrop(alpha != 0.0, alpha);
-    statusBar_.setGeometry(geom_);
+            idleInhibitor_.init(display_.idleInhibitManager(), display_.anchorSurface(),
+                                display_.display());
+            nightLight_.init(display_.gammaControlManager(), display_.display());
+            nightLight_.setOutputs(display_.outputs());
+            nightLight_.setOnChange([this] { invalidate(); });
+            workspace_.start(display_.display());
+            toplevel_.start(display_.display());
 
-    // Wayland-local wiring only — these talk to the compositor we just connected
-    // to (present and fast), never to an external daemon, so they are safe on the
-    // pre-first-paint path.
-    idleInhibitor_.init(display_.idleInhibitManager(), display_.anchorSurface(),
-                        display_.display());
-    nightLight_.init(display_.gammaControlManager(), display_.display());
-    nightLight_.setOutputs(display_.outputs());
-    nightLight_.setOnChange([this] { invalidate(); });
-    workspace_.start(display_.display());
-    toplevel_.start(display_.display());
-
-    // Seed every hardware indicator from the last session's values so the very
-    // first frame carries real numbers (battery %, SSID, volume) instead of the
-    // neutral "unknown" glyphs. Purely a local file read — no daemon involved,
-    // which is the whole point: at boot the daemons that own this state are
-    // typically not running yet (UPower in particular is D-Bus-activated and
-    // starts *after* the bar). Live pushes overwrite these within moments.
-    stateCache_.load();
-    stateCache_.seed(backends_);
-    statusBar_.refreshFromBackends();  // pull the seeded values into the indicators
-
-    // Paint the strip *now*, before touching a single daemon. The layer
-    // surface's initial configure is only dispatched when we pump the
-    // connection, so every call made before this point is time the desktop
-    // spends with no bar on screen. One roundtrip is enough: the configure
-    // arrives, BarWindow::render() draws and commits the first frame.
-    display_.roundtrip();
-
-    // Live config reload: watch bar.conf for edits and re-apply all sections
-    // without a restart (theme, geometry, modules, per-indicator config).
-    configWatcher_.watch(config_.path(), [this] { reloadConfig(); });
-    // Also watch the matugen palette ([theme] colors-file): regenerating it
-    // (e.g. after a wallpaper change) re-themes the bar without touching
-    // bar.conf.
-    watchPalette();
-
-    // Auto palette: refresh the solar window (midnight rollover, late
-    // GeoClue fix) and re-check the clock once a minute; re-theme on a
-    // light/dark flip (tick returns true only when the resolved mode changed).
-    if (palette_.mode == "auto") {
-        loop_.addTimer(60'000, /*repeat=*/true, [this] {
-            refreshSolarTimes();
-            if (palette_.tick(theme::localHourNow())) {
-                applyTheme();
-                invalidate();
-            }
+            stateCache_.load();
+            stateCache_.seed(backends_);
+            statusBar_.refreshFromBackends();
+        },
+        /*onFirstFrame=*/
+        [this] {
+            configRuntime_.startWatching(
+                config_.path(),
+                [this](const Config& newConfig, const BarGeometry& newGeom,
+                       const std::optional<IndicatorRegistry::ModuleSelection>& newMods) {
+                    reloadConfig(newConfig, newGeom, newMods);
+                });
+            themeRuntime_.watchPalette(config_);
+            if (themeRuntime_.palette().mode == "auto") { themeRuntime_.startMinuteTimer(config_); }
+            loop_.post([this] {
+                backendLifecycle_.start([this] {
+                    if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
+                        themeRuntime_.applyTheme(config_);
+                        invalidate();
+                    }
+                });
+                if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
+                    themeRuntime_.applyTheme(config_);
+                }
+            });
         });
-    }
-
-    // Everything that can reach an external daemon now runs *behind* that first
-    // frame, dispatched by the loop rather than ahead of it.
-    loop_.post([this] { startBackends(); });
-
-    loop_.run();
-    return 0;
-}
-
-// Bring the applets to life. Called from the event loop after the first frame
-// is on screen, so a daemon that is slow, missing, or still being activated
-// delays only its own indicator — never the bar itself.
-void BarApp::startBackends() {
-    battery_.start();
-    brightness_.start();
-    wifi_.start();
-    bluetooth_.start();
-    volume_.start();
-    sni_.start();
-    powerProfiles_.setOnChange([this] { invalidate(); });
-    powerProfiles_.start();
-    // Location for the solar auto-palette: re-theme when the first fix lands
-    // (or a later one moves the window). Absent/denied GeoClue simply never
-    // fires — the fixed hours carry the mode.
-    geoClue_.setOnChange([this] {
-        refreshSolarTimes();
-        if (palette_.tick(theme::localHourNow())) {
-            applyTheme();
-            invalidate();
-        }
-    });
-    geoClue_.start();
-    refreshSolarTimes();
-    notifications_.setOnChange([this] { invalidate(); });
-    if (!notifications_.start(/*seedFromLog=*/false)) {
-        std::fprintf(stderr, "qypr-bar: notification monitor unavailable\n");
-    }
-    mpris_.enablePush(loop_);
-
-    // Persist each push so the *next* start has fresh values to seed from.
-    stateCache_.track(loop_, backends_);
 }
 
 void BarApp::draw(cairo_t* cr, int w, int h, int /*scale*/) {
@@ -216,11 +106,7 @@ std::string stripExt(const std::string& path) {
 int BarApp::preview(const std::string& path, int width, int height) {
     applyTheme();
     // Start backends for real indicator state.
-    battery_.start();
-    brightness_.start();
-    wifi_.start();
-    bluetooth_.start();
-    volume_.start();
+    backendLifecycle_.startPreview();
     sni_.start();
     mpris_.refresh();
 
@@ -258,7 +144,7 @@ int BarApp::preview(const std::string& path, int width, int height) {
 
     // 3. DND toggle on (find DND tile bounds and click its center).
     {
-        Rect const dndBounds = statusBar_.quickSettings().findTileBounds("Do Not Disturb");
+        Rect const dndBounds = statusBar_.quickSettings().boundsFor(QSTile::Role::Dnd);
         if (dndBounds.valid()) {
             statusBar_.handlePointerButton(dndBounds.cx(), dndBounds.cy(), 0x110, true, nowMs());
         } else {
@@ -301,109 +187,57 @@ void BarApp::invalidate() {
     stateCache_.noteChanged();
 }
 
-void BarApp::watchPalette() {
-    paletteWatcher_.stop();
-    paletteLightWatcher_.stop();
-
-    // Arm one watcher per palette file: dark is always watched; the light file
-    // too when the mode can be light (auto or light), so a matugen run in
-    // either mode re-themes the bar.
-    const auto arm = [this](ConfigWatcher& w, const std::string& path) {
-        if (path.empty()) { return; }
-        // The palette file may not exist yet (matugen's first run); watching
-        // the directory still catches its creation. A missing *directory*,
-        // though, cannot be watched at all — wait until a config reload names
-        // one that exists.
-        std::error_code ec;
-        const std::filesystem::path parent = std::filesystem::path(path).parent_path();
-        if (!std::filesystem::is_directory(parent, ec)) { return; }
-        w.watch(path, [this] { reloadConfig(); });
-    };
-
-    arm(paletteWatcher_, theme::resolveColorsPath(config_, /*lightPalette=*/false));
-    if (palette_.mode != "dark") {
-        arm(paletteLightWatcher_, theme::resolveColorsPath(config_, /*lightPalette=*/true));
-    }
+void BarApp::reloadConfig() {
+    configRuntime_.reload(
+        [this](const Config& newConfig, const BarGeometry& newGeom,
+               const std::optional<IndicatorRegistry::ModuleSelection>& newMods) {
+            reloadConfig(newConfig, newGeom, newMods);
+        },
+        config_.path());
 }
 
-void BarApp::reloadConfig() {
-    Config c;
-    if (!c.load(config_.path())) {
-        return;  // file vanished or unreadable — keep current theme
-    }
-
+void BarApp::reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
+                          const std::optional<IndicatorRegistry::ModuleSelection>& newMods) {
     std::fprintf(stderr, "qypr-bar: config changed, reloading\n");
-    config_ = std::move(c);
+    config_ = newConfig;
 
-    // Reload theme (colours, fonts, spacing, style): re-parse the mode
-    // keys (they may have flipped), refresh the solar cache against the new
-    // mode, re-resolve, and apply once.
-    palette_ = theme::AutoPalette::fromConfig(config_, theme::localHourNow());
-    refreshSolarTimes();
-    palette_.tick(theme::localHourNow());
-    applyTheme();
+    themeRuntime_.init(
+        config_,
+        [this](const theme::State& s) {
+            statusBar_.setTheme(s);
+            notifications_.setTheme(s);
+        },
+        [this] { display_.invalidateAll(); });
+    themeRuntime_.refreshSolarTimes(geoClue_.fix());
+    themeRuntime_.applyTheme(config_);
+    themeRuntime_.watchPalette(config_);
 
-    watchPalette();
-
-    // Reload bar geometry (height, margin, position).
-    geom_ = readGeometry(config_);
+    geom_ = newGeom;
     statusBar_.setGeometry(geom_);
-    const int reserved = reservedFor(geom_);
-    display_.setOverlayHeight(reserved);  // update exclusive zone
+    const int reserved = ConfigRuntime::reservedFor(geom_);
+    display_.setOverlayHeight(reserved);
+    surfaceController_.setIdleHeight(reserved);
+    surfaceController_.syncOverlay(statusBar_.overlayHeight());
 
-    // Reload backdrop.
     const double alpha = config_.getDouble("bar", "backdrop", -1.0);
     statusBar_.setBackdrop(alpha != 0.0, alpha);
 
-    // Reload modules (recreate indicators from new module list).
-    modules_ = readModules(config_);
+    modules_ = newMods;
     statusBar_.reloadModules(backends_, modules_ ? &*modules_ : nullptr);
 
     invalidate();
 }
 
 void BarApp::applyTheme() {
-    theme_ = theme::loadThemeState(config_, palette_);
-    statusBar_.setTheme(theme_);
-    notifications_.setTheme(theme_);
-}
-
-void BarApp::refreshSolarTimes() {
-    if (palette_.location != "auto") {
-        palette_.clearSolarTimes();
-        return;
-    }
-    const auto& fix = geoClue_.fix();
-    if (!fix) {
-        palette_.clearSolarTimes();
-        return;
-    }
-    const auto times =
-        solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
-    if (!times) {
-        palette_.clearSolarTimes();  // polar day/night: fixed hours carry the mode
-        return;
-    }
-    palette_.setSolarTimes(times->sunriseMin, times->sunsetMin);
+    themeRuntime_.applyTheme(config_);
 }
 
 void BarApp::syncOverlay() {
-    const int overlay = statusBar_.overlayHeight();
-    const int want = overlay > 0 ? overlay : reservedFor(geom_);
-    if (want == overlayHeight_) { return; }
-    overlayHeight_ = want;
-    loop_.post([this, want] { display_.setOverlayHeight(want); });
+    surfaceController_.syncOverlay(statusBar_.overlayHeight());
 }
 
 void BarApp::syncKeyboard() {
-    // Grab keyboard focus (layer-shell EXCLUSIVE) only while a popover that needs
-    // typed input is open — the launcher search box — and release it otherwise so
-    // the bar never steals keys from the focused application. Called from the
-    // input handlers (not draw), so a direct commit is safe here.
-    const bool want = statusBar_.wantsKeyboard();
-    if (want == kbActive_) { return; }
-    kbActive_ = want;
-    display_.setKeyboardInteractive(want);
+    surfaceController_.syncKeyboard(statusBar_.wantsKeyboard());
 }
 
 // -----------------------------------------------------------------------------

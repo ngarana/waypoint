@@ -1,5 +1,6 @@
 // Shell.cpp - Root UI compositor implementation
 #include "ui/Shell.hpp"
+#include "ui/ShellInputRouter.hpp"
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -103,54 +104,34 @@ bool Shell::isAnimating() const {
 
 void Shell::onTextInput(const std::string& utf8) {
     wakeFromIdle();
-    lockScreen_.handleTextInput(utf8);
+    ShellInputRouter::routeTextInput(lockScreen_, utf8);
 }
 
 void Shell::onSpecialKey(uint32_t keysym, uint32_t modifiers) {
     wakeFromIdle();
-
-    // Tab cycles keyboard focus through status bar indicators.
-    if (keysym == XKB_KEY_Tab || keysym == XKB_KEY_ISO_Left_Tab) {
-        const bool reverse = keysym == XKB_KEY_ISO_Left_Tab || (modifiers & MOD_SHIFT);
-        if (!statusBar_.cycleFocus(reverse)) statusBar_.clearFocus();
-        return;
-    }
-
-    // Escape/Enter/arrows for an open popover or a focused indicator.
-    if (statusBar_.handleKey(keysym)) return;
-
-    lockScreen_.handleSpecialKey(keysym, modifiers);
+    ShellInputRouter::routeSpecialKey(statusBar_, lockScreen_, keysym, modifiers);
 }
 
 void Shell::onPointerMotion(int w, int h, double x, double y) {
     wakeFromIdle();
-    // Both children track hover; neither consumes motion exclusively.
-    statusBar_.handlePointerMotion(x, y, nowMs());
-    lockScreen_.handlePointerMotion(w, h, x, y);
+    ShellInputRouter::routePointerMotion(statusBar_, lockScreen_, w, h, x, y, nowMs());
 }
 
 void Shell::onPointerButton(int w, int h, double x, double y, uint32_t button, bool pressed) {
     wakeFromIdle();
-    // Priority (STATUS_BAR.md event routing): a lockscreen modal (power
-    // dialog) consumes everything; otherwise the status bar gets first claim.
-    if (!lockScreen_.modalActive() &&
-        statusBar_.handlePointerButton(x, y, button, pressed, nowMs())) {
-        return;
-    }
-    lockScreen_.handlePointerButton(w, h, x, y, button, pressed);
+    ShellInputRouter::routePointerButton(statusBar_, lockScreen_, w, h, x, y, button, pressed,
+                                         nowMs());
 }
 
 void Shell::onPointerScroll(int w, int h, double x, double y, double dx, double dy) {
     (void)w;
     (void)h;
     wakeFromIdle();
-    // Only the status bar scrolls (volume/brightness adjust, popover lists).
-    statusBar_.handleScroll(x, y, dx, dy);
+    ShellInputRouter::routePointerScroll(statusBar_, x, y, dx, dy);
 }
 
 void Shell::onPointerLeave() {
-    statusBar_.handlePointerLeave(nowMs());
-    lockScreen_.handlePointerLeave();
+    ShellInputRouter::routePointerLeave(statusBar_, lockScreen_, nowMs());
 }
 
 void Shell::wakeFromIdle() {

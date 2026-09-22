@@ -60,4 +60,12 @@ public:
     virtual void requestUnlock() = 0;  // authentication succeeded
 };
 
+// Host interface for layer-shell surface sizing and keyboard interactivity.
+class IBarSurfaceHost {
+public:
+    virtual ~IBarSurfaceHost() = default;
+    virtual void setOverlayHeight(int logicalH) = 0;
+    virtual void setKeyboardInteractive(bool on) = 0;
+};
+
 }  // namespace qypr
