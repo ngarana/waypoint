@@ -92,11 +92,11 @@ shared aggregate contains those pointers.
 
 | Priority | Module | Status | Main remaining problem | Next seam |
 |---|---|---|---|---|
-| P0 | StatusBar | Open | 995-line host owns indicator hosting, layout, input, overlays, focus, and tooltips | `IndicatorHost`, `StatusBarLayout`, `StatusBarInput`, `TooltipController` |
-| P0 | Quick settings | Partial | Stable roles, but construction, layout, rendering, and input are still interleaved | `QSTileFactory`, `QuickSettingsLayout`, `QuickSettingsInput`, `TileRenderer` |
-| P0 | StatusIndicator | Partial | Capability interfaces exist; the `SystemBackends` bag and its factories do not use them | capability bundles, bundle-based registry factories |
+| P0 | StatusBar | Done | Extracted host, layout, input, tooltip controller, and popover manager | — (complete) |
+| P0 | Quick settings | Done | Role lookup, tile factory, layout, input, and renderer extracted | — (complete) |
+| P0 | StatusIndicator | Done | Capability bundles and bundle-based factories on both hosts | — (complete) |
 | P1 | Theme (residual) | Done | Palette source/readers extracted from `Theme.cpp`; widget-level cascade test added | — (complete) |
-| P1 | BarApp / App / Shell | Open | Composition roots also own startup, reload, backend lifecycle, input, and policy | `BarRuntime`, `LockRuntime`, `ConfigRuntime`, `BackendLifecycle` |
+| P1 | BarApp / App / Shell | Done | Runtime controllers extracted (`BarRuntime`, `LockRuntime`, `ConfigRuntime`, etc.) | — (complete) |
 | P1 | LockScreen | Open | Authentication, reveal state, idle timers, power actions, layout, and drawing are coupled | `LockController`, `LockLayout`, `PowerMenuController` |
 | P1 | WifiBackend | Open | D-Bus chains, discovery, state reduction, and connect operations share one class | `NetworkManagerClient`, `WifiSnapshotReducer`, `WifiOperations` |
 | P1 | BluetoothBackend | Open | BlueZ parsing, discovery, pairing, and operation state share one class | `BluezClient`, `BluetoothSnapshotReducer`, `BluetoothOperations` |
@@ -105,7 +105,7 @@ shared aggregate contains those pointers.
 | P2 | Wayland display stack | Open | Bar and lock hosts duplicate connection/registry concerns while owning surface policy | shared connection/registry layer, separate surface hosts |
 | P2 | StateCache | Open | Serialization, persistence, debouncing, and backend sampling share one class | `StateCacheCodec`, `StateCacheStore`, coordinator |
 
-## P0: decompose `StatusBar` (Open)
+## P0: decompose `StatusBar` (Done)
 
 [`StatusBar.cpp`](../qypr/src/ui/statusbar/StatusBar.cpp#L42) is 995 lines (plus
 a 235-line header) and is still both a view and the interaction/application
@@ -160,7 +160,7 @@ geometry without knowing how indicators are implemented.
   `PopoverGrowsAwayFromBarEdge`, `PopoverManagerLifecycle`.
 - New layout and hit-test unit tests cover multiple widths and both bar edges.
 
-## P0: decompose quick settings and tiles (Partial)
+## P0: decompose quick settings and tiles (Done)
 
 What landed: `QSTile::Role` and role-based dedupe/replacement. What remains:
 [`QuickSettingsPanel.cpp`](../qypr/src/ui/statusbar/QuickSettingsPanel.cpp#L79)
@@ -199,7 +199,7 @@ and should not look tiles up by title (open). A tile should be created once,
 identified by a stable role, and owned by either the bar module host or the
 quick-settings model.
 
-## P0: split `StatusIndicator` capabilities (Partial)
+## P0: split `StatusIndicator` capabilities (Done)
 
 What landed:
 [`IndicatorCapabilities.hpp`](../qypr/src/ui/statusbar/IndicatorCapabilities.hpp#L25)
@@ -258,7 +258,7 @@ The original target — value model, injection, no globals — has landed
 Each new theme field belongs to `State` only. Do not reintroduce a
 compatibility shim.
 
-## P1: separate application composition from runtime policy (Open)
+## P1: separate application composition from runtime policy (Done)
 
 [`BarApp.hpp`](../qypr/src/core/BarApp.hpp#L49) (461+195 lines) owns nearly
 every bar backend, two bus connections, theme state and palette watchers, the
@@ -486,13 +486,13 @@ Avoid extracting code merely to reduce line count in these areas:
    `MatugenTokens`, and add the widget-level theme-propagation test~~ — done
    (`PaletteSource`/`PaletteReader`; `ThemePropagatesToStatusBarChildren`,
    `PaletteReaderParsesMatugenFormats`).
-5. Extract `IndicatorHost`, `StatusBarLayout`, `StatusBarInput`, and
-   `TooltipController`; extend `PopoverManager` with anchoring and dismissal.
-6. Split the quick-settings factory/model/layout/input/renderer and replace
-   `findTileBounds(title)` with a role-based lookup.
-7. Replace `SystemBackends` with capability bundles and bundle-based factories
-   on both hosts.
-8. Move bar and lock startup/reload/theme logic into runtime controllers.
+5. ~~Extract `IndicatorHost`, `StatusBarLayout`, `StatusBarInput`, and
+   `TooltipController`; extend `PopoverManager` with anchoring and dismissal~~ — done.
+6. ~~Split the quick-settings factory/model/layout/input/renderer and replace
+   `findTileBounds(title)` with a role-based lookup~~ — done.
+7. ~~Replace `SystemBackends` with capability bundles and bundle-based factories
+   on both hosts~~ — done.
+8. ~~Move bar and lock startup/reload/theme logic into runtime controllers~~ — done.
 9. Split `LockScreen` state/input/layout/rendering while preserving lock policy.
 10. Decompose Wi-Fi, Bluetooth, and notification protocol adapters.
 11. Separate SNI protocol state from tray presentation.
@@ -512,7 +512,7 @@ Every extraction should add or preserve tests at the lowest practical level:
 - lock policy: tests proving unsafe capabilities are unavailable, not merely
   invisible
 - rendering: existing qypr preview/golden tests
-- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 127
+- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 135
   tests), `ctest --test-dir waylaunch/build`, `ctest --test-dir common/build`,
   `./scripts/check-invariants.sh` (I4, Q5, B1), and
   `./scripts/check-doc-paths.sh`.
