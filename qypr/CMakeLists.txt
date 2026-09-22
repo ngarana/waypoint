@@ -156,6 +156,9 @@ set(QYPR_SHARED_SOURCES
     src/system/SessionMapper.cpp
     src/system/SNIBackend.cpp
     src/system/StateCache.cpp
+    src/system/StateCacheCodec.cpp
+    src/system/StateCacheCoordinator.cpp
+    src/system/StateCacheStore.cpp
     src/system/SystemBus.cpp
     src/system/SystemStats.cpp
     src/system/ToplevelBackend.cpp
