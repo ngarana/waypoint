@@ -7,7 +7,7 @@ return to, and the launcher that takes you places.
 |---|---|---|
 | `qypr/` | bar, lock screen, notification recorder (`lockscreen` repo) | `qypr-bar`, `qypr-lock`, `qypr-record` |
 | `waylaunch/` | spotlight launcher, Alt+Tab switcher, power overlay, dropdown host, content indexer | `waylaunch`, `waylaunchd`, `waylaunchctl` |
-| `common/` | shared core: protocols, `core/` (EventLoop, Spawn, Types, DesktopIndex), `render/` (Painter, BackdropBlur, IconResolver), `wayland/` (ShmBuffer), `system/`, `toplevel/` seam | libraries only (plus its own unit tests) |
+| `common/` | shared core: protocols, `core/` (EventLoop, Process, Types, DesktopIndex), `render/` (Painter, BackdropBlur, IconResolver), `wayland/` (ShmBuffer), `system/`, `toplevel/` seam | libraries only (plus its own unit tests) |
 
 Runtime integration is by exec boundary, never by linking: the bar spawns
 `waylaunch --power` / `waylaunch` / `waylaunch --switch`; the switcher stays
@@ -27,10 +27,10 @@ cmake -S common -B common/build -G Ninja && cmake --build common/build --paralle
 ## Test
 
 ```sh
-./qypr/build/qypr-test            # 123 unit tests (incl. I1–I4 lock invariants)
-ctest --test-dir waylaunch/build  # 27 suites
-ctest --test-dir common/build     # shared units
-./scripts/check-invariants.sh     # I4 + Q5 structural gates (see below)
+ctest --test-dir qypr/build       # 125 unit tests (incl. I1–I4 lock invariants)
+ctest --test-dir waylaunch/build  # 28 suites
+ctest --test-dir common/build     # 8 shared suites
+./scripts/check-invariants.sh     # I4 + Q5 + B1 structural gates (see below)
 ```
 
 ## Structural gates

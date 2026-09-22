@@ -1173,8 +1173,7 @@ panel skeleton. Pure UI, no system backends yet.
 | `src/ui/statusbar/QSTile.cpp` | Tile draw logic (toggle + slider) |
 | `src/ui/statusbar/QuickSettingsPanel.hpp` | Aggregated tile panel |
 | `src/ui/statusbar/QuickSettingsPanel.cpp` | Grid layout, tile management |
-| `src/ui/statusbar/DetailedPopover.hpp` | Generic popover base |
-| `src/ui/statusbar/DetailedPopover.cpp` | Popover draw, anchor, dismiss |
+| `src/ui/statusbar/DetailedPopover.hpp` | Generic popover base (header-only interface) |
 | `src/ui/statusbar/PopoverManager.hpp` | Manages one-at-a-time popover lifecycle |
 | `src/ui/statusbar/PopoverManager.cpp` | Implementation |
 | `src/ui/statusbar/IndicatorRegistry.hpp` | Plugin registration system |
@@ -1697,8 +1696,7 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 | `src/ui/statusbar/QSTile.cpp` | Tile rendering logic |
 | `src/ui/statusbar/QuickSettingsPanel.hpp` | Aggregated tile panel |
 | `src/ui/statusbar/QuickSettingsPanel.cpp` | Grid layout + glass background |
-| `src/ui/statusbar/DetailedPopover.hpp` | Generic popover base |
-| `src/ui/statusbar/DetailedPopover.cpp` | Popover draw/anchor/dismiss |
+| `src/ui/statusbar/DetailedPopover.hpp` | Generic popover base (header-only interface) |
 | `src/ui/statusbar/PopoverManager.hpp` | One-at-a-time popover lifecycle |
 | `src/ui/statusbar/PopoverManager.cpp` | Implementation |
 | `src/ui/statusbar/IndicatorRegistry.hpp` | Plugin registration system |
@@ -1727,7 +1725,7 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 | `examples/bar.conf` | Documented example config (installed to `share/qypr/examples`) |
 | `src/wayland/BarDisplay.hpp/.cpp` | wlr-layer-shell connection/binder (sibling of `WaylandDisplay`) |
 | `src/wayland/BarWindow.hpp/.cpp` | Per-output layer surface + render loop + overlay grow (sibling of `Output`) |
-| `protocols/wlr-layer-shell-unstable-v1.xml` | Vendored layer-shell protocol |
+| `common/protocols/wlr-layer-shell-unstable-v1.xml` | Vendored layer-shell protocol (shared) |
 
 ### Modified Files
 
@@ -1738,7 +1736,7 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 | `src/ui/Theme.hpp` | Add `theme::statusbar::` namespace constants |
 | `src/core/App.hpp` | Replace `LockScreen` member with `Shell` |
 | `src/core/App.cpp` | Wire backends and Wayland listeners to `Shell` |
-| `src/core/EventLoop.hpp` | Backend tick slots |
+| `common/core/EventLoop.hpp` | Backend tick slots (shared reactor) |
 | `src/ui/statusbar/StatusBar.hpp/.cpp` | `hasOpenOverlay()`, `setBackdrop()`; wire workspace/toplevel backends |
 | `src/wayland/Seat.hpp/.cpp` | Decouple from `Output`: `setSurfaceSizer` (serves both hosts) |
 | `src/wayland/WaylandDisplay.cpp` | Use the new `setSurfaceSizer` resolver |

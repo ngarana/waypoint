@@ -1,0 +1,14 @@
+# Suppressions for scripts/check-doc-paths.sh (one substring per line).
+# Only intentional history goes here: removed-file logs, fixed bug tables,
+# and file-format member paths (OOXML members inside .zip/.docx, not repo
+# files). Live references must resolve — fix the doc instead.
+
+# DESIGN.md §2: inventory of files removed from the source tree on purpose.
+src/ui/sidebar.cpp
+src/search/finder_search.cpp
+src/core/keyboard_shortcuts.cpp
+modes/file_search.cpp
+modes/content_search.cpp
+# CONTENT_SEARCH.md: OOXML member paths inside office zip archives.
+word/document.xml
+xl/sharedStrings.xml

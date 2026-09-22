@@ -38,7 +38,7 @@ cmake -S qypr -B qypr/build -G Ninja && cmake --build qypr/build --parallel
 cmake -S waylaunch -B waylaunch/build -G Ninja -DBUILD_TESTING=ON && cmake --build waylaunch/build --parallel
 cmake -S common -B common/build -G Ninja && cmake --build common/build --parallel
 
-ctest --test-dir qypr/build --output-on-failure      # 123 unit tests (incl. I1–I4 lock invariants)
+ctest --test-dir qypr/build --output-on-failure      # 125 unit tests (incl. I1–I4 lock invariants)
 ctest --test-dir waylaunch/build --output-on-failure   # 26 suites
 ctest --test-dir common/build --output-on-failure      # blur_test, icon_test, desktop_test
 ./scripts/check-invariants.sh                   # I4 + Q5 + B1 structural gates (needs built trees)
@@ -71,6 +71,7 @@ Never declare work done with a red gate.
 | Structural I4 | `qypr-lock` links no `waylaunch/` content — enforced by `scripts/check-invariants.sh` |
 | Structural Q5 | `waylaunch` links no `qypr/` bar sources — enforced by `scripts/check-invariants.sh` |
 | Structural B1 | `qypr-bar` links no lock-only stack (mpv/PAM) — enforced by `scripts/check-invariants.sh` |
+| Doc paths | no dangling source references in tracked docs — enforced by `scripts/check-doc-paths.sh` (intentional history in `scripts/doc-paths-allow.txt`) |
 | Tests | all three suites above, green, with asserts live (see §3.1) |
 
 Rules:
