@@ -119,6 +119,6 @@ bool TaskbarIndicator::onMiddleClick(double x, double y) {
     return true;
 }
 
-REGISTER_INDICATOR("taskbar", Zone::Left, 100, TaskbarIndicator)
+REGISTER_SESSION_INDICATOR("taskbar", Zone::Left, 100, TaskbarIndicator)
 
 }  // namespace qypr

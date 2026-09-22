@@ -196,6 +196,6 @@ bool WorkspacesIndicator::animating(int64_t now) const {
     return expandProgress_.active(now);
 }
 
-REGISTER_INDICATOR("workspaces", Zone::Left, -100, WorkspacesIndicator)
+REGISTER_SESSION_INDICATOR("workspaces", Zone::Left, -100, WorkspacesIndicator)
 
 }  // namespace qypr

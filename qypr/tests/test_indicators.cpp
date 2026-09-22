@@ -958,6 +958,72 @@ TEST(SessionAppletsAbsentWithoutTheirBackends) {
     EXPECT_TRUE(power.sensitive());
     EXPECT_TRUE(notes.sensitive());
 }
+
+TEST(LockRuntimeLacksSessionBundleAndSessionIndicators) {
+    // In the lock runtime, session backends are completely absent (hasSession = false).
+    // The registry must not construct session-capable indicators (launcher, power,
+    // workspaces, active-window, taskbar, pager, sni, keyboard-layout) at all,
+    // proving unsafe capabilities are unavailable in the lock runtime, not merely invisible.
+    qypr::SystemBackends lockBackends{};
+    lockBackends.hasSession = false;
+    lockBackends.sync();
+
+    // Verify bundle pointers in lock runtime:
+    EXPECT_FALSE(lockBackends.hasSession);
+    EXPECT_TRUE(lockBackends.session.workspace == nullptr);
+    EXPECT_TRUE(lockBackends.session.toplevel == nullptr);
+    EXPECT_TRUE(lockBackends.session.power == nullptr);
+    EXPECT_TRUE(lockBackends.session.desktopIndex == nullptr);
+    EXPECT_TRUE(lockBackends.session.sni == nullptr);
+    EXPECT_TRUE(lockBackends.session.dbusMenu == nullptr);
+    EXPECT_TRUE(lockBackends.session.loop == nullptr);
+
+    // IndicatorRegistry::createAll with lockBackends:
+    auto allLock = qypr::IndicatorRegistry::instance().createAll(lockBackends);
+    for (const auto& ind : allLock) {
+        EXPECT_TRUE(ind->id() != "launcher");
+        EXPECT_TRUE(ind->id() != "workspaces");
+        EXPECT_TRUE(ind->id() != "active-window");
+        EXPECT_TRUE(ind->id() != "taskbar");
+        EXPECT_TRUE(ind->id() != "pager");
+        EXPECT_TRUE(ind->id() != "power");
+        EXPECT_TRUE(ind->id() != "sni");
+        EXPECT_TRUE(ind->id() != "keyboard-layout");
+    }
+
+    struct TestSessionIndicator : public qypr::StatusIndicator {
+        explicit TestSessionIndicator(const qypr::SystemBackends& b)
+            : qypr::StatusIndicator("test-session-applet", qypr::Zone::Left, 10) {
+            (void)b;
+        }
+        std::string icon() const override { return ""; }
+        std::string tooltip() const override { return ""; }
+    };
+
+    // Register a Session-bundled indicator to verify gating:
+    qypr::IndicatorRegistry::instance().registerSessionIndicator(
+        "test-session-applet", qypr::Zone::Left, 10,
+        [](const qypr::SystemBackends& b) { return std::make_unique<TestSessionIndicator>(b); });
+
+    // Lock runtime must reject it:
+    auto lockItems = qypr::IndicatorRegistry::instance().createAll(lockBackends);
+    for (const auto& ind : lockItems) { EXPECT_TRUE(ind->id() != "test-session-applet"); }
+
+    // Unlocked bar runtime with hasSession = true must allow it:
+    qypr::SystemBackends barBackends{};
+    barBackends.hasSession = true;
+    barBackends.sync();
+    auto allBar = qypr::IndicatorRegistry::instance().createAll(barBackends);
+    bool hasSessionApplet = false;
+    for (const auto& ind : allBar) {
+        if (ind->id() == "test-session-applet") {
+            hasSessionApplet = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasSessionApplet);
+}
+
 TEST(SessionAppletsAppearWithBackends) {
     qypr::EventLoop loop;
     qypr::SystemActions pm(loop);         // TESTING: actions are no-ops

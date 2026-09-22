@@ -342,6 +342,6 @@ bool PagerIndicator::animating(int64_t now) const {
     return expandProgress_.active(now);
 }
 
-REGISTER_INDICATOR("pager", Zone::Left, -100, PagerIndicator)
+REGISTER_SESSION_INDICATOR("pager", Zone::Left, -100, PagerIndicator)
 
 }  // namespace qypr

@@ -54,6 +54,6 @@ void LauncherIndicator::launch() {
     launchDetached(*loop_, cmd, /*terminal=*/false);
 }
 
-REGISTER_INDICATOR("launcher", Zone::Left, 5, LauncherIndicator)
+REGISTER_SESSION_INDICATOR("launcher", Zone::Left, 5, LauncherIndicator)
 
 }  // namespace qypr

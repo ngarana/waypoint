@@ -38,6 +38,6 @@ std::unique_ptr<DetailedPopover> PowerMenuIndicator::createDetailedView() {
     return nullptr;
 }
 
-REGISTER_INDICATOR("power", Zone::Right, 700, PowerMenuIndicator)
+REGISTER_SESSION_INDICATOR("power", Zone::Right, 700, PowerMenuIndicator)
 
 }  // namespace qypr

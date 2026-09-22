@@ -50,6 +50,6 @@ void ActiveWindowIndicator::onBackendUpdate() {
     visible = snap_.available && snap_.hasActive && !(snap_.title.empty() && snap_.appId.empty());
 }
 
-REGISTER_INDICATOR("active-window", Zone::Center, 0, ActiveWindowIndicator)
+REGISTER_SESSION_INDICATOR("active-window", Zone::Center, 0, ActiveWindowIndicator)
 
 }  // namespace qypr

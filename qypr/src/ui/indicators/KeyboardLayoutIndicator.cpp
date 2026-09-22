@@ -42,6 +42,6 @@ void KeyboardLayoutIndicator::onBackendUpdate() {
     visible = backend_ && backend_->available() && backend_->count() > 1;
 }
 
-REGISTER_INDICATOR("keyboard-layout", Zone::Right, 175, KeyboardLayoutIndicator)
+REGISTER_SESSION_INDICATOR("keyboard-layout", Zone::Right, 175, KeyboardLayoutIndicator)
 
 }  // namespace qypr

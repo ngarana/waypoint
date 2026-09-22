@@ -402,6 +402,6 @@ std::unique_ptr<DetailedPopover> SNITrayHost::createDetailedView() {
                                          it.title);
 }
 
-REGISTER_INDICATOR("sni", Zone::Right, 600, SNITrayHost)
+REGISTER_SESSION_INDICATOR("sni", Zone::Right, 600, SNITrayHost)
 
 }  // namespace qypr

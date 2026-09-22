@@ -26,8 +26,30 @@ public:
         std::vector<std::string> left, center, right;
     };
 
-    // Register an indicator factory.
-    void registerIndicator(const std::string& id, Zone zone, int priority, Factory factory);
+    enum class BundleKind { General, Connectivity, Media, Session, Notification, SafeLock };
+
+    // Register an indicator factory with its required capability bundle.
+    void registerIndicator(const std::string& id, Zone zone, int priority, Factory factory,
+                           BundleKind bundle = BundleKind::General);
+
+    void registerSessionIndicator(const std::string& id, Zone zone, int priority, Factory factory) {
+        registerIndicator(id, zone, priority, std::move(factory), BundleKind::Session);
+    }
+    void registerConnectivityIndicator(const std::string& id, Zone zone, int priority,
+                                       Factory factory) {
+        registerIndicator(id, zone, priority, std::move(factory), BundleKind::Connectivity);
+    }
+    void registerMediaIndicator(const std::string& id, Zone zone, int priority, Factory factory) {
+        registerIndicator(id, zone, priority, std::move(factory), BundleKind::Media);
+    }
+    void registerNotificationIndicator(const std::string& id, Zone zone, int priority,
+                                       Factory factory) {
+        registerIndicator(id, zone, priority, std::move(factory), BundleKind::Notification);
+    }
+    void registerSafeLockIndicator(const std::string& id, Zone zone, int priority,
+                                   Factory factory) {
+        registerIndicator(id, zone, priority, std::move(factory), BundleKind::SafeLock);
+    }
 
     // Construct indicators. With `sel == nullptr` (no config): every registered
     // indicator, grouped by its compiled zone and ordered by priority. With a
@@ -50,6 +72,7 @@ private:
         std::string id;
         Zone zone;
         int priority;
+        BundleKind bundle;
         Factory factory;
     };
     std::vector<Entry> entries_;
@@ -61,10 +84,13 @@ private:
 // a failed registration (e.g. OOM building the id string) from aborting
 // startup: the module is simply dropped.
 template <typename Type>
-inline bool registerIndicatorNow(const char* id, Zone zone, int priority) noexcept {
+inline bool registerIndicatorNow(
+    const char* id, Zone zone, int priority,
+    IndicatorRegistry::BundleKind bundle = IndicatorRegistry::BundleKind::General) noexcept {
     try {
         IndicatorRegistry::instance().registerIndicator(
-            id, zone, priority, [](const SystemBackends& b) { return std::make_unique<Type>(b); });
+            id, zone, priority, [](const SystemBackends& b) { return std::make_unique<Type>(b); },
+            bundle);
         return true;
     } catch (...) { return false; }
 }
@@ -72,5 +98,9 @@ inline bool registerIndicatorNow(const char* id, Zone zone, int priority) noexce
 // Macro to self-register an indicator at static-init time.
 #define REGISTER_INDICATOR(id, zone, priority, Type)                                               \
     static const bool _reg_##Type = registerIndicatorNow<Type>(id, zone, priority);
+
+#define REGISTER_SESSION_INDICATOR(id, zone, priority, Type)                                       \
+    static const bool _reg_##Type =                                                                \
+        registerIndicatorNow<Type>(id, zone, priority, IndicatorRegistry::BundleKind::Session);
 
 }  // namespace qypr

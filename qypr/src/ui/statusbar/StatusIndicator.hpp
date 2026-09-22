@@ -6,6 +6,7 @@
 #include "ui/statusbar/QSTile.hpp"
 #include "ui/statusbar/DetailedPopover.hpp"
 #include "ui/statusbar/IndicatorCapabilities.hpp"
+#include "ui/statusbar/ServiceBundles.hpp"
 #include <string>
 #include <memory>
 
@@ -18,71 +19,79 @@ namespace qypr {
 
 enum class Zone { Left, Center, Right };
 
-// Forward declarations of all backends
-class BatteryBackend;
-class VolumeBackend;
-class BrightnessBackend;
-class WifiBackend;
-class BluetoothBackend;
-class SNIBackend;
-class DbusMenuBackend;
-class WorkspaceBackend;
-class ToplevelBackend;
-class DndState;
-class DndState;
-class NightLightBackend;
-class Config;
-class SystemActions;
-class PowerProfilesBackend;
-class NotificationMonitor;
-class NotificationActions;
-class MprisController;
-class IdleInhibitor;
-class DesktopIndex;
-class KeyboardLayout;
-class EventLoop;
-
 struct SystemBackends {
+    // Capability bundles
+    ConnectivityServices connectivity;
+    MediaServices media;
+    SessionServices session;
+    NotificationServices notificationServices;
+    SafeLockServices safeLock;
+
+    // Has-bundle flags: lock host explicitly sets hasSession = false
+    bool hasSession = true;
+
+    // Direct pointers for backwards compatibility
     BatteryBackend* battery = nullptr;
     VolumeBackend* volume = nullptr;
     BrightnessBackend* brightness = nullptr;
     WifiBackend* wifi = nullptr;
     BluetoothBackend* bluetooth = nullptr;
     SNIBackend* sni = nullptr;
-    // Tray item context menus (com.canonical.dbusmenu). Supplied only by the
-    // unlocked qypr-bar: the lock screen leaves this null so a locked machine
-    // cannot open an app's menu (e.g. nm-applet's connection editor).
     DbusMenuBackend* dbusMenu = nullptr;
-    WorkspaceBackend* workspace = nullptr;  // ext-workspace-v1 (session-sensitive)
-    ToplevelBackend* toplevel = nullptr;    // active window (session-sensitive)
+    WorkspaceBackend* workspace = nullptr;
+    ToplevelBackend* toplevel = nullptr;
     DndState* dnd = nullptr;
     NightLightBackend* nightLight = nullptr;
-    // Session surface (Phase 10): supplied only by the unlocked qypr-bar. The
-    // lock screen leaves these null — it has its own in-lockscreen power dialog
-    // and notification stack, and must never offer a shutdown button or reveal
-    // notification contents from the bar.
     SystemActions* power = nullptr;
-    PowerProfilesBackend* powerProfiles = nullptr;  // net.hadess.PowerProfiles
-    IdleInhibitor* idleInhibitor = nullptr;         // zwp_idle_inhibit ("keep awake")
+    PowerProfilesBackend* powerProfiles = nullptr;
+    IdleInhibitor* idleInhibitor = nullptr;
     DesktopIndex* desktopIndex = nullptr;
     KeyboardLayout* keyboardLayout = nullptr;
-    // Reactor for pidfd child-reaping (I3): supplied only by the unlocked
-    // qypr-bar. App/notification launches use spawnReaped() through it instead
-    // of fork()+double-fork, which is unsound in multithreaded processes.
-    // The lock screen leaves it null — it launches nothing from the bar.
     EventLoop* loop = nullptr;
     NotificationMonitor* notifications = nullptr;
-    NotificationActions* notificationActions = nullptr;  // dismiss/clear
+    NotificationActions* notificationActions = nullptr;
     MprisController* mpris = nullptr;
-    // User config, or nullptr when the host has none (qypr-lock). Indicators
-    // read their own `[<id>]` section; every key must have a compiled default so
-    // a null config is always valid.
     const Config* config = nullptr;
-    // True only on the unlocked qypr-bar. Distinct from the individual session
-    // backends above: it gates session-revealing *detail* that lives inside an
-    // otherwise-safe applet — e.g. the audio panel's per-app stream list (app
-    // names disclose what you are running) while keeping device switching.
     bool sessionSurface = false;
+
+    void sync() {
+        if (!hasSession) {
+            session = {};
+            workspace = nullptr;
+            toplevel = nullptr;
+            keyboardLayout = nullptr;
+            desktopIndex = nullptr;
+            sni = nullptr;
+            dbusMenu = nullptr;
+            power = nullptr;
+            powerProfiles = nullptr;
+            loop = nullptr;
+        } else {
+            session.workspace = workspace;
+            session.toplevel = toplevel;
+            session.keyboardLayout = keyboardLayout;
+            session.desktopIndex = desktopIndex;
+            session.sni = sni;
+            session.dbusMenu = dbusMenu;
+            session.power = power;
+            session.powerProfiles = powerProfiles;
+            session.loop = loop;
+        }
+
+        connectivity.wifi = wifi;
+        connectivity.bluetooth = bluetooth;
+        media.volume = volume;
+        media.mpris = mpris;
+        notificationServices.notifications = notifications;
+        notificationServices.notificationActions = notificationActions;
+        notificationServices.dnd = dnd;
+        safeLock.battery = battery;
+        safeLock.brightness = brightness;
+        safeLock.nightLight = nightLight;
+        safeLock.idleInhibitor = idleInhibitor;
+        safeLock.config = config;
+        safeLock.sessionSurface = sessionSurface;
+    }
 };
 
 class StatusIndicator : public Widget,
