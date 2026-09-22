@@ -243,7 +243,8 @@ set(WL_COMMON_SOURCES
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     "${WL_COMMON_DIR}/core/Process.cpp"
     "${WL_COMMON_DIR}/core/SolarCalc.cpp"
-    "${WL_COMMON_DIR}/system/DesktopIndex.cpp")
+    "${WL_COMMON_DIR}/system/DesktopIndex.cpp"
+    "${WL_COMMON_DIR}/toplevel/ToplevelStates.cpp")
 # Render helpers: bar/lock/test only. qypr-record never draws (linking cairo
 # into it would drag the graphics stack into a daemon).
 set(WL_COMMON_RENDER_SOURCES

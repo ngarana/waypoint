@@ -175,6 +175,7 @@ set(SOURCES
     src/system/solar.cpp
     src/system/geoclue.cpp
     ${LIBWL_COMMON}/core/SolarCalc.cpp
+    ${LIBWL_COMMON}/toplevel/ToplevelStates.cpp
     src/switcher/wlr_toplevel_backend.cpp
     src/switcher/hyprland_focus.cpp
     src/switcher/app_switcher_manager.cpp
@@ -291,6 +292,7 @@ if(BUILD_TESTING)
         src/ui/renderer.cpp
         ${LIBWL_COMMON}/core/EventLoop.cpp
         ${LIBWL_COMMON}/core/Process.cpp
+        ${LIBWL_COMMON}/toplevel/ToplevelStates.cpp
         ${LIBWL_COMMON}/render/BackdropBlur.cpp
         ${LIBWL_COMMON}/render/IconResolver.cpp
         ${PROTOCOL_SOURCES}
