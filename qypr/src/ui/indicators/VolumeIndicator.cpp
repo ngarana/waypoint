@@ -261,7 +261,7 @@ std::unique_ptr<QSTile> VolumeIndicator::createTile() {
         [backend]() {
             if (backend) { backend->toggleMute(); }
         },
-        [snap]() { return snap->muted; }, "Volume");
+        [snap]() { return snap->muted; }, "Volume", QSTile::Role::Volume);
 }
 
 std::unique_ptr<DetailedPopover> VolumeIndicator::createDetailedView() {

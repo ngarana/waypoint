@@ -38,7 +38,8 @@ std::unique_ptr<QSTile> DNDIndicator::createTile() {
         [dnd]() {
             if (dnd) dnd->toggle();
         },
-        [dnd]() -> std::string { return dnd && dnd->enabled() ? "On" : "Off"; });
+        [dnd]() -> std::string { return dnd && dnd->enabled() ? "On" : "Off"; }, Color{0, 0, 0, 0},
+        QSTile::Role::Dnd);
 }
 
 REGISTER_INDICATOR("dnd", Zone::Right, 400, DNDIndicator)

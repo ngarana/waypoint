@@ -671,7 +671,8 @@ std::unique_ptr<QSTile> BluetoothIndicator::createTile() {
             if (snap->connectedCount == 0) { return "No devices"; }
             if (snap->connectedCount == 1) { return snap->firstDevice; }
             return std::to_string(snap->connectedCount) + " devices";
-        });
+        },
+        Color{0, 0, 0, 0}, QSTile::Role::Bluetooth);
 }
 
 std::unique_ptr<DetailedPopover> BluetoothIndicator::createDetailedView() {

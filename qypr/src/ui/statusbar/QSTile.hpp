@@ -22,6 +22,24 @@ public:
     virtual Type type() const = 0;
     virtual std::string title() const { return ""; }
 
+    // Stable identity for panel ownership (ARCHITECTURE_REVIEW finding 5):
+    // which functional slot a tile fills, independent of its user-visible
+    // title. The panel dedupes and replaces by role, so renaming a label
+    // can never duplicate a tile or remove the wrong one. Custom tiles
+    // (tests, one-off indicators) match no slot and are always kept.
+    enum class Role {
+        Custom,
+        Bluetooth,
+        Brightness,
+        Volume,
+        Dnd,
+        NightLight,
+        KeepAwake,
+        Screenshot,
+        Wifi
+    };
+    virtual Role role() const { return Role::Custom; }
+
     virtual void draw(Painter& p, int64_t now) = 0;
 
     virtual void onClick(double x, double y) {}
@@ -51,16 +69,18 @@ class QSToggleTile : public QSTile {
 public:
     QSToggleTile(const std::string& title, const std::string& icon, std::function<bool()> isActive,
                  std::function<void()> onToggle, std::function<std::string()> subtitle = nullptr,
-                 Color accent = {0, 0, 0, 0})
+                 Color accent = {0, 0, 0, 0}, Role role = Role::Custom)
         : title_(title),
           icon_(icon),
           isActive_(std::move(isActive)),
           onToggle_(std::move(onToggle)),
           subtitle_(std::move(subtitle)),
-          accent_(accent) {}
+          accent_(accent),
+          role_(role) {}
 
     Type type() const override { return Type::Toggle; }
     std::string title() const override { return title_; }
+    Role role() const override { return role_; }
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
     bool onScroll(double dx, double dy) override;
@@ -77,6 +97,7 @@ private:
     std::function<std::string()> subtitle_;
     Color accent_;
     std::function<bool(double, double)> onScroll_;
+    Role role_ = Role::Custom;
 };
 
 class QSSliderTile : public QSTile {
@@ -90,17 +111,20 @@ public:
                  std::function<void(double)> onValueChange,
                  std::function<std::string()> dynamicIcon = nullptr,
                  std::function<void()> onIconClick = nullptr,
-                 std::function<bool()> dimmed = nullptr, const std::string& title = "Q27G41ZDF")
+                 std::function<bool()> dimmed = nullptr, const std::string& title = "Q27G41ZDF",
+                 Role role = Role::Custom)
         : icon_(icon),
           getValue_(std::move(getValue)),
           onValueChange_(std::move(onValueChange)),
           dynamicIcon_(std::move(dynamicIcon)),
           onIconClick_(std::move(onIconClick)),
           dimmed_(std::move(dimmed)),
-          title_(title) {}
+          title_(title),
+          role_(role) {}
 
     Type type() const override { return Type::Slider; }
     std::string title() const override { return title_; }
+    Role role() const override { return role_; }
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
     void onDrag(double x, double y) override;
@@ -118,6 +142,7 @@ private:
     std::function<void()> onIconClick_;
     std::function<bool()> dimmed_;
     std::string title_;
+    Role role_ = Role::Custom;
 
     Rect sliderTrackBounds_;
     Rect iconBounds_;
@@ -217,6 +242,7 @@ public:
 
     Type type() const override { return Type::WifiCombo; }
     std::string title() const override { return "Wi-Fi"; }
+    Role role() const override { return Role::Wifi; }
     void draw(Painter& p, int64_t now) override;
     // Split hit zones: the right power strip toggles the radio, the body
     // opens the network picker.
@@ -258,6 +284,7 @@ public:
 
     Type type() const override { return Type::Volume; }
     std::string title() const override { return "Volume"; }
+    Role role() const override { return Role::Volume; }
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
     void onDrag(double x, double y) override;

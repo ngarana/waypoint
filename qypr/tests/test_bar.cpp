@@ -348,8 +348,10 @@ TEST(QuickSettingsPanelSecondaryRouting) {
     bool detailOpened = false;
     // Indicator tiles are added before buildTiles (the StatusBar order), so
     // the panel keeps this one instead of creating its own placeholder.
-    auto bt =
-        std::make_unique<qypr::QSToggleTile>("Bluetooth", "󰂯", []() { return true; }, []() {});
+    // The role (not the title) is what reserves the Bluetooth slot.
+    auto bt = std::make_unique<qypr::QSToggleTile>(
+        "Bluetooth", "󰂯", []() { return true; }, []() {}, nullptr, qypr::Color{0, 0, 0, 0},
+        qypr::QSTile::Role::Bluetooth);
     bt->setOnSecondary([&detailOpened]() { detailOpened = true; });
     panel.addTile(std::move(bt));
     panel.buildTiles(loop, backends, [&pickerOpened]() { pickerOpened = true; });
@@ -377,6 +379,31 @@ TEST(QuickSettingsPanelSecondaryRouting) {
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 }
+// Tile identity is the stable role, never the display title: relabelled
+// indicator tiles still fill their slots, so the panel adds no placeholder
+// duplicates for them.
+TEST(QuickSettingsPanelRoleDedup) {
+    qypr::EventLoop loop;
+    qypr::SystemBackends const backends{};
+    qypr::QuickSettingsPanel panel;
+    panel.addTile(std::make_unique<qypr::QSToggleTile>(
+        "Wireless", "󰂯", []() { return true; }, []() {}, nullptr, qypr::Color{0, 0, 0, 0},
+        qypr::QSTile::Role::Bluetooth));
+    panel.addTile(std::make_unique<qypr::QSSliderTile>(
+        " ", []() { return 0.5; }, [](double) {}, nullptr, nullptr, nullptr, "Lumen",
+        qypr::QSTile::Role::Brightness));
+    panel.buildTiles(loop, backends, []() {});
+
+    int bt = 0;
+    int br = 0;
+    for (const auto& t : panel.tiles_) {
+        if (t->role() == qypr::QSTile::Role::Bluetooth) { ++bt; }
+        if (t->role() == qypr::QSTile::Role::Brightness) { ++br; }
+    }
+    EXPECT_EQ(bt, 1);
+    EXPECT_EQ(br, 1);
+}
+
 TEST(StatusBarRightClickOnQSTileOpensDetail) {
     qypr::EventLoop loop;
     struct DummyHost : qypr::RenderHost {

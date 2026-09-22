@@ -497,7 +497,8 @@ std::unique_ptr<QSTile> WifiIndicator::createTile() {
             if (!snap->enabled) { return "Off"; }
             if (!snap->connected) { return "Not connected"; }
             return snap->ssid;
-        });
+        },
+        Color{0, 0, 0, 0}, QSTile::Role::Wifi);
 }
 
 std::unique_ptr<DetailedPopover> WifiIndicator::createDetailedView() {

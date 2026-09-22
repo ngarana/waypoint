@@ -77,7 +77,8 @@ std::unique_ptr<QSTile> NightLightIndicator::createTile() {
             if (!backend || !backend->available()) return "Unavailable";
             if (!backend->enabled()) return "Off";
             return std::to_string(backend->temperature()) + " K";
-        });
+        },
+        Color{0, 0, 0, 0}, QSTile::Role::NightLight);
     tile->setOnScroll([backend](double dx, double dy) {
         if (!backend || !backend->available()) return false;
         const double delta = dy != 0.0 ? dy : dx;
