@@ -65,7 +65,7 @@ int App::run() {
     Config config;
     if (config.load()) { std::fprintf(stderr, "qypr-lock: config %s\n", config.path().c_str()); }
     palette_ = theme::AutoPalette::fromConfig(config, theme::localHourNow());
-    theme::loadTheme(config, palette_);
+    applyTheme(config);
 
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-lock: no Wayland display or no ext-session-lock support\n");
@@ -104,7 +104,7 @@ int App::run() {
     geoClue_.setOnChange([this, &config] {
         refreshSolarTimes();
         if (palette_.tick(theme::localHourNow())) {
-            theme::loadTheme(config, palette_);
+            applyTheme(config);
             invalidate();
         }
     });
@@ -114,7 +114,7 @@ int App::run() {
         loop_.addTimer(60'000, /*repeat=*/true, [this, &config] {
             refreshSolarTimes();
             if (palette_.tick(theme::localHourNow())) {
-                theme::loadTheme(config, palette_);
+                applyTheme(config);
                 invalidate();
             }
         });
@@ -237,6 +237,13 @@ int App::videoTest(int seconds) {
 
 void App::setIdleTimeout(int seconds) {
     if (seconds > 0) { shell_.setIdleTimeout(static_cast<int64_t>(seconds) * 1000); }
+}
+
+void App::applyTheme(const Config& config) {
+    theme_ = theme::loadThemeState(config, palette_);
+    shell_.setTheme(theme_);
+    audio_.setTheme(theme_);
+    notifications_.setTheme(theme_);
 }
 
 void App::refreshSolarTimes() {

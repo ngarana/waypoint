@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/Types.hpp"
+#include "ui/Theme.hpp"
 #include <cstdint>
 #include <string>
 #include <functional>
@@ -12,7 +13,7 @@ class Painter;
 class MprisController;
 class WifiBackend;
 
-class QSTile {
+class QSTile : public theme::ThemeAware {
 public:
     virtual ~QSTile() = default;
 

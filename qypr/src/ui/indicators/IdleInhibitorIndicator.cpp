@@ -37,7 +37,7 @@ std::string IdleInhibitorIndicator::tooltip() const {
 }
 
 Color IdleInhibitorIndicator::iconColor() const {
-    return (backend_ && backend_->active()) ? theme::color::primary : theme::color::textSubtle;
+    return (backend_ && backend_->active()) ? theme().colors.primary : theme().colors.textSubtle;
 }
 
 void IdleInhibitorIndicator::onBackendUpdate() {

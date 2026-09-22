@@ -10,23 +10,23 @@
 namespace qypr {
 
 namespace {
-TextStyle titleStyle() {
-    return TextStyle{.family = theme::font::family,
-                     .size = static_cast<double>(theme::notification::titleSize),
+TextStyle titleStyle(const theme::State& theme) {
+    return TextStyle{.family = theme.font.family,
+                     .size = static_cast<double>(theme.notification.titleSize),
                      .weight = PANGO_WEIGHT_BOLD,
-                     .color = theme::color::text};
+                     .color = theme.colors.text};
 }
-TextStyle bodyStyle() {
-    return TextStyle{.family = theme::font::family,
-                     .size = static_cast<double>(theme::notification::bodySize),
+TextStyle bodyStyle(const theme::State& theme) {
+    return TextStyle{.family = theme.font.family,
+                     .size = static_cast<double>(theme.notification.bodySize),
                      .weight = PANGO_WEIGHT_NORMAL,
-                     .color = theme::color::textSubtle};
+                     .color = theme.colors.textSubtle};
 }
-TextStyle iconStyle(double tile) {
-    return TextStyle{.family = theme::font::family,
+TextStyle iconStyle(const theme::State& theme, double tile) {
+    return TextStyle{.family = theme.font.family,
                      .size = tile * 0.5,
                      .weight = PANGO_WEIGHT_BOLD,
-                     .color = theme::color::text};
+                     .color = theme.colors.text};
 }
 
 // First printable character of `s`, uppercased — the tile fallback glyph.
@@ -54,7 +54,7 @@ void NotificationView::update(std::vector<Notification> notes) {
                    .hovered = false,
                    .closeHovered = false,
                    .expanded = false};
-            c.appear.animateTo(1.0, theme::anim::reveal, ease::inOutQuad);
+            c.appear.animateTo(1.0, theme().anim.reveal, ease::inOutQuad);
             next.push_back(std::move(c));
         }
     }
@@ -62,20 +62,21 @@ void NotificationView::update(std::vector<Notification> notes) {
     layout_.clear();
 }
 
-double NotificationView::cardHeight(const Card& c, Painter& p, double w, int64_t now) {
-    const double pad = theme::notification::padding;
-    const double icon = theme::notification::iconSize;
+double NotificationView::cardHeight(const theme::State& theme, const Card& c, Painter& p, double w,
+                                    int64_t now) {
+    const double pad = theme.notification.padding;
+    const double icon = theme.notification.iconSize;
     const double textW = w - (2 * pad) - icon - pad;
     std::string head = "New Notification";
     if (!c.note.sensitive) { head = c.note.title.empty() ? c.note.app : c.note.title; }
     const std::string body = c.note.sensitive ? "Contents hidden" : c.note.body;
 
     const double titleW = textW - 24;  // reserve space for close button
-    const double titleH = p.measureText(head, titleStyle(), titleW).h;
+    const double titleH = p.measureText(head, titleStyle(theme), titleW).h;
 
     const double collapsedTextH = titleH;
-    const double bodyH = p.measureText(body, bodyStyle(), textW).h;
-    const double expandedTextH = titleH + theme::spacing::small + bodyH;
+    const double bodyH = p.measureText(body, bodyStyle(theme), textW).h;
+    const double expandedTextH = titleH + theme.spacing.small + bodyH;
 
     const double progress = clamp01(c.expandProgress.value(now));
     const double textH = collapsedTextH + ((expandedTextH - collapsedTextH) * progress);
@@ -83,26 +84,27 @@ double NotificationView::cardHeight(const Card& c, Painter& p, double w, int64_t
     return (2 * pad) + std::max(icon, textH);
 }
 
-void NotificationView::drawCard(Card& c, Painter& p, int64_t now, const Rect& r) {
+void NotificationView::drawCard(const theme::State& theme, Card& c, Painter& p, int64_t now,
+                                const Rect& r) {
     const double a = clamp01(c.appear.value(now));
     if (a <= 0.01) { return; }
 
-    const double pad = theme::notification::padding;
-    const double icon = theme::notification::iconSize;
+    const double pad = theme.notification.padding;
+    const double icon = theme.notification.iconSize;
     const double textW = r.w - (2 * pad) - icon - pad;
     std::string head = "New Notification";
     if (!c.note.sensitive) { head = c.note.title.empty() ? c.note.app : c.note.title; }
     const std::string body = c.note.sensitive ? "Contents hidden" : c.note.body;
 
     auto paint = [&] {
-        const Color fill = c.hovered ? theme::color::glassHover : theme::color::glass;
-        const Color border = c.hovered ? theme::color::primary : theme::color::glassBorder;
-        p.fillRoundedRect(r, theme::notification::radius, fill);
-        p.strokeRoundedRect(r, theme::notification::radius, border, 1);
+        const Color fill = c.hovered ? theme.colors.glassHover : theme.colors.glass;
+        const Color border = c.hovered ? theme.colors.primary : theme.colors.glassBorder;
+        p.fillRoundedRect(r, theme.notification.radius, fill);
+        p.strokeRoundedRect(r, theme.notification.radius, border, 1);
 
         // App tile (coloured square with a glyph).
         const Rect tile{.x = r.x + pad, .y = r.y + pad, .w = icon, .h = icon};
-        p.fillRoundedRect(tile, theme::radius::medium, c.note.accent.withAlpha(0.9));
+        p.fillRoundedRect(tile, theme.radius.medium, c.note.accent.withAlpha(0.9));
         // Never reveal the real app icon for a sensitive notification — the
         // icon alone would disclose which app it came from. Otherwise try the
         // notification's own icon hint first, then fall back to the app name
@@ -118,25 +120,25 @@ void NotificationView::drawCard(Card& c, Painter& p, int64_t now, const Rect& r)
             p.drawSurface(iconSurf, iconDest);
         } else {
             const std::string glyph = tileGlyph(c.note.app);
-            const TextStyle is = iconStyle(icon);
+            const TextStyle is = iconStyle(theme, icon);
             const Size gs = p.measureText(glyph, is);
             p.drawText(tile.cx() - (gs.w / 2.0), tile.cy() - (gs.h / 2.0), glyph, is, HAlign::Left);
         }
 
         // Text block, vertically centred against the tile dynamically based on expandProgress.
         const double titleW = textW - 24;  // reserve space for close button
-        const Size ts = p.measureText(head, titleStyle(), titleW);
-        const Size bs = p.measureText(body, bodyStyle(), textW);
+        const Size ts = p.measureText(head, titleStyle(theme), titleW);
+        const Size bs = p.measureText(body, bodyStyle(theme), textW);
 
         const double progress = clamp01(c.expandProgress.value(now));
-        const double textH = ts.h + ((theme::spacing::small + bs.h) * progress);
+        const double textH = ts.h + ((theme.spacing.small + bs.h) * progress);
         const double ty = r.y + pad + std::max(0.0, (icon - textH) / 2.0);
         const double tx = r.x + pad + icon + pad;
 
-        p.drawText(tx, ty, head, titleStyle(), HAlign::Left, titleW);
+        p.drawText(tx, ty, head, titleStyle(theme), HAlign::Left, titleW);
         if (progress > 0.01) {
             p.pushGroup();
-            p.drawText(tx, ty + ts.h + theme::spacing::small, body, bodyStyle(), HAlign::Left,
+            p.drawText(tx, ty + ts.h + theme.spacing.small, body, bodyStyle(theme), HAlign::Left,
                        textW);
             p.popGroupWithAlpha(progress);
         }
@@ -145,14 +147,14 @@ void NotificationView::drawCard(Card& c, Painter& p, int64_t now, const Rect& r)
         if (c.hovered) {
             const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
             if (c.closeHovered) {
-                p.fillRoundedRect(closeRect, theme::radius::small,
-                                  theme::color::surfaceHover.withAlpha(0.5));
+                p.fillRoundedRect(closeRect, theme.radius.small,
+                                  theme.colors.surfaceHover.withAlpha(0.5));
             }
-            const TextStyle cs{.family = theme::font::family,
+            const TextStyle cs{.family = theme.font.family,
                                .size = 12,
                                .weight = PANGO_WEIGHT_BOLD,
                                .color =
-                                   c.closeHovered ? theme::color::error : theme::color::textMuted};
+                                   c.closeHovered ? theme.colors.error : theme.colors.textMuted};
             const std::string closeGlyph = "×";
             const Size gs = p.measureText(closeGlyph, cs);
             p.drawText(closeRect.cx() - (gs.w / 2.0), closeRect.cy() - (gs.h / 2.0) - 1.0,
@@ -173,16 +175,16 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
     layout_.clear();
     if (cards_.empty()) { return; }
 
-    const auto w = std::min(maxWidth, static_cast<double>(theme::notification::cardWidth));
-    const double gap = theme::notification::gap;
-    const auto maxVisible = static_cast<size_t>(theme::notification::maxVisible);
+    const auto w = std::min(maxWidth, static_cast<double>(theme().notification.cardWidth));
+    const double gap = theme().notification.gap;
+    const auto maxVisible = static_cast<size_t>(theme().notification.maxVisible);
     const size_t start =
         cards_.size() > maxVisible ? cards_.size() - maxVisible : static_cast<size_t>(0);
 
     // Visible slice, oldest card at the top, newest at the bottom.
     std::vector<double> heights;
     for (size_t i = start; i < cards_.size(); ++i) {
-        heights.push_back(cardHeight(cards_.at(i), p, w, now));
+        heights.push_back(cardHeight(theme(), cards_.at(i), p, w, now));
     }
     double total = std::accumulate(heights.begin(), heights.end(), 0.0);
     if (heights.size() > 1) { total += gap * static_cast<double>(heights.size() - 1); }
@@ -193,7 +195,7 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
         const double h = heights.at(k);
         const Rect r{.x = left, .y = y, .w = w, .h = h};
         layout_.emplace_back(idx, r);
-        drawCard(cards_.at(idx), p, now, r);
+        drawCard(theme(), cards_.at(idx), p, now, r);
         y += h + gap;
     }
 }
@@ -202,7 +204,7 @@ bool NotificationView::handlePress(double x, double y, int64_t now) {
     (void)now;
     for (const auto& [idx, r] : layout_) {
         if (r.contains(x, y) && idx < cards_.size()) {
-            const double pad = theme::notification::padding;
+            const double pad = theme().notification.padding;
             const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
             if (closeRect.contains(x, y)) {
                 cards_.erase(cards_.begin() + static_cast<std::vector<Card>::difference_type>(idx));
@@ -212,7 +214,7 @@ bool NotificationView::handlePress(double x, double y, int64_t now) {
             Card& c = cards_.at(idx);
             c.expanded = !c.expanded;
             const double target = c.expanded ? 1.0 : 0.0;
-            c.expandProgress.animateTo(target, theme::anim::medium, ease::inOutQuad);
+            c.expandProgress.animateTo(target, theme().anim.medium, ease::inOutQuad);
             return true;
         }
     }
@@ -225,7 +227,7 @@ void NotificationView::updateHover(double x, double y, int64_t now) {
         if (idx < cards_.size()) {
             cards_.at(idx).hovered = r.contains(x, y);
             if (cards_.at(idx).hovered) {
-                const double pad = theme::notification::padding;
+                const double pad = theme().notification.padding;
                 const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
                 cards_.at(idx).closeHovered = closeRect.contains(x, y);
             } else {
@@ -257,14 +259,14 @@ std::vector<Notification> demoNotifications() {
                      .title = "Team Standup",
                      .body = "10:30 AM — Daily sync in Meeting Room B",
                      .icon = "",
-                     .accent = theme::color::blue},
+                     .accent = theme::kDefaultState.colors.blue},
         Notification{.id = 2,
                      .postedAt = 0,
                      .app = "Mail",
                      .title = "New message from Priya",
                      .body = "Re: Q3 roadmap — please review the attached draft",
                      .icon = "",
-                     .accent = theme::color::green,
+                     .accent = theme::kDefaultState.colors.green,
                      .daemonId = 0,
                      .urgency = 1,
                      .sensitive = true},
@@ -274,14 +276,14 @@ std::vector<Notification> demoNotifications() {
                      .title = "Update available",
                      .body = "Hyprland 0.41.0 can be installed",
                      .icon = "",
-                     .accent = theme::color::mauve},
+                     .accent = theme::kDefaultState.colors.mauve},
         Notification{.id = 4,
                      .postedAt = 0,
                      .app = "Weather",
                      .title = "Rain expected",
                      .body = "Showers this afternoon, high of 18°C",
                      .icon = "",
-                     .accent = theme::color::yellow},
+                     .accent = theme::kDefaultState.colors.yellow},
     };
 }
 

@@ -32,7 +32,7 @@ namespace qypr {
 
 namespace {
 // Translucent menu-bar backdrop. The tint colour and its alpha come from the
-// theme at draw time (theme::statusbar::barTint / barTintAlpha, both derived
+// theme at draw time (theme().statusbar.barTint / barTintAlpha, both derived
 // from the active palette); a config-supplied `bar.backdrop` value overrides the
 // alpha (used by qypr-bar's standalone config). The bar itself is a single
 // translucent slab; each indicator is a separate interactive item (no
@@ -45,10 +45,9 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
       host_(host),
       sessionSurface_(backends.sessionSurface),
       wifi_(backends.wifi) {
-    // A bar preview and the lock screen can coexist in the same test process;
-    // do not let the standalone bar's nested-surface alpha leak into a new
-    // lock-screen StatusBar before its host configures the bar backdrop.
-    theme::statusbar::panelSurfaceAlpha = 1.0;
+    // Indicators bind the compiled-default theme until the host pushes the
+    // live copy via setTheme() (before first draw); per-instance state means
+    // no cross-bar leak is possible, so the old global reset is gone.
 
     // Create indicators: the config-selected set when the host supplied one,
     // otherwise every registered indicator (the lock screen's behaviour).
@@ -101,6 +100,9 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
     if (sessionSurface_) {
         qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
     }
+    // Fresh objects bind the compiled default until the host pushes live
+    // state; cascade anyway so a directly-driven bar is consistent.
+    cascadeTheme();
 
     // Backends push; every push fans out to the indicators (they filter by
     // their own backend pointer) and triggers a repaint.
@@ -216,6 +218,10 @@ void StatusBar::reloadModules(const SystemBackends& backends,
     if (sessionSurface_) {
         qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
     }
+    // New indicators and tiles bind the live copy immediately (the host's
+    // setTheme may never come again); the ctor path converges on the host
+    // setTheme before first draw.
+    cascadeTheme();
 
     host_.invalidate();
 }
@@ -267,14 +273,38 @@ int StatusBar::overlayHeight() const {
     return static_cast<int>(geom_.edgeMargin + geom_.height + 6.0 + popH + 8.0 + 0.5);
 }
 
+void StatusBar::setTheme(const theme::State& state) {
+    theme_ = state;
+    applyBackdropAlpha();
+    cascadeTheme();
+}
+
+const theme::State& StatusBar::theme() const {
+    return theme_;
+}
+
+void StatusBar::cascadeTheme() {
+    // Every child reads this copy — including tiles and popovers created
+    // later, which the panel/attach points bind at creation.
+    for (auto* list : {&leftIndicators_, &centerIndicators_, &rightIndicators_}) {
+        for (auto& ind : *list) { ind->setTheme(theme_); }
+    }
+    qsPanel_.setTheme(theme_);
+}
+
+void StatusBar::applyBackdropAlpha() {
+    theme_.statusbar.panelSurfaceAlpha =
+        backdrop_ ? clamp01(backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme_.statusbar.barTintAlpha)
+                  : 0.0;
+}
+
 void StatusBar::setBackdrop(bool enabled, double alpha) {
     backdrop_ = enabled;
     backdropAlpha_ = alpha;
     // Nested QS tiles and popup cards must use the same opacity as the outer
     // slab; otherwise the panel still looks opaque even when its shell is
     // translucent.
-    theme::statusbar::panelSurfaceAlpha =
-        enabled ? clamp01(alpha >= 0.0 ? alpha : theme::statusbar::barTintAlpha) : 0.0;
+    applyBackdropAlpha();
     // Keep every overlay in lock-step with the strip, including the borrowed
     // Quick Settings panel and popovers created later by indicators.
     qsPanel_.setBackdrop(enabled, alpha);
@@ -300,8 +330,8 @@ void StatusBar::notifyBackendUpdate() {
 void StatusBar::layout(int screenW, int screenH) {
     double const sideMargin = geom_.sideMargin;
     double const barH = geom_.height;
-    double const pad = theme::statusbar::padding;
-    double const sp = theme::statusbar::iconSpacing;
+    double const pad = theme().statusbar.padding;
+    double const sp = theme().statusbar.iconSpacing;
 
     // The strip sits `edgeMargin` from the anchored edge. Measuring the bottom
     // edge from screenH (rather than a fixed y) is what makes `position=bottom`
@@ -474,24 +504,24 @@ void StatusBar::draw(Painter& p, int64_t now) {
     // The lock screen stays chromeless against its dark background.
     if (backdrop_ && contentBounds_.w > 0) {
         const double tintAlpha =
-            backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme::statusbar::barTintAlpha;
-        p.fillRoundedRect(contentBounds_, theme::statusbar::cornerRadius,
-                          theme::statusbar::barTint.withAlpha(tintAlpha));
+            backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme().statusbar.barTintAlpha;
+        p.fillRoundedRect(contentBounds_, theme().statusbar.cornerRadius,
+                          theme().statusbar.barTint.withAlpha(tintAlpha));
         // Hairline separator along the anchored edge
-        if (theme::statusbar::barBorderEnabled && theme::statusbar::barBorderAlpha > 0.0) {
+        if (theme().statusbar.barBorderEnabled && theme().statusbar.barBorderAlpha > 0.0) {
             const double borderY =
                 geom_.bottom ? contentBounds_.y : contentBounds_.y + contentBounds_.h;
             p.fillRect({.x = contentBounds_.x, .y = borderY - 0.5, .w = contentBounds_.w, .h = 1.0},
-                       theme::statusbar::barBorder.withAlpha(theme::statusbar::barBorderAlpha));
+                       theme().statusbar.barBorder.withAlpha(theme().statusbar.barBorderAlpha));
         }
     }
 
     auto drawZone = [&](auto& list) {
         for (auto& ind : list) {
             if (!isShown(*ind)) { continue; }
-            ind->hoverAlpha_.animateTo(ind->hovered ? 1.0 : 0.0, theme::anim::fast,
+            ind->hoverAlpha_.animateTo(ind->hovered ? 1.0 : 0.0, theme().anim.fast,
                                        ease::inOutQuad);
-            ind->hoverScale_.animateTo(ind->hovered ? 1.05 : 1.0, theme::anim::fast,
+            ind->hoverScale_.animateTo(ind->hovered ? 1.05 : 1.0, theme().anim.fast,
                                        ease::inOutQuad);
             ind->draw(p, now);
         }
@@ -595,6 +625,7 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
     if (ind.hasDetailedView()) {
         if (auto view = ind.createDetailedView()) {
             DetailedPopover* p = view.get();
+            p->setTheme(theme());
             const double anchorX = ind.zone() == Zone::Left ? ind.bounds.x + p->contentWidth()
                                                             : ind.bounds.x + ind.bounds.w;
             popovers_.open(std::move(view), anchorX, 0);
@@ -911,7 +942,7 @@ bool StatusBar::hasFocusedChild() const {
 void StatusBar::drawTooltip(Painter& p, int64_t now) const {
     if (tooltipTarget_ == nullptr) {
         if (tooltipAlpha_.target() > 0.01) {
-            const_cast<StatusBar*>(this)->tooltipAlpha_.animateTo(0.0, theme::anim::fast,
+            const_cast<StatusBar*>(this)->tooltipAlpha_.animateTo(0.0, theme().anim.fast,
                                                                   ease::inOutQuad);
         }
         return;
@@ -921,7 +952,7 @@ void StatusBar::drawTooltip(Painter& p, int64_t now) const {
 
     const int64_t dwell = now - tooltipHoverStartMs_;
     if (dwell >= kTooltipDelayMs && tooltipAlpha_.target() < 0.99) {
-        const_cast<StatusBar*>(this)->tooltipAlpha_.animateTo(1.0, theme::anim::fast,
+        const_cast<StatusBar*>(this)->tooltipAlpha_.animateTo(1.0, theme().anim.fast,
                                                               ease::inOutQuad);
     }
 
@@ -936,10 +967,10 @@ void StatusBar::drawTooltip(Painter& p, int64_t now) const {
     constexpr double kRadius = 8.0;
     constexpr double kGap = 8.0;  // gap from the indicator bounds
 
-    TextStyle const style{.family = theme::font::family,
+    TextStyle const style{.family = theme().font.family,
                           .size = 12.0,
                           .weight = PANGO_WEIGHT_NORMAL,
-                          .color = theme::color::text};
+                          .color = theme().colors.text};
     Size const ts = p.measureText(text, style);
     double const w = ts.w + (kPadX * 2.0);
     double const h = ts.h + (kPadY * 2.0);
@@ -955,8 +986,8 @@ void StatusBar::drawTooltip(Painter& p, int64_t now) const {
 
     Rect const r{.x = x, .y = y, .w = w, .h = h};
     p.pushGroup();
-    p.fillRoundedRect(r, kRadius, theme::color::glass);
-    p.strokeRoundedRect(r, kRadius, theme::color::glassBorder, 1.0);
+    p.fillRoundedRect(r, kRadius, theme().colors.glass);
+    p.strokeRoundedRect(r, kRadius, theme().colors.glassBorder, 1.0);
     p.drawText(r.x + kPadX, r.y + kPadY, text, style);
     p.popGroupWithAlpha(alpha);
 }

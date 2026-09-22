@@ -28,12 +28,13 @@
 #include <systemd/sd-bus.h>
 
 #include "ui/Notification.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
 class EventLoop;
 
-class NotificationMonitor {
+class NotificationMonitor : public theme::ThemeAware {
 public:
     explicit NotificationMonitor(EventLoop& loop);
     ~NotificationMonitor();

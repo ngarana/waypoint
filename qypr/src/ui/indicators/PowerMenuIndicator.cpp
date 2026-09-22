@@ -21,7 +21,7 @@ PowerMenuIndicator::PowerMenuIndicator(const SystemBackends& backends)
 }
 
 Color PowerMenuIndicator::iconColor() const {
-    return theme::color::text;
+    return theme().colors.text;
 }
 
 bool PowerMenuIndicator::onClick(double x, double y) {

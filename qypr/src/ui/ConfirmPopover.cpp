@@ -48,8 +48,8 @@ Rect ConfirmPopover::barRect(const Rect& card) const {
 // ---------------------------------------------------------------------------
 
 void ConfirmPopover::show(const std::string& icon, const std::string& title,
-                       const std::string& confirmLabel, std::function<void()> onConfirm,
-                       const Rect& anchorRect, double pillLeft) {
+                          const std::string& confirmLabel, std::function<void()> onConfirm,
+                          const Rect& anchorRect, double pillLeft) {
     icon_ = icon;
     title_ = title;
     confirmLabel_ = confirmLabel;
@@ -71,12 +71,12 @@ void ConfirmPopover::show(const std::string& icon, const std::string& title,
     barAnim_.set(1.0);
     if (autoDismissMs > 0) barAnim_.animateTo(0.0, autoDismissMs, ease::linear);
 
-    fadeAnim_.animateTo(1.0, theme::anim::fast, ease::inOutQuad);
+    fadeAnim_.animateTo(1.0, theme().anim.fast, ease::inOutQuad);
 }
 
 void ConfirmPopover::dismiss() {
     visible_ = false;
-    fadeAnim_.animateTo(0.0, theme::anim::fast, ease::inOutQuad);
+    fadeAnim_.animateTo(0.0, theme().anim.fast, ease::inOutQuad);
 }
 
 void ConfirmPopover::confirm() {
@@ -95,12 +95,12 @@ bool ConfirmPopover::handlePress(double x, double y, int64_t /*now*/) {
     Rect confirm = confirmBtnRect(card);
 
     if (confirm.contains(x, y)) {
-        confirmScale_.animateTo(0.92, theme::anim::fast, ease::inOutQuad);
+        confirmScale_.animateTo(0.92, theme().anim.fast, ease::inOutQuad);
         this->confirm();
         return true;
     }
     if (cancel.contains(x, y)) {
-        cancelScale_.animateTo(0.92, theme::anim::fast, ease::inOutQuad);
+        cancelScale_.animateTo(0.92, theme().anim.fast, ease::inOutQuad);
         dismiss();
         return true;
     }
@@ -123,11 +123,11 @@ void ConfirmPopover::updateHover(double x, double y, int64_t now) {
 
     if (nc != confirmHovered_) {
         confirmHovered_ = nc;
-        confirmScale_.animateTo(nc ? 1.05 : 1.0, theme::anim::fast, ease::outBack);
+        confirmScale_.animateTo(nc ? 1.05 : 1.0, theme().anim.fast, ease::outBack);
     }
     if (nl != cancelHovered_) {
         cancelHovered_ = nl;
-        cancelScale_.animateTo(nl ? 1.05 : 1.0, theme::anim::fast, ease::outBack);
+        cancelScale_.animateTo(nl ? 1.05 : 1.0, theme().anim.fast, ease::outBack);
     }
 }
 
@@ -155,18 +155,18 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
     cardBounds_ = card;
 
     // Glass card — no backdrop scrim, floats above the lock screen.
-    p.fillRoundedRect(card, theme::radius::large, Color::fromHex("#e0181825"));
-    p.strokeRoundedRect(card, theme::radius::large, theme::color::glassBorder, 1.0);
+    p.fillRoundedRect(card, theme().radius.large, Color::fromHex("#e0181825"));
+    p.strokeRoundedRect(card, theme().radius.large, theme().colors.glassBorder, 1.0);
 
     // ── Header: icon + title on one line ─────────────────────────────────
     {
         const double lineY = card.y + kPad;
         const double iconSz = 15.0;
-        TextStyle is{theme::font::iconFamily, iconSz, PANGO_WEIGHT_NORMAL, theme::color::primary};
+        TextStyle is{theme().font.iconFamily, iconSz, PANGO_WEIGHT_NORMAL, theme().colors.primary};
         Size iconSzM = p.measureText(icon_, is);
         p.drawText(card.x + kPad, lineY, icon_, is, HAlign::Left);
 
-        TextStyle ts{theme::font::family, 13.0, PANGO_WEIGHT_SEMIBOLD, theme::color::text};
+        TextStyle ts{theme().font.family, 13.0, PANGO_WEIGHT_SEMIBOLD, theme().colors.text};
         double titleX = card.x + kPad + iconSzM.w + 7.0;
         p.drawText(titleX, lineY, title_, ts, HAlign::Left, card.w - kPad * 2.0 - iconSzM.w - 7.0);
     }
@@ -177,11 +177,11 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
         const Rect bar = barRect(card);
 
         // Track (empty bar background).
-        p.fillRoundedRect(bar, bar.h / 2.0, theme::color::glass);
+        p.fillRoundedRect(bar, bar.h / 2.0, theme().colors.glass);
         // Fill (remaining time).
         if (remaining > 0.005) {
             Rect fill{bar.x, bar.y, bar.w * remaining, bar.h};
-            p.fillRoundedRect(fill, bar.h / 2.0, theme::color::primary);
+            p.fillRoundedRect(fill, bar.h / 2.0, theme().colors.primary);
         }
     }
 
@@ -197,18 +197,18 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
         Color bg, border, fg;
         if (isPrimary) {
             bg = hovered ? Color::fromHex("#cc89b4fa") : Color::fromHex("#7089b4fa");
-            border = theme::color::primary.withAlpha(0.6);
+            border = theme().colors.primary.withAlpha(0.6);
             fg = Color::rgba(0.08, 0.08, 0.14, 1.0);
         } else {
-            bg = hovered ? theme::color::glassHover : theme::color::glass;
-            border = theme::color::glassBorder;
-            fg = theme::color::textSubtle;
+            bg = hovered ? theme().colors.glassHover : theme().colors.glass;
+            border = theme().colors.glassBorder;
+            fg = theme().colors.textSubtle;
         }
 
-        p.fillRoundedRect(sr, theme::radius::medium, bg);
-        p.strokeRoundedRect(sr, theme::radius::medium, border, 1.0);
+        p.fillRoundedRect(sr, theme().radius.medium, bg);
+        p.strokeRoundedRect(sr, theme().radius.medium, border, 1.0);
 
-        TextStyle ls{theme::font::family, 12.0, PANGO_WEIGHT_SEMIBOLD, fg};
+        TextStyle ls{theme().font.family, 12.0, PANGO_WEIGHT_SEMIBOLD, fg};
         Size lsz = p.measureText(label, ls);
         p.drawText(sr.cx() - lsz.w / 2.0, sr.cy() - lsz.h / 2.0, label, ls, HAlign::Left);
     };

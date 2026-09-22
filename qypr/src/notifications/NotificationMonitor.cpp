@@ -28,14 +28,15 @@ constexpr uint32_t kClosedDismissed = 2;  // dismissed by the user
 constexpr uint32_t kClosedByCall = 3;     // a CloseNotification call
 
 // Accent palette cycled per card (Catppuccin Mocha); critical is always red.
-const Color kAccents[] = {
-    theme::color::blue, theme::color::green, theme::color::mauve, theme::color::peach,
-    theme::color::teal, theme::color::sky,   theme::color::pink,  theme::color::yellow,
-};
-
-Color accentFor(uint64_t key, uint8_t urgency) {
-    if (urgency >= kUrgencyCritical) { return theme::color::red; }
-    return kAccents[key % (sizeof(kAccents) / sizeof(kAccents[0]))];
+// Reads the OWNER's live theme (never globals): the monitor is ThemeAware,
+// bound by its host alongside every other UI object.
+Color accentFor(const theme::State& theme, uint64_t key, uint8_t urgency) {
+    if (urgency >= kUrgencyCritical) { return theme.colors.red; }
+    const Color accents[] = {
+        theme.colors.blue, theme.colors.green, theme.colors.mauve, theme.colors.peach,
+        theme.colors.teal, theme.colors.sky,   theme.colors.pink,  theme.colors.yellow,
+    };
+    return accents[key % (sizeof(accents) / sizeof(accents[0]))];
 }
 
 std::vector<std::string> sensitiveApps;
@@ -143,8 +144,7 @@ int readVariant(sd_bus_message* m, uint64_t& numOut, std::string& strOut) {
         sd_bus_message_enter_container(m, SD_BUS_TYPE_VARIANT, "s");
         const char* val = nullptr;
         bool const ok = sd_bus_message_read(m, "s", &val) >= 0;
-        if (ok && (val != nullptr)) { strOut = val;
-}
+        if (ok && (val != nullptr)) { strOut = val; }
         sd_bus_message_exit_container(m);
         return ok ? 2 : 0;
     }
@@ -260,7 +260,7 @@ void NotificationMonitor::fetchBacklog() {
             n.daemonId = daemonId;
             n.urgency = urgency;
             n.sensitive = sensitive != 0;
-            n.accent = accentFor(n.id, urgency);
+            n.accent = accentFor(theme(), n.id, urgency);
             notes_.push_back(std::move(n));
         }
         sd_bus_message_exit_container(reply);
@@ -402,7 +402,7 @@ void NotificationMonitor::handleNotify(sd_bus_message* m) {
         for (auto& existing : notes_) {
             if (existing.daemonId == replaces) {
                 n.id = existing.id;
-                n.accent = accentFor(n.id, urgency);
+                n.accent = accentFor(theme(), n.id, urgency);
                 existing = std::move(n);
                 changed();
                 return;
@@ -411,7 +411,7 @@ void NotificationMonitor::handleNotify(sd_bus_message* m) {
     }
 
     n.id = nextKey_++;
-    n.accent = accentFor(n.id, urgency);
+    n.accent = accentFor(theme(), n.id, urgency);
 
     // The daemon's reply to this call carries the assigned notification id;
     // remember the call so handleReturn() can attach it.

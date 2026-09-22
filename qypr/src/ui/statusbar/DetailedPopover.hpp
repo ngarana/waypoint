@@ -11,7 +11,7 @@ namespace qypr {
 
 class Painter;
 
-class DetailedPopover {
+class DetailedPopover : public theme::ThemeAware {
 public:
     virtual ~DetailedPopover() = default;
 
@@ -78,8 +78,8 @@ public:
     Animated openProgress_{0.0};
 
     bool isOpen() const { return openProgress_.target() > 0.5; }
-    void open() { openProgress_.animateTo(1.0, theme::anim::fast, ease::inOutQuad); }
-    void close() { openProgress_.animateTo(0.0, theme::anim::fast, ease::inOutQuad); }
+    void open() { openProgress_.animateTo(1.0, theme().anim.fast, ease::inOutQuad); }
+    void close() { openProgress_.animateTo(0.0, theme().anim.fast, ease::inOutQuad); }
 
     // Standalone-bar overlays share the bar's backdrop. The lock-screen host
     // never enables this, so its existing opaque/glass card backgrounds remain
@@ -100,12 +100,12 @@ protected:
         if (!backdropEnabled_) return true;
 
         const double alpha =
-            clamp01(backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme::statusbar::barTintAlpha);
-        p.fillRoundedRect(r, radius, theme::statusbar::barTint.withAlpha(alpha));
-        if (theme::statusbar::barBorderEnabled && theme::statusbar::barBorderAlpha > 0.0) {
+            clamp01(backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme().statusbar.barTintAlpha);
+        p.fillRoundedRect(r, radius, theme().statusbar.barTint.withAlpha(alpha));
+        if (theme().statusbar.barBorderEnabled && theme().statusbar.barBorderAlpha > 0.0) {
             p.strokeRoundedRect(
                 r, radius,
-                theme::statusbar::barBorder.withAlpha(clamp01(theme::statusbar::barBorderAlpha)),
+                theme().statusbar.barBorder.withAlpha(clamp01(theme().statusbar.barBorderAlpha)),
                 1.0);
         }
         return true;

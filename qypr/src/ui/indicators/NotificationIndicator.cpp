@@ -76,7 +76,7 @@ bool hasCustomActions(const Notification& n) {
 // ── Group: notifications from the same app, newest-first ────────────────────
 struct NotifyGroup {
     std::string app;
-    Color accent = theme::color::primary;
+    Color accent = theme::kDefaultState.colors.primary;
     uint8_t urgency = 1;
     std::vector<const Notification*> notes;  // newest-first
 };
@@ -163,10 +163,9 @@ public:
 
         // The standalone bar uses the same backdrop as the strip; the lock
         // screen keeps the notification panel's original glass card.
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillGlass(b, theme::statusbar::popoverRadius, theme::color::background,
-                        theme::statusbar::panelSurfaceHover().withAlpha(0.6),
-                        theme::style::mode == "solid");
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillGlass(b, theme().statusbar.popoverRadius, theme().colors.background,
+                        theme().panelSurfaceHover().withAlpha(0.6), theme().style.mode == "solid");
         }
 
         items_.clear();
@@ -175,31 +174,30 @@ public:
 
         // ── Header ─────────────────────────────────────────────────────────
         double y = b.y + kPad;
-        const TextStyle head{.family = theme::font::family,
+        const TextStyle head{.family = theme().font.family,
                              .size = 13.0,
                              .weight = PANGO_WEIGHT_BOLD,
-                             .color = theme::color::text};
+                             .color = theme().colors.text};
         p.drawText(b.x + kPad, y, "Notifications", head);
         if (!notes.empty() && actions_ != nullptr) {
             const bool hot = clearAll_.contains(hoverX_, hoverY_);
-            const TextStyle ca{.family = theme::font::family,
+            const TextStyle ca{.family = theme().font.family,
                                .size = 11.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = hot ? theme::color::text : theme::color::textSubtle};
+                               .color = hot ? theme().colors.text : theme().colors.textSubtle};
             const Size sz = p.measureText("Clear all", ca);
             const double cx = b.x + b.w - kPad - sz.w;
             const Rect updated{.x = cx - 8.0, .y = y - 4.0, .w = sz.w + 16.0, .h = 22.0};
             clearAll_ = updated;
             if (clearAll_.contains(hoverX_, hoverY_)) {
-                p.fillRoundedRectSource(clearAll_, 6.0,
-                                        theme::statusbar::panelSurfaceHover().withAlpha(0.5));
+                p.fillRoundedRectSource(clearAll_, 6.0, theme().panelSurfaceHover().withAlpha(0.5));
             }
             p.drawText(cx, y, "Clear all", ca);
         }
         y += kHeaderH;
 
         if (notes.empty()) {
-            drawEmptyState(p, b, y);
+            drawEmptyState(theme(), p, b, y);
             return;
         }
 
@@ -211,7 +209,7 @@ public:
         for (auto& g : buildGroups(notes)) {
             const bool multi = g.notes.size() > 1;
             const bool expanded = multi && isExpanded(g.app);
-            const Color accent = g.urgency >= 2 ? theme::color::error : g.accent;
+            const Color accent = g.urgency >= 2 ? theme().colors.error : g.accent;
 
             if (multi) {
                 drawGroupHeader(p, b, y, g, accent, expanded);
@@ -344,17 +342,17 @@ private:
         requestClose();
     }
 
-    static void drawEmptyState(Painter& p, const Rect& b, double y) {
-        const TextStyle glyph{.family = theme::font::iconFamily,
+    static void drawEmptyState(const theme::State& theme, Painter& p, const Rect& b, double y) {
+        const TextStyle glyph{.family = theme.font.iconFamily,
                               .size = 34.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textMuted};
+                              .color = theme.colors.textMuted};
         const Size gs = p.measureText(kBellRing, glyph);
         p.drawText(b.x + ((b.w - gs.w) / 2.0), y + 14.0, kBellRing, glyph);
-        const TextStyle t{.family = theme::font::family,
+        const TextStyle t{.family = theme.font.family,
                           .size = 12.0,
                           .weight = PANGO_WEIGHT_NORMAL,
-                          .color = theme::color::textSubtle};
+                          .color = theme.colors.textSubtle};
         const char* msg = "You're all caught up";
         const Size ts = p.measureText(msg, t);
         p.drawText(b.x + ((b.w - ts.w) / 2.0), y + 14.0 + gs.h + 8.0, msg, t);
@@ -364,20 +362,18 @@ private:
                          const Color& accent, bool expanded) {
         const Rect r{.x = b.x + kPad, .y = y, .w = b.w - (kPad * 2.0), .h = kGroupHeaderH};
         const bool hot = r.contains(hoverX_, hoverY_);
-        if (hot) {
-            p.fillRoundedRectSource(r, 8.0, theme::statusbar::panelSurface().withAlpha(0.5));
-        }
+        if (hot) { p.fillRoundedRectSource(r, 8.0, theme().panelSurface().withAlpha(0.5)); }
 
-        const TextStyle appStyle{.family = theme::font::family,
+        const TextStyle appStyle{.family = theme().font.family,
                                  .size = 11.0,
                                  .weight = PANGO_WEIGHT_BOLD,
                                  .color = accent};
         p.drawText(r.x + 8.0, r.y + 6.0, g.app, appStyle, HAlign::Left, r.w - 90.0);
         const Size appSz = p.measureText(g.app, appStyle);
-        const TextStyle cnt{.family = theme::font::family,
+        const TextStyle cnt{.family = theme().font.family,
                             .size = 10.0,
                             .weight = PANGO_WEIGHT_NORMAL,
-                            .color = theme::color::textMuted};
+                            .color = theme().colors.textMuted};
         p.drawText(r.x + 8.0 + std::min(appSz.w, r.w - 90.0) + 6.0, r.y + 7.0,
                    "(" + std::to_string(g.notes.size()) + ")", cnt);
 
@@ -391,10 +387,10 @@ private:
             const Rect xb{.x = r.x + r.w - 24.0, .y = r.y + 3.0, .w = 20.0, .h = 20.0};
             const bool xhot = xb.contains(hoverX_, hoverY_);
             if (hot || xhot) {
-                const TextStyle s{.family = theme::font::iconFamily,
+                const TextStyle s{.family = theme().font.iconFamily,
                                   .size = 10.0,
                                   .weight = PANGO_WEIGHT_NORMAL,
-                                  .color = xhot ? theme::color::error : theme::color::textMuted};
+                                  .color = xhot ? theme().colors.error : theme().colors.textMuted};
                 const Size gs = p.measureText(kClose, s);
                 p.drawText(xb.x + ((xb.w - gs.w) / 2.0), xb.y + ((xb.h - gs.h) / 2.0), kClose, s);
             }
@@ -402,11 +398,11 @@ private:
         }
         // Expand/collapse chevron.
         const Rect ch{.x = r.x + r.w - 48.0, .y = r.y + 3.0, .w = 20.0, .h = 20.0};
-        const TextStyle cs{.family = theme::font::iconFamily,
+        const TextStyle cs{.family = theme().font.iconFamily,
                            .size = 11.0,
                            .weight = PANGO_WEIGHT_NORMAL,
-                           .color = ch.contains(hoverX_, hoverY_) ? theme::color::text
-                                                                  : theme::color::textSubtle};
+                           .color = ch.contains(hoverX_, hoverY_) ? theme().colors.text
+                                                                  : theme().colors.textSubtle};
         const char* glyph = expanded ? kChevronDown : kChevronRight;
         const Size cgs = p.measureText(glyph, cs);
         p.drawText(ch.x + ((ch.w - cgs.w) / 2.0), ch.y + ((ch.h - cgs.h) / 2.0), glyph, cs);
@@ -419,10 +415,8 @@ private:
                   int64_t now, bool isNewest) {
         const bool hot = r.contains(hoverX_, hoverY_);
         p.fillRoundedRectSource(r, 10.0,
-                                hot ? theme::statusbar::panelSurfaceHover()
-                                    : theme::statusbar::panelSurface());
-        p.strokeRoundedRectSource(r, 10.0, theme::statusbar::panelSurfaceHover().withAlpha(0.5),
-                                  1.0);
+                                hot ? theme().panelSurfaceHover() : theme().panelSurface());
+        p.strokeRoundedRectSource(r, 10.0, theme().panelSurfaceHover().withAlpha(0.5), 1.0);
         // Accent spine.
         p.fillRoundedRect(Rect{.x = r.x, .y = r.y + 8.0, .w = kAccentBarW, .h = r.h - 16.0}, 1.5,
                           accent);
@@ -430,10 +424,10 @@ private:
         // Icon tile with the app initial.
         const Rect tile{.x = r.x + 12.0, .y = r.y + 12.0, .w = kIconTile, .h = kIconTile};
         p.fillRoundedRect(tile, 9.0, accent);
-        const TextStyle init{.family = theme::font::family,
+        const TextStyle init{.family = theme().font.family,
                              .size = 17.0,
                              .weight = PANGO_WEIGHT_BOLD,
-                             .color = theme::color::background};
+                             .color = theme().colors.background};
         const std::string letter = initialOf(n.app.empty() ? n.title : n.app);
         const Size ls = p.measureText(letter, init);
         p.drawText(tile.x + ((tile.w - ls.w) / 2.0), tile.y + ((tile.h - ls.h) / 2.0), letter,
@@ -455,20 +449,20 @@ private:
         if (hot && actions_ != nullptr && n.daemonId != 0) {
             const Rect xb{.x = r.x + r.w - 30.0, .y = r.y + 10.0, .w = 20.0, .h = 20.0};
             const bool xhot = xb.contains(hoverX_, hoverY_);
-            const TextStyle s{.family = theme::font::iconFamily,
+            const TextStyle s{.family = theme().font.iconFamily,
                               .size = 11.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = xhot ? theme::color::error : theme::color::textSubtle};
+                              .color = xhot ? theme().colors.error : theme().colors.textSubtle};
             const Size gs = p.measureText(kClose, s);
             p.drawText(xb.x + ((xb.w - gs.w) / 2.0), xb.y + ((xb.h - gs.h) / 2.0), kClose, s);
             item.closeBtn = xb;
         } else {
             const std::string age = ageLabel(n.postedAt, now);
             if (!age.empty()) {
-                const TextStyle as{.family = theme::font::family,
+                const TextStyle as{.family = theme().font.family,
                                    .size = 10.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::textMuted};
+                                   .color = theme().colors.textMuted};
                 const Size asz = p.measureText(age, as);
                 p.drawText(r.x + r.w - rightPad - asz.w, r.y + 13.0, age, as);
                 titleW = textW - asz.w - 8.0;
@@ -478,16 +472,16 @@ private:
         // Title + body (single line each, ellipsised).
         std::string title = n.title;
         if (title.empty()) { title = n.app.empty() ? "Notification" : n.app; }
-        const TextStyle ts{.family = theme::font::family,
+        const TextStyle ts{.family = theme().font.family,
                            .size = 12.0,
                            .weight = PANGO_WEIGHT_BOLD,
-                           .color = theme::color::text};
+                           .color = theme().colors.text};
         p.drawText(textX, r.y + 12.0, title, ts, HAlign::Left, titleW);
         if (!n.body.empty()) {
-            const TextStyle bs{.family = theme::font::family,
+            const TextStyle bs{.family = theme().font.family,
                                .size = 11.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::textSubtle};
+                               .color = theme().colors.textSubtle};
             p.drawText(textX, r.y + 32.0, n.body, bs, HAlign::Left, textW);
         }
 
@@ -512,16 +506,15 @@ private:
                 for (size_t k = 0; k < labels.size(); ++k) {
                     const Rect btn{.x = bx, .y = by, .w = bw, .h = 22.0};
                     const bool bhot = btn.contains(hoverX_, hoverY_);
-                    p.fillRoundedRect(btn, 6.0,
-                                      bhot ? theme::statusbar::panelSurfaceHover()
-                                           : theme::color::background);
-                    p.strokeRoundedRectSource(
-                        btn, 6.0, theme::statusbar::panelSurfaceHover().withAlpha(0.6), 1.0);
-                    const TextStyle bt{.family = theme::font::family,
+                    p.fillRoundedRect(
+                        btn, 6.0, bhot ? theme().panelSurfaceHover() : theme().colors.background);
+                    p.strokeRoundedRectSource(btn, 6.0, theme().panelSurfaceHover().withAlpha(0.6),
+                                              1.0);
+                    const TextStyle bt{.family = theme().font.family,
                                        .size = 10.0,
                                        .weight = PANGO_WEIGHT_BOLD,
                                        .color =
-                                           bhot ? theme::color::text : theme::color::textSubtle};
+                                           bhot ? theme().colors.text : theme().colors.textSubtle};
                     const Size bsz = p.measureText(labels.at(k), bt);
                     p.drawText(btn.x + ((btn.w - bsz.w) / 2.0), btn.y + ((btn.h - bsz.h) / 2.0),
                                labels.at(k), bt, HAlign::Left, bw - 8.0);
@@ -620,8 +613,8 @@ std::string NotificationIndicator::tooltip() const {
 }
 
 Color NotificationIndicator::iconColor() const {
-    if (dnd_ != nullptr && dnd_->enabled()) { return theme::color::textSubtle; }
-    return count() > 0 ? theme::color::primary : theme::color::textSubtle;
+    if (dnd_ != nullptr && dnd_->enabled()) { return theme().colors.textSubtle; }
+    return count() > 0 ? theme().colors.primary : theme().colors.textSubtle;
 }
 
 double NotificationIndicator::measureWidth(Painter& p) {
@@ -631,12 +624,12 @@ double NotificationIndicator::measureWidth(Painter& p) {
     // NOLINTNEXTLINE(misc-const-correctness)
     cairo_surface_t* themed = displayIconSurface();
     if (themed != nullptr) {
-        w = theme::statusbar::symbolicIconSize;
+        w = theme().statusbar.symbolicIconSize;
     } else {
         const std::string ic = icon();
         if (!ic.empty()) {
-            const TextStyle iconStyle{.family = theme::font::iconFamily,
-                                      .size = theme::statusbar::iconSize,
+            const TextStyle iconStyle{.family = theme().font.iconFamily,
+                                      .size = theme().statusbar.iconSize,
                                       .weight = PANGO_WEIGHT_NORMAL,
                                       .color = iconColor()};
             w = p.measureText(ic, iconStyle).w;
@@ -645,10 +638,10 @@ double NotificationIndicator::measureWidth(Painter& p) {
     // Superscript count extends slightly past the icon's right edge.
     const size_t n = count();
     if (n > 0) {
-        const TextStyle supSt{.family = theme::font::family,
+        const TextStyle supSt{.family = theme().font.family,
                               .size = kSuperscriptSize,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::primary};
+                              .color = theme().colors.primary};
         const std::string countStr = std::to_string(n);
         const double supW = p.measureText(countStr, supSt).w;
         w += kSuperscriptOffsetX + supW;
@@ -666,7 +659,7 @@ void NotificationIndicator::draw(Painter& p, int64_t now) {
 
     // Hover background pill
     if (alpha > 0.01) {
-        const Color bg = theme::color::surfaceHover.withAlpha(alpha * 0.5);
+        const Color bg = theme().colors.surfaceHover.withAlpha(alpha * 0.5);
         Rect hoverRect = bounds;
         hoverRect.y += 2.0;
         hoverRect.h -= 4.0;
@@ -678,23 +671,23 @@ void NotificationIndicator::draw(Painter& p, int64_t now) {
         Rect focusRect = bounds;
         focusRect.y += 1.0;
         focusRect.h -= 2.0;
-        p.strokeRoundedRect(focusRect, 8.0, theme::color::primary, 1.5);
+        p.strokeRoundedRect(focusRect, 8.0, theme().colors.primary, 1.5);
     }
 
     // Icon
     cairo_surface_t* themedSurf = displayIconSurface();
     const std::string ic = icon();
-    const double iconPx = theme::statusbar::symbolicIconSize * (scale > 1.001 ? scale : 1.0);
-    const double shadowA = theme::effects::shadowOpacity;
-    const double shadowOff = theme::effects::shadowOffset;
+    const double iconPx = theme().statusbar.symbolicIconSize * (scale > 1.001 ? scale : 1.0);
+    const double shadowA = theme().effects.shadowOpacity;
+    const double shadowOff = theme().effects.shadowOffset;
 
     // Measure icon width for centering.
     double iconW = 0;
     if (themedSurf != nullptr) {
         iconW = iconPx;
     } else if (!ic.empty()) {
-        const TextStyle iconStyle{.family = theme::font::iconFamily,
-                                  .size = theme::statusbar::iconSize,
+        const TextStyle iconStyle{.family = theme().font.iconFamily,
+                                  .size = theme().statusbar.iconSize,
                                   .weight = PANGO_WEIGHT_NORMAL,
                                   .color = iconColor()};
         iconW = p.measureText(ic, iconStyle).w;
@@ -704,10 +697,10 @@ void NotificationIndicator::draw(Painter& p, int64_t now) {
     const size_t n = count();
     double extraW = 0;
     if (n > 0) {
-        const TextStyle supSt{.family = theme::font::family,
+        const TextStyle supSt{.family = theme().font.family,
                               .size = kSuperscriptSize,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::primary};
+                              .color = theme().colors.primary};
         const std::string countStr = std::to_string(n);
         extraW = kSuperscriptOffsetX + p.measureText(countStr, supSt).w;
     }
@@ -719,8 +712,8 @@ void NotificationIndicator::draw(Painter& p, int64_t now) {
         p.drawSurfaceTinted(themedSurf, Rect{.x = x, .y = iconY, .w = iconPx, .h = iconPx},
                             iconColor());
     } else if (!ic.empty()) {
-        TextStyle iconStyle{.family = theme::font::iconFamily,
-                            .size = theme::statusbar::iconSize,
+        TextStyle iconStyle{.family = theme().font.iconFamily,
+                            .size = theme().statusbar.iconSize,
                             .weight = PANGO_WEIGHT_NORMAL,
                             .color = iconColor()};
         if (scale > 1.001) { iconStyle.size *= scale; }
@@ -729,10 +722,10 @@ void NotificationIndicator::draw(Painter& p, int64_t now) {
 
     // Superscript count badge (top-right of icon).
     if (n > 0) {
-        const TextStyle supSt{.family = theme::font::family,
+        const TextStyle supSt{.family = theme().font.family,
                               .size = kSuperscriptSize,
                               .weight = PANGO_WEIGHT_BOLD,
-                              .color = theme::color::primary};
+                              .color = theme().colors.primary};
         const std::string countStr = std::to_string(n);
         const double sx = x + iconW + kSuperscriptOffsetX;
         const double sy = iconY + kSuperscriptOffsetY;

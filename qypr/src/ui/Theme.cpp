@@ -44,65 +44,66 @@ int localHourNow() {
     return local.tm_hour;
 }
 
-void loadTheme(const Config& cfg, AutoPalette& palette) {
+State loadThemeState(const Config& cfg, const AutoPalette& palette) {
+    State state;
     // Reset to compiled defaults before applying overrides
-    color::background = Color::fromHex("#0d0e15");
-    color::surface = Color::fromHex("#181a24");
-    color::surfaceHover = Color::fromHex("#222534");
-    color::glass = Color::fromHex("#181a24").withAlpha(0.65);
-    color::glassHover = Color::fromHex("#222534").withAlpha(0.75);
-    color::glassBorder = Color::fromHex("#ffffff").withAlpha(0.08);
-    color::primary = Color::fromHex("#89b4fa");
-    color::primaryGlow = Color::fromHex("#4089b4fa");
-    color::text = Color::fromHex("#cdd6f4");
-    color::textSubtle = Color::fromHex("#a6adc8");
-    color::textMuted = Color::fromHex("#6c7086");
-    color::error = Color::fromHex("#f38ba8");
-    color::success = Color::fromHex("#a6e3a1");
-    color::warning = Color::fromHex("#fab387");  // canonical: waylaunch peach (Stage 1.4)
+    state.colors.background = Color::fromHex("#0d0e15");
+    state.colors.surface = Color::fromHex("#181a24");
+    state.colors.surfaceHover = Color::fromHex("#222534");
+    state.colors.glass = Color::fromHex("#181a24").withAlpha(0.65);
+    state.colors.glassHover = Color::fromHex("#222534").withAlpha(0.75);
+    state.colors.glassBorder = Color::fromHex("#ffffff").withAlpha(0.08);
+    state.colors.primary = Color::fromHex("#89b4fa");
+    state.colors.primaryGlow = Color::fromHex("#4089b4fa");
+    state.colors.text = Color::fromHex("#cdd6f4");
+    state.colors.textSubtle = Color::fromHex("#a6adc8");
+    state.colors.textMuted = Color::fromHex("#6c7086");
+    state.colors.error = Color::fromHex("#f38ba8");
+    state.colors.success = Color::fromHex("#a6e3a1");
+    state.colors.warning = Color::fromHex("#fab387");  // canonical: waylaunch peach (Stage 1.4)
 
-    font::family = "Inter";
-    font::iconFamily = "CaskaydiaCove Nerd Font";
-    font::size = 16;
-    font::sizeLarge = 22;
-    font::sizeClock = 64;
-    font::sizeDate = 18;
+    state.font.family = "Inter";
+    state.font.iconFamily = "CaskaydiaCove Nerd Font";
+    state.font.size = 16;
+    state.font.sizeLarge = 22;
+    state.font.sizeClock = 64;
+    state.font.sizeDate = 18;
 
     // Menu-bar backdrop resets to compiled-in alpha/enabled defaults; the tint
     // and border *colours* are derived from the resolved palette further below
     // (after the colour overrides), so the strip follows the active theme.
-    statusbar::barTintAlpha = 0.80;
-    statusbar::barBorderAlpha = 0.08;
-    statusbar::barBorderEnabled = true;
-    statusbar::panelSurfaceAlpha = 1.0;
+    state.statusbar.barTintAlpha = 0.80;
+    state.statusbar.barBorderAlpha = 0.08;
+    state.statusbar.barBorderEnabled = true;
+    state.statusbar.panelSurfaceAlpha = 1.0;
 
     // Statusbar geometry resets to compiled-in defaults.
-    statusbar::height = 36.0;
-    statusbar::topMargin = spacing::large;
-    statusbar::sideMargin = spacing::xlarge;
-    statusbar::cornerRadius = 12.0;
-    statusbar::iconSize = 16.0;
-    statusbar::clockIconSize = 16.0;
-    statusbar::symbolicIconSize = 18.0;
-    statusbar::iconSpacing = 18.0;
-    statusbar::padding = 14.0;
-    statusbar::separatorWidth = 1.0;
-    statusbar::qsPanelWidth = 380.0;
-    statusbar::qsTileSize = 110.0;
-    statusbar::qsTileHeight = 64.0;
-    statusbar::qsTileGap = 8.0;
-    statusbar::qsSliderHeight = 40.0;
-    statusbar::qsPadding = 16.0;
-    statusbar::qsCornerRadius = 16.0;
+    state.statusbar.height = 36.0;
+    state.statusbar.topMargin = state.spacing.large;
+    state.statusbar.sideMargin = state.spacing.xlarge;
+    state.statusbar.cornerRadius = 12.0;
+    state.statusbar.iconSize = 16.0;
+    state.statusbar.clockIconSize = 16.0;
+    state.statusbar.symbolicIconSize = 18.0;
+    state.statusbar.iconSpacing = 18.0;
+    state.statusbar.padding = 14.0;
+    state.statusbar.separatorWidth = 1.0;
+    state.statusbar.qsPanelWidth = 380.0;
+    state.statusbar.qsTileSize = 110.0;
+    state.statusbar.qsTileHeight = 64.0;
+    state.statusbar.qsTileGap = 8.0;
+    state.statusbar.qsSliderHeight = 40.0;
+    state.statusbar.qsPadding = 16.0;
+    state.statusbar.qsCornerRadius = 16.0;
 
     // Icon rendering resets to Auto (themed-when-available, else Nerd Font glyph).
-    icons::mode = icons::Mode::Auto;
+    state.icons.mode = icons::Mode::Auto;
 
     // Effects reset to compiled-in defaults. shadowOpacity is deliberately
     // reset first: a preceding light-palette load may have disabled the shadow
     // (0.0) — a later dark load must restore it unless an explicit key is set.
-    effects::shadowOpacity = 0.6;
-    effects::shadowOffset = 2;
+    state.effects.shadowOpacity = 0.6;
+    state.effects.shadowOffset = 2;
 
     // ─── Palette mode ────────────────────────────────────────────────
     // The owner's AutoPalette arrives parsed and resolved (re-parse it from
@@ -118,48 +119,50 @@ void loadTheme(const Config& cfg, AutoPalette& palette) {
     // palette falls back to the dark file when no light file is configured.
     std::string palettePath = resolveColorsPath(cfg, palette.isLight());
     if (palettePath.empty() && palette.isLight()) { palettePath = resolveColorsPath(cfg, false); }
-    if (!palettePath.empty()) { applyColorsFile(palettePath); }
+    if (!palettePath.empty()) { applyColorsFile(palettePath, state); }
 
     // ─── Colors ──────────────────────────────────────────────────────
-    overrideColor(color::background, cfg, kS, "background");
-    overrideColor(color::surface, cfg, kS, "surface");
-    overrideColor(color::surfaceHover, cfg, kS, "surface-hover");
-    overrideColor(color::glass, cfg, kS, "glass");
-    overrideColor(color::glassHover, cfg, kS, "glass-hover");
-    overrideColor(color::glassBorder, cfg, kS, "glass-border");
-    overrideColor(color::primary, cfg, kS, "primary");
-    overrideColor(color::primaryGlow, cfg, kS, "primary-glow");
-    overrideColor(color::text, cfg, kS, "text");
-    overrideColor(color::textSubtle, cfg, kS, "text-subtle");
-    overrideColor(color::textMuted, cfg, kS, "text-muted");
-    overrideColor(color::error, cfg, kS, "error");
-    overrideColor(color::success, cfg, kS, "success");
-    overrideColor(color::warning, cfg, kS, "warning");
+    overrideColor(state.colors.background, cfg, kS, "background");
+    overrideColor(state.colors.surface, cfg, kS, "surface");
+    overrideColor(state.colors.surfaceHover, cfg, kS, "surface-hover");
+    overrideColor(state.colors.glass, cfg, kS, "glass");
+    overrideColor(state.colors.glassHover, cfg, kS, "glass-hover");
+    overrideColor(state.colors.glassBorder, cfg, kS, "glass-border");
+    overrideColor(state.colors.primary, cfg, kS, "primary");
+    overrideColor(state.colors.primaryGlow, cfg, kS, "primary-glow");
+    overrideColor(state.colors.text, cfg, kS, "text");
+    overrideColor(state.colors.textSubtle, cfg, kS, "text-subtle");
+    overrideColor(state.colors.textMuted, cfg, kS, "text-muted");
+    overrideColor(state.colors.error, cfg, kS, "error");
+    overrideColor(state.colors.success, cfg, kS, "success");
+    overrideColor(state.colors.warning, cfg, kS, "warning");
 
     // ─── Fonts ───────────────────────────────────────────────────────
-    if (cfg.has(kS, "font-family")) { font::family = cfg.getString(kS, "font-family", ""); }
-    if (cfg.has(kS, "icon-family")) { font::iconFamily = cfg.getString(kS, "icon-family", ""); }
-    overrideInt(font::size, cfg, kS, "font-size");
-    overrideInt(font::sizeLarge, cfg, kS, "font-size-large");
-    overrideInt(font::sizeClock, cfg, kS, "font-size-clock");
-    overrideInt(font::sizeDate, cfg, kS, "font-size-date");
+    if (cfg.has(kS, "font-family")) { state.font.family = cfg.getString(kS, "font-family", ""); }
+    if (cfg.has(kS, "icon-family")) {
+        state.font.iconFamily = cfg.getString(kS, "icon-family", "");
+    }
+    overrideInt(state.font.size, cfg, kS, "font-size");
+    overrideInt(state.font.sizeLarge, cfg, kS, "font-size-large");
+    overrideInt(state.font.sizeClock, cfg, kS, "font-size-clock");
+    overrideInt(state.font.sizeDate, cfg, kS, "font-size-date");
 
     // ─── Spacing ─────────────────────────────────────────────────────
-    overrideInt(spacing::small, cfg, kS, "spacing-small");
-    overrideInt(spacing::medium, cfg, kS, "spacing-medium");
-    overrideInt(spacing::large, cfg, kS, "spacing-large");
-    overrideInt(spacing::xlarge, cfg, kS, "spacing-xlarge");
+    overrideInt(state.spacing.small, cfg, kS, "spacing-small");
+    overrideInt(state.spacing.medium, cfg, kS, "spacing-medium");
+    overrideInt(state.spacing.large, cfg, kS, "spacing-large");
+    overrideInt(state.spacing.xlarge, cfg, kS, "spacing-xlarge");
 
     // ─── Radius ──────────────────────────────────────────────────────
-    overrideInt(radius::small, cfg, kS, "radius-small");
-    overrideInt(radius::medium, cfg, kS, "radius-medium");
-    overrideInt(radius::large, cfg, kS, "radius-large");
+    overrideInt(state.radius.small, cfg, kS, "radius-small");
+    overrideInt(state.radius.medium, cfg, kS, "radius-medium");
+    overrideInt(state.radius.large, cfg, kS, "radius-large");
 
     // ─── Animation ───────────────────────────────────────────────────
-    overrideInt(anim::fast, cfg, kS, "anim-fast");
-    overrideInt(anim::medium, cfg, kS, "anim-medium");
-    overrideInt(anim::slow, cfg, kS, "anim-slow");
-    overrideInt(anim::reveal, cfg, kS, "anim-reveal");
+    overrideInt(state.anim.fast, cfg, kS, "anim-fast");
+    overrideInt(state.anim.medium, cfg, kS, "anim-medium");
+    overrideInt(state.anim.slow, cfg, kS, "anim-slow");
+    overrideInt(state.anim.reveal, cfg, kS, "anim-reveal");
 
     // ─── Style preset ───────────────────────────────────────────────
     // `style` selects popover rendering only:
@@ -169,69 +172,71 @@ void loadTheme(const Config& cfg, AutoPalette& palette) {
     // feature driven by the bar-tint/bar-border keys below; it is no longer tied
     // to a preset. "macos" is kept as a backward-compatible alias for "glass" so
     // an existing config keeps working.
-    if (cfg.has(kS, "style")) { style::mode = cfg.getString(kS, "style", "glass"); }
-    if (style::mode == "macos") { style::mode = "glass"; }
+    if (cfg.has(kS, "style")) { state.style.mode = cfg.getString(kS, "style", "glass"); }
+    if (state.style.mode == "macos") { state.style.mode = "glass"; }
 
     // ─── Icon style ─────────────────────────────────────────────────
     // auto (default) | symbolic | glyph. See theme::icons::Mode.
     if (cfg.has(kS, "icon-style")) {
         const std::string m = cfg.getString(kS, "icon-style", "auto");
         if (m == "symbolic") {
-            icons::mode = icons::Mode::Symbolic;
+            state.icons.mode = icons::Mode::Symbolic;
         } else if (m == "glyph" || m == "nerd" || m == "font") {
-            icons::mode = icons::Mode::Glyph;
+            state.icons.mode = icons::Mode::Glyph;
         } else {
-            icons::mode = icons::Mode::Auto;
+            state.icons.mode = icons::Mode::Auto;
         }
     }
 
     // ─── Effects ─────────────────────────────────────────────────────
-    overrideDouble(effects::shadowOpacity, cfg, kS, "shadow-opacity");
-    overrideInt(effects::shadowOffset, cfg, kS, "shadow-offset");
+    overrideDouble(state.effects.shadowOpacity, cfg, kS, "shadow-opacity");
+    overrideInt(state.effects.shadowOffset, cfg, kS, "shadow-offset");
     // A light palette puts dark text on a bright surface, where a black offset
     // shadow would read as a ghost shade behind every glyph. Disable the drop
     // shadow unless the user set an explicit opacity, which always wins.
-    if (palette.isLight() && !cfg.has(kS, "shadow-opacity")) { effects::shadowOpacity = 0.0; }
+    if (palette.isLight() && !cfg.has(kS, "shadow-opacity")) { state.effects.shadowOpacity = 0.0; }
 
     // ─── Statusbar ───────────────────────────────────────────────────
-    overrideDouble(statusbar::height, cfg, kS, "bar-height");
-    overrideDouble(statusbar::iconSize, cfg, kS, "bar-icon-size");
-    statusbar::symbolicIconSize = 18.0;
-    overrideDouble(statusbar::symbolicIconSize, cfg, kS, "bar-symbolic-icon-size");
-    statusbar::clockIconSize = statusbar::iconSize;
-    overrideDouble(statusbar::clockIconSize, cfg, kS, "bar-clock-icon-size");
-    overrideDouble(statusbar::iconSpacing, cfg, kS, "bar-icon-spacing");
-    overrideDouble(statusbar::padding, cfg, kS, "bar-padding");
-    overrideDouble(statusbar::cornerRadius, cfg, kS, "bar-corner-radius");
-    overrideDouble(statusbar::popoverRadius, cfg, kS, "popover-radius");
+    overrideDouble(state.statusbar.height, cfg, kS, "bar-height");
+    overrideDouble(state.statusbar.iconSize, cfg, kS, "bar-icon-size");
+    state.statusbar.symbolicIconSize = 18.0;
+    overrideDouble(state.statusbar.symbolicIconSize, cfg, kS, "bar-symbolic-icon-size");
+    state.statusbar.clockIconSize = state.statusbar.iconSize;
+    overrideDouble(state.statusbar.clockIconSize, cfg, kS, "bar-clock-icon-size");
+    overrideDouble(state.statusbar.iconSpacing, cfg, kS, "bar-icon-spacing");
+    overrideDouble(state.statusbar.padding, cfg, kS, "bar-padding");
+    overrideDouble(state.statusbar.cornerRadius, cfg, kS, "bar-corner-radius");
+    overrideDouble(state.statusbar.popoverRadius, cfg, kS, "popover-radius");
 
     // Menu-bar backdrop: translucent tint + hairline border. The tint and border
     // colours default to the resolved theme palette (background/text) so the strip
     // follows whatever colours are configured; each can be overridden explicitly.
-    statusbar::barTint = color::background;
-    statusbar::barBorder = color::text;
-    overrideColor(statusbar::barTint, cfg, kS, "bar-tint");
-    overrideDouble(statusbar::barTintAlpha, cfg, kS, "bar-tint-alpha");
-    overrideColor(statusbar::barBorder, cfg, kS, "bar-border-color");
-    overrideDouble(statusbar::barBorderAlpha, cfg, kS, "bar-border-alpha");
-    statusbar::barBorderEnabled = cfg.getBool(kS, "bar-border", statusbar::barBorderEnabled);
+    state.statusbar.barTint = state.colors.background;
+    state.statusbar.barBorder = state.colors.text;
+    overrideColor(state.statusbar.barTint, cfg, kS, "bar-tint");
+    overrideDouble(state.statusbar.barTintAlpha, cfg, kS, "bar-tint-alpha");
+    overrideColor(state.statusbar.barBorder, cfg, kS, "bar-border-color");
+    overrideDouble(state.statusbar.barBorderAlpha, cfg, kS, "bar-border-alpha");
+    state.statusbar.barBorderEnabled =
+        cfg.getBool(kS, "bar-border", state.statusbar.barBorderEnabled);
 
     // ─── Notification ────────────────────────────────────────────────
-    overrideInt(notification::cardWidth, cfg, kS, "notification-card-width");
-    overrideInt(notification::iconSize, cfg, kS, "notification-icon-size");
-    overrideInt(notification::padding, cfg, kS, "notification-padding");
-    overrideInt(notification::gap, cfg, kS, "notification-gap");
-    overrideInt(notification::titleSize, cfg, kS, "notification-title-size");
-    overrideInt(notification::bodySize, cfg, kS, "notification-body-size");
-    overrideInt(notification::radius, cfg, kS, "notification-radius");
+    overrideInt(state.notification.cardWidth, cfg, kS, "notification-card-width");
+    overrideInt(state.notification.iconSize, cfg, kS, "notification-icon-size");
+    overrideInt(state.notification.padding, cfg, kS, "notification-padding");
+    overrideInt(state.notification.gap, cfg, kS, "notification-gap");
+    overrideInt(state.notification.titleSize, cfg, kS, "notification-title-size");
+    overrideInt(state.notification.bodySize, cfg, kS, "notification-body-size");
+    overrideInt(state.notification.radius, cfg, kS, "notification-radius");
 
     // ─── Audio ───────────────────────────────────────────────────────
-    overrideInt(audio::buttonSize, cfg, kS, "audio-button-size");
-    overrideInt(audio::buttonIconSize, cfg, kS, "audio-button-icon-size");
-    overrideInt(audio::minWidth, cfg, kS, "audio-min-width");
-    overrideInt(audio::maxWidth, cfg, kS, "audio-max-width");
-    overrideInt(audio::progressHeight, cfg, kS, "audio-progress-height");
-    overrideInt(audio::volumeSliderWidth, cfg, kS, "audio-volume-slider-width");
+    overrideInt(state.audio.buttonSize, cfg, kS, "audio-button-size");
+    overrideInt(state.audio.buttonIconSize, cfg, kS, "audio-button-icon-size");
+    overrideInt(state.audio.minWidth, cfg, kS, "audio-min-width");
+    overrideInt(state.audio.maxWidth, cfg, kS, "audio-max-width");
+    overrideInt(state.audio.progressHeight, cfg, kS, "audio-progress-height");
+    overrideInt(state.audio.volumeSliderWidth, cfg, kS, "audio-volume-slider-width");
+    return state;
 }
 
 // -----------------------------------------------------------------------------
@@ -309,7 +314,7 @@ namespace {
 // order and keeps the current value when none are present, so narrow custom
 // templates (a few `--background`/`--primary` lines) still theme the bar.
 struct PaletteMapping {
-    Color* target;
+    Color State::Colors::* target;
     std::vector<const char*> tokens;
     // >= 0: alpha applied when the matched hex carries none of its own
     // (#RRGGBB). < 0: keep whatever alpha the hex provided (default 1.0).
@@ -320,41 +325,45 @@ const std::vector<PaletteMapping>& paletteMappings() {
     static const std::vector<PaletteMapping> kMappings = {
         // Core surfaces & text. `background` prefers a dedicated background
         // token, then falls back to the M3 `surface` tone.
-        {.target = &color::background,
+        {.target = &State::Colors::background,
          .tokens = {"background", "surface", "surface-container-lowest"}},
-        {.target = &color::surface,
+        {.target = &State::Colors::surface,
          .tokens = {"surface-container", "surface-container-low", "secondary-container",
                     "surface"}},
-        {.target = &color::surfaceHover,
+        {.target = &State::Colors::surfaceHover,
          .tokens = {"surface-container-high", "surface-container-highest", "surface-container"}},
-        {.target = &color::primary, .tokens = {"primary", "primary-fixed", "primary-container"}},
+        {.target = &State::Colors::primary,
+         .tokens = {"primary", "primary-fixed", "primary-container"}},
         // The glow is a translucent primary unless the template ships its own
         // 8-digit (AARRGGBB) value.
-        {.target = &color::primaryGlow, .tokens = {"primary-glow", "primary"}, .alpha = 0.25},
-        {.target = &color::text,
+        {.target = &State::Colors::primaryGlow,
+         .tokens = {"primary-glow", "primary"},
+         .alpha = 0.25},
+        {.target = &State::Colors::text,
          .tokens = {"on-surface", "foreground", "on-primary-container", "text"}},
-        {.target = &color::textSubtle,
+        {.target = &State::Colors::textSubtle,
          .tokens = {"on-surface-variant", "outline", "text-secondary"}},
-        {.target = &color::textMuted, .tokens = {"outline", "outline-variant", "text-muted"}},
-        {.target = &color::error, .tokens = {"error"}},
+        {.target = &State::Colors::textMuted,
+         .tokens = {"outline", "outline-variant", "text-muted"}},
+        {.target = &State::Colors::error, .tokens = {"error"}},
         // M3 has no success/warning hues; tertiary (and secondary for a
         // warning-ish tone) are the usual stand-ins. `success`/`warning`
         // custom keys win when a template defines them.
-        {.target = &color::success, .tokens = {"success", "tertiary"}},
-        {.target = &color::warning, .tokens = {"warning", "secondary"}},
+        {.target = &State::Colors::success, .tokens = {"success", "tertiary"}},
+        {.target = &State::Colors::warning, .tokens = {"warning", "secondary"}},
         // Accent strip (app tiles, status dots, pager chips). Matugen palettes
         // are effectively two-accent, so accents fan out from the M3 roles.
-        {.target = &color::blue, .tokens = {"blue", "primary"}},
-        {.target = &color::lavender, .tokens = {"lavender", "primary-container"}},
-        {.target = &color::mauve, .tokens = {"mauve", "tertiary"}},
-        {.target = &color::pink, .tokens = {"pink", "tertiary"}},
-        {.target = &color::red, .tokens = {"red", "error"}},
-        {.target = &color::peach, .tokens = {"peach", "secondary"}},
-        {.target = &color::yellow, .tokens = {"yellow", "warning"}},
-        {.target = &color::green, .tokens = {"green", "success"}},
-        {.target = &color::teal, .tokens = {"teal", "secondary-container"}},
-        {.target = &color::sky, .tokens = {"sky", "secondary"}},
-        {.target = &color::maroon, .tokens = {"maroon", "error-container"}},
+        {.target = &State::Colors::blue, .tokens = {"blue", "primary"}},
+        {.target = &State::Colors::lavender, .tokens = {"lavender", "primary-container"}},
+        {.target = &State::Colors::mauve, .tokens = {"mauve", "tertiary"}},
+        {.target = &State::Colors::pink, .tokens = {"pink", "tertiary"}},
+        {.target = &State::Colors::red, .tokens = {"red", "error"}},
+        {.target = &State::Colors::peach, .tokens = {"peach", "secondary"}},
+        {.target = &State::Colors::yellow, .tokens = {"yellow", "warning"}},
+        {.target = &State::Colors::green, .tokens = {"green", "success"}},
+        {.target = &State::Colors::teal, .tokens = {"teal", "secondary-container"}},
+        {.target = &State::Colors::sky, .tokens = {"sky", "secondary"}},
+        {.target = &State::Colors::maroon, .tokens = {"maroon", "error-container"}},
     };
     return kMappings;
 }
@@ -390,7 +399,7 @@ std::string resolveColorsPath(const Config& cfg, bool lightPalette) {
     return raw;
 }
 
-int applyColorsFile(const std::string& path) {
+int applyColorsFile(const std::string& path, State& state) {
     std::ifstream f(path);
     if (!f.is_open()) {
         std::fprintf(stderr, "qypr: theme: colours file not readable: %s\n", path.c_str());
@@ -410,7 +419,7 @@ int applyColorsFile(const std::string& path) {
             if (m.alpha >= 0.0 && hit.size() == 7) {
                 c.a = m.alpha;  // no alpha in hex
             }
-            *m.target = c;
+            (state.colors.*m.target) = c;
             ++applied;
         }
     }

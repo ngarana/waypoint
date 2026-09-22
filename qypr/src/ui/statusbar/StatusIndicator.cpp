@@ -10,12 +10,12 @@ namespace {
 constexpr double kContentGap = 8.0;  // between icon and label
 constexpr double kSidePad = 8.0;     // hover-zone padding each side
 // Symbolic-theme icon rasters are square; the on-strip render size comes from
-// theme::statusbar::symbolicIconSize (bar.conf: bar-symbolic-icon-size) so it can
+// theme().statusbar.symbolicIconSize (bar.conf: bar-symbolic-icon-size) so it can
 // be tuned independently of the bar height and the Nerd Font glyph size.
 }  // namespace
 
 Color StatusIndicator::iconColor() const {
-    return theme::color::text;
+    return theme().colors.text;
 }
 
 StatusIndicator::~StatusIndicator() {
@@ -56,7 +56,7 @@ cairo_surface_t* StatusIndicator::themedIconSurface() {
 // carry the name (IconResolver caches the miss), so the caller falls back to the
 // Nerd Font glyph. Shared by measureWidth() and draw() so they never disagree.
 cairo_surface_t* StatusIndicator::displayIconSurface() {
-    if (theme::icons::mode == theme::icons::Mode::Glyph) { return nullptr; }
+    if (theme().icons.mode == theme::icons::Mode::Glyph) { return nullptr; }
     return themedIconSurface();
 }
 
@@ -72,16 +72,16 @@ double StatusIndicator::measureWidth(Painter& p) {
     if (themed != nullptr) {
         // The themed surface measures square (symbolicIconSize); measured width
         // matches its eventual footprint so centring matches the draw path.
-        w += theme::statusbar::symbolicIconSize;
+        w += theme().statusbar.symbolicIconSize;
     } else if (!ic.empty()) {
-        const TextStyle iconStyle{.family = theme::font::iconFamily,
-                                  .size = theme::statusbar::iconSize,
+        const TextStyle iconStyle{.family = theme().font.iconFamily,
+                                  .size = theme().statusbar.iconSize,
                                   .weight = PANGO_WEIGHT_NORMAL,
                                   .color = iconColor()};
         w += p.measureText(ic, iconStyle).w;
     }
     if (!lbl.empty()) {
-        const TextStyle labelStyle{.family = theme::font::family,
+        const TextStyle labelStyle{.family = theme().font.family,
                                    .size = labelFontSize(),
                                    .weight = PANGO_WEIGHT_NORMAL,
                                    .color = iconColor()};
@@ -99,7 +99,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
 
     // 1. Hover background pill (subtle surface highlight inside the chip)
     if (alpha > 0.01) {
-        const Color bg = theme::color::surfaceHover.withAlpha(alpha * 0.5);
+        const Color bg = theme().colors.surfaceHover.withAlpha(alpha * 0.5);
         Rect hoverRect = bounds;
         hoverRect.y += 2.0;
         hoverRect.h -= 4.0;
@@ -111,7 +111,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         Rect focusRect = bounds;
         focusRect.y += 1.0;
         focusRect.h -= 2.0;
-        p.strokeRoundedRect(focusRect, 8.0, theme::color::primary, 1.5);
+        p.strokeRoundedRect(focusRect, 8.0, theme().colors.primary, 1.5);
     }
 
     // 3. Content: optional icon + optional label, centered in bounds.
@@ -144,9 +144,9 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
 
     // themedSurf resolved above. A themed icon + label are drawn side by side,
     // both vertically centred.
-    const double iconPx = theme::statusbar::symbolicIconSize * (scale > 1.001 ? scale : 1.0);
+    const double iconPx = theme().statusbar.symbolicIconSize * (scale > 1.001 ? scale : 1.0);
 
-    TextStyle labelStyle{.family = theme::font::family,
+    TextStyle labelStyle{.family = theme().font.family,
                          .size = labelFontSize(),
                          .weight = PANGO_WEIGHT_NORMAL,
                          .color = iconColor()};
@@ -159,8 +159,8 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
     if (themedSurf != nullptr) {
         contentW += iconPx;
     } else if (!ic.empty()) {
-        TextStyle iconStyle{.family = theme::font::iconFamily,
-                            .size = theme::statusbar::iconSize,
+        TextStyle iconStyle{.family = theme().font.iconFamily,
+                            .size = theme().statusbar.iconSize,
                             .weight = PANGO_WEIGHT_NORMAL,
                             .color = iconColor()};
         if (scale > 1.001) { iconStyle.size *= scale; }
@@ -173,8 +173,8 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         contentW += labelSz.w;
     }
 
-    const double shadowA = theme::effects::shadowOpacity;
-    const double shadowOff = theme::effects::shadowOffset;
+    const double shadowA = theme().effects.shadowOpacity;
+    const double shadowOff = theme().effects.shadowOffset;
     double x = bounds.x + ((bounds.w - contentW) / 2.0);
 
     if (themedSurf != nullptr) {
@@ -193,8 +193,8 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         }
         x += iconPx + (lbl.empty() ? 0.0 : kContentGap);
     } else if (!ic.empty()) {
-        TextStyle iconStyle{.family = theme::font::iconFamily,
-                            .size = theme::statusbar::iconSize,
+        TextStyle iconStyle{.family = theme().font.iconFamily,
+                            .size = theme().statusbar.iconSize,
                             .weight = PANGO_WEIGHT_NORMAL,
                             .color = iconColor()};
         if (scale > 1.001) { iconStyle.size *= scale; }

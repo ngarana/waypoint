@@ -28,6 +28,12 @@ void Shell::setAudioController(AudioController* audio) {
     lockScreen_.setAudioController(audio);
 }
 
+void Shell::setTheme(const theme::State& state) {
+    theme::ThemeAware::setTheme(state);
+    lockScreen_.setTheme(state);
+    statusBar_.setTheme(state);
+}
+
 void Shell::setVideoPlayer(VideoPlayer* video) {
     video_ = video;
 }

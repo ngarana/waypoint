@@ -85,10 +85,21 @@ LockScreen::LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam,
 // -----------------------------------------------------------------------------
 // Reveal state machine
 // -----------------------------------------------------------------------------
+void LockScreen::setTheme(const theme::State& state) {
+    theme::ThemeAware::setTheme(state);
+    clock_.setTheme(state);
+    passwordField_.setTheme(state);
+    status_.setTheme(state);
+    notifications_.setTheme(state);
+    for (auto& button : powerButtons_) { button.setTheme(state); }
+    alwaysPower_.setTheme(state);
+    confirmPopover_.setTheme(state);
+}
+
 void LockScreen::wake() {
     if (!revealed_) {
         revealed_ = true;
-        revealAnim_.animateTo(1.0, theme::anim::reveal, ease::inOutQuad);
+        revealAnim_.animateTo(1.0, theme().anim.reveal, ease::inOutQuad);
     }
     restartHideTimer();
     host_.invalidate();
@@ -100,7 +111,7 @@ void LockScreen::reveal() {
 
 void LockScreen::collapse() {
     revealed_ = false;
-    revealAnim_.animateTo(0.0, theme::anim::reveal, ease::inOutQuad);
+    revealAnim_.animateTo(0.0, theme().anim.reveal, ease::inOutQuad);
     collapsePower();  // closing the UI always collapses the pill too
     if (hideTimer_ >= 0) {
         loop_.removeTimer(hideTimer_);
@@ -112,14 +123,14 @@ void LockScreen::collapse() {
 void LockScreen::expandPower() {
     if (powerExpanded_) return;
     powerExpanded_ = true;
-    powerExpandAnim_.animateTo(1.0, theme::anim::medium, ease::inOutQuad);
+    powerExpandAnim_.animateTo(1.0, theme().anim.medium, ease::inOutQuad);
     host_.invalidate();
 }
 
 void LockScreen::collapsePower() {
     if (!powerExpanded_) return;
     powerExpanded_ = false;
-    powerExpandAnim_.animateTo(0.0, theme::anim::medium, ease::inOutQuad);
+    powerExpandAnim_.animateTo(0.0, theme().anim.medium, ease::inOutQuad);
     host_.invalidate();
 }
 
@@ -168,8 +179,8 @@ void LockScreen::showPowerConfirm(int index, int w, int h) {
     Rect fullCol = powerRowRect(w, h);
     double pillLeft = fullCol.x;
 
-    confirmPopover_.show(cfg[index].icon, cfg[index].label, cfg[index].confirmLabel, std::move(action),
-                      anchor, pillLeft);
+    confirmPopover_.show(cfg[index].icon, cfg[index].label, cfg[index].confirmLabel,
+                         std::move(action), anchor, pillLeft);
     collapsePower();
     host_.invalidate();
 }
@@ -385,11 +396,11 @@ constexpr double kPillRadius = 9999.0;  // fully rounded pill (capsule)
 // Full expanded column rect (all kNumAction action buttons + anchor).
 Rect LockScreen::powerRowRect(int w, int h) const {
     const double d = kButtonDiameter;
-    const double sp = theme::spacing::medium;  // tighter vertical gap
+    const double sp = theme().spacing.medium;  // tighter vertical gap
     const double fullH = (kNumAction + 1) * d + kNumAction * sp + kPillPad * 2.0;
     const double pillW = d + kPillPad * 2.0;
-    const double right = w - theme::spacing::xlarge;
-    const double bottom = h - theme::spacing::xlarge;
+    const double right = w - theme().spacing.xlarge;
+    const double bottom = h - theme().spacing.xlarge;
     return {right - pillW, bottom - fullH, pillW, fullH};
 }
 
@@ -397,7 +408,7 @@ Rect LockScreen::powerRowRect(int w, int h) const {
 // i=0 is topmost; i=kNumAction-1 is directly above the anchor.
 Rect LockScreen::powerButtonRect(int index, int w, int h) const {
     const double d = kButtonDiameter;
-    const double sp = theme::spacing::medium;
+    const double sp = theme().spacing.medium;
     Rect col = powerRowRect(w, h);
     double cx = col.cx();
     // Top of the first button: col.y + kPillPad + d/2
@@ -408,7 +419,7 @@ Rect LockScreen::powerButtonRect(int index, int w, int h) const {
 // The anchor button: always the bottommost slot in the pill.
 Rect LockScreen::powerAnchorRect(int w, int h) const {
     const double d = kButtonDiameter;
-    const double sp = theme::spacing::medium;
+    const double sp = theme().spacing.medium;
     Rect col = powerRowRect(w, h);
     double cx = col.cx();
     double cy = col.y + kPillPad + d / 2.0 + kNumAction * (d + sp);
@@ -439,15 +450,15 @@ void LockScreen::draw(cairo_t* cr, int width, int height, int) {
     // Centre column width — shared by the password field, status text, and audio
     // panel so all three elements align on the same left/right edges.
     const double colWidth =
-        std::min(width - theme::spacing::xlarge * 2.0, static_cast<double>(theme::audio::maxWidth));
+        std::min(width - theme().spacing.xlarge * 2.0, static_cast<double>(theme().audio.maxWidth));
 
     // Password field — same width as the audio panel, centred.
-    const double pwTop = clockBottom + theme::spacing::xlarge;  // tighter than xxlarge
+    const double pwTop = clockBottom + theme().spacing.xlarge;  // tighter than xxlarge
     passwordField_.bounds = {cx - colWidth / 2.0, pwTop, colWidth, PasswordField::kHeight};
     passwordField_.charCount = static_cast<int>(utf8Count(password_.view()));
 
     const double statusTop =
-        passwordField_.bounds.y + passwordField_.bounds.h + theme::spacing::small;
+        passwordField_.bounds.y + passwordField_.bounds.h + theme().spacing.small;
     status_.message = statusMessage_;
     status_.isError = hasError_;
     Size statusSize = status_.measure(p);
@@ -474,7 +485,7 @@ void LockScreen::draw(cairo_t* cr, int width, int height, int) {
     withAlpha(r, [&] { passwordField_.draw(p, now); });
     withAlpha(r, [&] { status_.draw(p, cx, statusTop); });
     if (audio_ && audio_->active()) {
-        double audioTop = statusTop + statusSize.h + theme::spacing::small;
+        double audioTop = statusTop + statusSize.h + theme().spacing.small;
         withAlpha(r, [&] { audio_->draw(p, now, cx, audioTop, colWidth); });
     }
 
@@ -519,8 +530,8 @@ void LockScreen::draw(cairo_t* cr, int width, int height, int) {
         }
 
         // Pill background.
-        p.fillRoundedRect(pillRect, pillCorner, theme::color::glass);
-        p.strokeRoundedRect(pillRect, pillCorner, theme::color::glassBorder, 1.0);
+        p.fillRoundedRect(pillRect, pillCorner, theme().colors.glass);
+        p.strokeRoundedRect(pillRect, pillCorner, theme().colors.glassBorder, 1.0);
 
         // Action buttons — fade in as the pill expands (gated on pe, not r).
         if (pe > 0.01) {
@@ -539,10 +550,10 @@ void LockScreen::draw(cairo_t* cr, int width, int height, int) {
     // Windows 11-style notification cards, always visible on the lock screen
     // (bottom-left), below the idle dim veil.
     {
-        const double left = theme::spacing::xlarge;
-        const double bottom = height - theme::spacing::xlarge;
-        const double maxW = std::min(static_cast<double>(width) - 2 * theme::spacing::xlarge,
-                                     static_cast<double>(theme::notification::cardWidth));
+        const double left = theme().spacing.xlarge;
+        const double bottom = height - theme().spacing.xlarge;
+        const double maxW = std::min(static_cast<double>(width) - 2 * theme().spacing.xlarge,
+                                     static_cast<double>(theme().notification.cardWidth));
         notifications_.draw(p, now, left, bottom, maxW);
     }
 

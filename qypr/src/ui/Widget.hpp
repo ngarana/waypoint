@@ -2,16 +2,21 @@
 //
 // LockScreen positions each widget by setting `bounds` during layout, then
 // calls draw(). Interactive widgets add hit-testing on top of `bounds`.
+//
+// Every widget is ThemeAware: hosts bind the live theme::State once via
+// setTheme(), and draw/layout read through theme(). Unbound widgets render
+// from the immutable compiled default.
 
 #pragma once
 
 #include "core/Types.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
 class Painter;
 
-class Widget {
+class Widget : public theme::ThemeAware {
 public:
     virtual ~Widget() = default;
 

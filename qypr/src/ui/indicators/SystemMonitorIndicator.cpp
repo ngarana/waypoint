@@ -20,10 +20,10 @@ constexpr double kGap = 4.0;      // icon → percent
 constexpr double kSegGap = 12.0;  // between metrics
 constexpr double kSidePad = 6.0;
 
-Color loadColor(double pct) {
-    if (pct >= 85.0) return theme::color::error;
-    if (pct >= 60.0) return theme::color::warning;
-    return theme::color::text;
+Color loadColor(const theme::State& theme, double pct) {
+    if (pct >= 85.0) return theme.colors.error;
+    if (pct >= 60.0) return theme.colors.warning;
+    return theme.colors.text;
 }
 
 std::string pctText(double v) {
@@ -73,8 +73,8 @@ void SystemMonitorIndicator::poll(int64_t now) {
 double SystemMonitorIndicator::measureWidth(Painter& p) {
     if (!visible || segs_.empty()) return 0;
     double w = 2 * kSidePad;
-    TextStyle icon{theme::font::iconFamily, kIconPx, PANGO_WEIGHT_NORMAL, theme::color::text};
-    TextStyle txt{theme::font::family, 13.0, PANGO_WEIGHT_NORMAL, theme::color::text};
+    TextStyle icon{theme().font.iconFamily, kIconPx, PANGO_WEIGHT_NORMAL, theme().colors.text};
+    TextStyle txt{theme().font.family, 13.0, PANGO_WEIGHT_NORMAL, theme().colors.text};
     for (size_t i = 0; i < segs_.size(); ++i) {
         w += p.measureText(segs_[i].glyph, icon).w + kGap +
              p.measureText(pctText(segs_[i].value), txt).w;
@@ -93,24 +93,24 @@ void SystemMonitorIndicator::draw(Painter& p, int64_t now) {
         r.y += 2.0;
         r.h -= 4.0;
         p.fillRoundedRect(r, 8.0,
-                          theme::color::glassHover.withAlpha(alpha * theme::color::glassHover.a));
+                          theme().colors.glassHover.withAlpha(alpha * theme().colors.glassHover.a));
     }
     if (focused) {
         Rect r = bounds;
         r.y += 1.0;
         r.h -= 2.0;
-        p.strokeRoundedRect(r, 8.0, theme::color::primary, 1.5);
+        p.strokeRoundedRect(r, 8.0, theme().colors.primary, 1.5);
     }
 
     double x = bounds.x + kSidePad;
     for (const auto& s : segs_) {
-        const Color c = loadColor(s.value);
-        TextStyle icon{theme::font::iconFamily, kIconPx, PANGO_WEIGHT_NORMAL, c};
+        const Color c = loadColor(theme(), s.value);
+        TextStyle icon{theme().font.iconFamily, kIconPx, PANGO_WEIGHT_NORMAL, c};
         const Size isz = p.measureText(s.glyph, icon);
         p.drawText(x, bounds.y + (bounds.h - isz.h) / 2.0, s.glyph, icon);
         x += isz.w + kGap;
 
-        TextStyle txt{theme::font::family, 13.0, PANGO_WEIGHT_NORMAL, c};
+        TextStyle txt{theme().font.family, 13.0, PANGO_WEIGHT_NORMAL, c};
         const std::string t = pctText(s.value);
         const Size tsz = p.measureText(t, txt);
         p.drawText(x, bounds.y + (bounds.h - tsz.h) / 2.0, t, txt);

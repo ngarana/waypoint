@@ -83,24 +83,23 @@ public:
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
         b.y -= (1.0 - openProgress_.value(now)) * 6.0;
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
         constexpr double kPopoverPad = 14.0;
         constexpr double kPopoverIconPx = 18.0;
         constexpr double kRowHeight = 30.0;
-        const TextStyle hdr{.family = theme::font::family,
+        const TextStyle hdr{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(b.x + kPopoverPad, b.y + kPopoverPad, "HIDDEN ITEMS", hdr);
         rows_.clear();
         if (empty_) {
-            const TextStyle e{.family = theme::font::family,
+            const TextStyle e{.family = theme().font.family,
                               .size = 12.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kPopoverPad, b.y + kPopoverPad + 24.0, "No hidden tray items", e);
             return;
         }
@@ -121,15 +120,15 @@ public:
                 const Rect dest{
                     .x = row.x + 4.0, .y = iy, .w = kPopoverIconPx, .h = kPopoverIconPx};
                 if (fromName && surfaceIsMonochrome(s)) {
-                    p.drawSurfaceTinted(s, dest, theme::color::text);
+                    p.drawSurfaceTinted(s, dest, theme().colors.text);
                 } else {
                     p.drawSurface(s, dest);
                 }
             }
-            const TextStyle ts{.family = theme::font::family,
+            const TextStyle ts{.family = theme().font.family,
                                .size = 13.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::text};
+                               .color = theme().colors.text};
             p.drawText(row.x + 28.0, row.y + ((row.h - 14.0) / 2.0),
                        it->title.empty() ? it->service : it->title, ts, HAlign::Left, row.w - 32.0);
             y += kRowHeight;
@@ -216,7 +215,7 @@ void SNITrayHost::draw(Painter& p, int64_t now) {
     // Hover pill + focus ring (mirrors the base StatusIndicator chrome).
     const double alpha = hoverAlpha_.value(now);
     if (alpha > 0.01) {
-        const Color bg = theme::color::glassHover.withAlpha(alpha * theme::color::glassHover.a);
+        const Color bg = theme().colors.glassHover.withAlpha(alpha * theme().colors.glassHover.a);
         Rect hoverRect = bounds;
         hoverRect.y += 2.0;
         hoverRect.h -= 4.0;
@@ -226,7 +225,7 @@ void SNITrayHost::draw(Painter& p, int64_t now) {
         Rect focusRect = bounds;
         focusRect.y += 1.0;
         focusRect.h -= 2.0;
-        p.strokeRoundedRect(focusRect, 8.0, theme::color::primary, 1.5);
+        p.strokeRoundedRect(focusRect, 8.0, theme().colors.primary, 1.5);
     }
 
     double x = bounds.x + kSidePad;
@@ -259,10 +258,10 @@ void SNITrayHost::draw(Painter& p, int64_t now) {
     if (overflowBoxShown_) {
         if (x > bounds.x + kSidePad + kIconPx) { x -= kGap; }  // no double gap before chevron
         overflowBoxStart_ = x;
-        const TextStyle gs{.family = theme::font::iconFamily,
+        const TextStyle gs{.family = theme().font.iconFamily,
                            .size = 16.0,
                            .weight = PANGO_WEIGHT_NORMAL,
-                           .color = theme::color::textSubtle};
+                           .color = theme().colors.textSubtle};
         const Size sz = p.measureText(kHiddenGlyph, gs);
         p.drawText(x + ((kChevronW - sz.w) / 2.0), bounds.y + ((bounds.h - sz.h) / 2.0),
                    kHiddenGlyph, gs);

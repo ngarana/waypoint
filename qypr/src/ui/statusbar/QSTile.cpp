@@ -11,7 +11,7 @@ namespace qypr {
 namespace {
 constexpr double kSliderArrowStep = 0.05;  // ±5%
 // Tile corner radii. Deliberately a touch smaller than the panel's own
-// qsCornerRadius (theme::statusbar::qsCornerRadius, 16) so the nested cards read
+// qsCornerRadius (theme().statusbar.qsCornerRadius, 16) so the nested cards read
 // as concentric inside the popover rather than fighting its corners. Kept as
 // fixed panel-local layout constants; the colours (below) are what track the
 // theme, not the geometry.
@@ -33,11 +33,11 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
     bool active = isActive_ && isActive_();
     double hAlpha = hoverAnim_.value(now);
 
-    Color bg = theme::statusbar::panelSurface();
-    if (hAlpha > 0.01) bg = theme::statusbar::panelSurfaceHover();
+    Color bg = theme().panelSurface();
+    if (hAlpha > 0.01) bg = theme().panelSurfaceHover();
 
     p.fillRoundedRectSource(bounds, kTileRadius, bg);
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     // Left circular badge
     double badgeR = 16.0;
@@ -46,33 +46,33 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
 
     if (active) {
         cairo_t* cr = p.cr();
-        Color c1 = theme::color::primary;
-        Color c2 = theme::color::mauve;
+        Color c1 = theme().colors.primary;
+        Color c2 = theme().colors.mauve;
         if (title_.find("Wired") != std::string::npos || title_.find("WiFi") != std::string::npos ||
             title_.find("Wi-Fi") != std::string::npos ||
             title_.find("Network") != std::string::npos) {
-            c1 = theme::color::blue;
-            c2 = theme::color::teal;
+            c1 = theme().colors.blue;
+            c2 = theme().colors.teal;
         } else if (title_.find("Bluetooth") != std::string::npos ||
                    title_.find("BT") != std::string::npos) {
-            c1 = theme::color::blue;
-            c2 = theme::color::mauve;
+            c1 = theme().colors.blue;
+            c2 = theme().colors.mauve;
         } else if (title_.find("Night") != std::string::npos ||
                    title_.find("Dark") != std::string::npos) {
-            c1 = theme::color::warning;
-            c2 = theme::color::peach;
+            c1 = theme().colors.warning;
+            c2 = theme().colors.peach;
         } else if (title_.find("Keep") != std::string::npos ||
                    title_.find("Idle") != std::string::npos ||
                    title_.find("Awake") != std::string::npos) {
-            c1 = theme::color::success;
-            c2 = theme::color::teal;
+            c1 = theme().colors.success;
+            c2 = theme().colors.teal;
         } else if (title_.find("Screenshot") != std::string::npos) {
-            c1 = theme::color::peach;
-            c2 = theme::color::maroon;
+            c1 = theme().colors.peach;
+            c2 = theme().colors.maroon;
         } else if (title_.find("Disturb") != std::string::npos ||
                    title_.find("DND") != std::string::npos) {
-            c1 = theme::color::warning;
-            c2 = theme::color::peach;
+            c1 = theme().colors.warning;
+            c2 = theme().colors.peach;
         }
 
         cairo_pattern_t* pat = cairo_pattern_create_linear(badgeCx - badgeR, badgeCy - badgeR,
@@ -84,11 +84,11 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
         cairo_fill(cr);
         cairo_pattern_destroy(pat);
     } else {
-        p.fillCircle(badgeCx, badgeCy, badgeR, theme::color::background);
+        p.fillCircle(badgeCx, badgeCy, badgeR, theme().colors.background);
     }
 
-    Color iconCol = active ? theme::color::background : theme::color::textSubtle;
-    TextStyle iconStyle{theme::font::iconFamily, 14.0, PANGO_WEIGHT_NORMAL, iconCol};
+    Color iconCol = active ? theme().colors.background : theme().colors.textSubtle;
+    TextStyle iconStyle{theme().font.iconFamily, 14.0, PANGO_WEIGHT_NORMAL, iconCol};
     Size iconSz = p.measureText(icon_, iconStyle);
     p.drawText(badgeCx - iconSz.w / 2.0, badgeCy - iconSz.h / 2.0, icon_, iconStyle);
 
@@ -99,9 +99,9 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
     std::string sub = subtitle_ ? subtitle_() : "";
     if (sub.empty()) sub = active ? "On" : "Off";
 
-    TextStyle titleStyle{theme::font::family, 11.5, PANGO_WEIGHT_BOLD, theme::color::text};
-    TextStyle subStyle{theme::font::family, 10.0, PANGO_WEIGHT_NORMAL,
-                       active ? theme::color::primary : theme::color::textSubtle};
+    TextStyle titleStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD, theme().colors.text};
+    TextStyle subStyle{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL,
+                       active ? theme().colors.primary : theme().colors.textSubtle};
 
     Size titleSz = p.measureText(title_, titleStyle, maxW);
     Size subSz = p.measureText(sub, subStyle, maxW);
@@ -156,15 +156,15 @@ void QSSliderTile::updateValueFromCoord(double x) {
 void QSSliderTile::draw(Painter& p, int64_t now) {
     double val = getValue_ ? getValue_() : 0.8;
 
-    p.fillRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurface());
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.fillRoundedRectSource(bounds, kTileRadius, theme().panelSurface());
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     double pad = 12.0;
     std::string glyph = currentIcon();
     if (glyph.empty()) glyph = "󰃟";
 
     // Left Icon
-    TextStyle iconStyle{theme::font::iconFamily, 16.0, PANGO_WEIGHT_NORMAL, theme::color::yellow};
+    TextStyle iconStyle{theme().font.iconFamily, 16.0, PANGO_WEIGHT_NORMAL, theme().colors.yellow};
     Size iconSz = p.measureText(glyph, iconStyle);
     double iconX = bounds.x + pad;
     double iconY = bounds.y + (bounds.h - iconSz.h) / 2.0;
@@ -173,7 +173,7 @@ void QSSliderTile::draw(Painter& p, int64_t now) {
 
     // Right Percentage Readout
     std::string pctText = std::to_string(static_cast<int>(std::round(val * 100))) + "%";
-    TextStyle pctStyle{theme::font::family, 11.5, PANGO_WEIGHT_BOLD, theme::color::yellow};
+    TextStyle pctStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD, theme().colors.yellow};
     Size pctSz = p.measureText(pctText, pctStyle);
     double pctX = bounds.x + bounds.w - pad - pctSz.w;
     double pctY = bounds.y + (bounds.h - pctSz.h) / 2.0;
@@ -186,10 +186,10 @@ void QSSliderTile::draw(Painter& p, int64_t now) {
     double trackY = bounds.y + (bounds.h - trackH) / 2.0;
     sliderTrackBounds_ = {trackX, trackY, trackW, trackH};
 
-    p.fillRoundedRectSource(sliderTrackBounds_, trackH / 2.0, theme::statusbar::panelBackground());
+    p.fillRoundedRectSource(sliderTrackBounds_, trackH / 2.0, theme().panelBackground());
     Rect filled{trackX, trackY, trackW * val, trackH};
-    p.fillRoundedRect(filled, trackH / 2.0, theme::color::yellow);
-    p.fillCircle(trackX + trackW * val, trackY + trackH / 2.0, 5.5, theme::color::text);
+    p.fillRoundedRect(filled, trackH / 2.0, theme().colors.yellow);
+    p.fillCircle(trackX + trackW * val, trackY + trackH / 2.0, 5.5, theme().colors.text);
 }
 
 // ─── Info tile ────────────────────────────────────────────────────────────
@@ -198,14 +198,14 @@ void QSInfoTile::draw(Painter& p, int64_t now) {
     double progress = getProgress_ ? getProgress_() : 0.5;
     std::string info = getInfo_ ? getInfo_() : "";
 
-    p.fillRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurface());
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.fillRoundedRectSource(bounds, kTileRadius, theme().panelSurface());
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     double pad = 12.0;
 
-    Color icCol = progress > 0.5 ? theme::color::success
-                                 : (progress > 0.2 ? theme::color::warning : theme::color::error);
-    TextStyle iconStyle{theme::font::iconFamily, 16.0, PANGO_WEIGHT_NORMAL, icCol};
+    Color icCol = progress > 0.5 ? theme().colors.success
+                                 : (progress > 0.2 ? theme().colors.warning : theme().colors.error);
+    TextStyle iconStyle{theme().font.iconFamily, 16.0, PANGO_WEIGHT_NORMAL, icCol};
     const std::string ic = currentIcon();
     Size iconSz = p.measureText(ic, iconStyle);
     double iconX = bounds.x + pad;
@@ -215,8 +215,8 @@ void QSInfoTile::draw(Painter& p, int64_t now) {
     double textX = iconX + iconSz.w + 10.0;
     double maxW = bounds.w - (textX - bounds.x) - pad;
 
-    TextStyle titleStyle{theme::font::family, 11.5, PANGO_WEIGHT_BOLD, theme::color::text};
-    TextStyle infoStyle{theme::font::family, 10.0, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+    TextStyle titleStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD, theme().colors.text};
+    TextStyle infoStyle{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
 
     Size tSz = p.measureText(title_, titleStyle, maxW);
     Size iSz = p.measureText(info, infoStyle, maxW);
@@ -229,8 +229,8 @@ void QSInfoTile::draw(Painter& p, int64_t now) {
 // ─── Header tile ──────────────────────────────────────────────────────────
 
 void QSHeaderTile::draw(Painter& p, int64_t) {
-    p.fillRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurface());
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.fillRoundedRectSource(bounds, kTileRadius, theme().panelSurface());
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     // Avatar circle
     double avatarR = 17.0;
@@ -241,26 +241,26 @@ void QSHeaderTile::draw(Painter& p, int64_t) {
     cairo_t* cr = p.cr();
     cairo_pattern_t* pat = cairo_pattern_create_linear(avatarCX - avatarR, avatarCY - avatarR,
                                                        avatarCX + avatarR, avatarCY + avatarR);
-    cairo_pattern_add_color_stop_rgba(pat, 0.0, theme::color::primary.r, theme::color::primary.g,
-                                      theme::color::primary.b, 1.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1.0, theme::color::mauve.r, theme::color::mauve.g,
-                                      theme::color::mauve.b, 1.0);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, theme().colors.primary.r, theme().colors.primary.g,
+                                      theme().colors.primary.b, 1.0);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, theme().colors.mauve.r, theme().colors.mauve.g,
+                                      theme().colors.mauve.b, 1.0);
     cairo_arc(cr, avatarCX, avatarCY, avatarR, 0, 2 * M_PI);
     cairo_set_source(cr, pat);
     cairo_fill(cr);
     cairo_pattern_destroy(pat);
 
-    p.fillCircle(avatarCX, avatarCY, avatarR - 2.0, theme::color::background);
+    p.fillCircle(avatarCX, avatarCY, avatarR - 2.0, theme().colors.background);
 
-    TextStyle initStyle{theme::font::iconFamily, 14.0, PANGO_WEIGHT_NORMAL, theme::color::primary};
+    TextStyle initStyle{theme().font.iconFamily, 14.0, PANGO_WEIGHT_NORMAL, theme().colors.primary};
     Size initSz = p.measureText("󰀉", initStyle);
     p.drawText(avatarCX - initSz.w / 2.0, avatarCY - initSz.h / 2.0, "󰀉", initStyle);
 
     // Name + subtitle
     double textX = avatarCX + avatarR + 12.0;
     double maxW = bounds.w - (textX - bounds.x) - 10.0;
-    TextStyle nameStyle{theme::font::family, 13.0, PANGO_WEIGHT_BOLD, theme::color::text};
-    TextStyle subStyle{theme::font::family, 11.0, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+    TextStyle nameStyle{theme().font.family, 13.0, PANGO_WEIGHT_BOLD, theme().colors.text};
+    TextStyle subStyle{theme().font.family, 11.0, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
 
     Size nameSz = p.measureText(title_, nameStyle, maxW);
     Size subSz = p.measureText(subtitle_, subStyle, maxW);
@@ -277,17 +277,17 @@ void QSPowerTile::onClick(double, double) {
 
 void QSPowerTile::draw(Painter& p, int64_t now) {
     double hAlpha = hoverAnim_.value(now);
-    Color bg = theme::statusbar::panelSurface();
-    if (hAlpha > 0.01) bg = theme::statusbar::panelSurfaceHover();
+    Color bg = theme().panelSurface();
+    if (hAlpha > 0.01) bg = theme().panelSurfaceHover();
 
     p.fillRoundedRectSource(bounds, kTileRadius, bg);
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     double cx = bounds.x + bounds.w / 2.0;
     double cy = bounds.y + bounds.h / 2.0;
 
     const char* glyph = "⏻";
-    TextStyle iconStyle{theme::font::iconFamily, 18.0, PANGO_WEIGHT_NORMAL, theme::color::red};
+    TextStyle iconStyle{theme().font.iconFamily, 18.0, PANGO_WEIGHT_NORMAL, theme().colors.red};
     Size iconSz = p.measureText(glyph, iconStyle);
     p.drawText(cx - iconSz.w / 2.0, cy - iconSz.h / 2.0, glyph, iconStyle);
 }
@@ -296,11 +296,11 @@ void QSPowerTile::draw(Painter& p, int64_t now) {
 
 void QSWifiComboTile::draw(Painter& p, int64_t now) {
     double hAlpha = hoverAnim_.value(now);
-    Color bg = theme::statusbar::panelSurface();
-    if (hAlpha > 0.01) bg = theme::statusbar::panelSurfaceHover();
+    Color bg = theme().panelSurface();
+    if (hAlpha > 0.01) bg = theme().panelSurfaceHover();
 
     p.fillRoundedRectSource(bounds, kTileRadius, bg);
-    p.strokeRoundedRectSource(bounds, kTileRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.strokeRoundedRectSource(bounds, kTileRadius, theme().panelSurfaceHover(), 1.0);
 
     // Badge circle
     double badgeR = 16.0;
@@ -309,8 +309,8 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
 
     if (enabled_) {
         cairo_t* cr = p.cr();
-        Color c1 = theme::color::blue;
-        Color c2 = theme::color::teal;
+        Color c1 = theme().colors.blue;
+        Color c2 = theme().colors.teal;
         cairo_pattern_t* pat = cairo_pattern_create_linear(badgeCx - badgeR, badgeCy - badgeR,
                                                            badgeCx + badgeR, badgeCy + badgeR);
         cairo_pattern_add_color_stop_rgba(pat, 0.0, c1.r, c1.g, c1.b, c1.a);
@@ -320,7 +320,7 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
         cairo_fill(cr);
         cairo_pattern_destroy(pat);
     } else {
-        p.fillCircle(badgeCx, badgeCy, badgeR, theme::color::background);
+        p.fillCircle(badgeCx, badgeCy, badgeR, theme().colors.background);
     }
 
     // Pick wifi glyph based on actual signal strength
@@ -339,8 +339,8 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
         wifiGlyph = "󰤯";  // weak
     }
 
-    TextStyle iconStyle{theme::font::iconFamily, 14.0, PANGO_WEIGHT_NORMAL,
-                        enabled_ ? theme::color::background : theme::color::textSubtle};
+    TextStyle iconStyle{theme().font.iconFamily, 14.0, PANGO_WEIGHT_NORMAL,
+                        enabled_ ? theme().colors.background : theme().colors.textSubtle};
     Size iconSz = p.measureText(wifiGlyph, iconStyle);
 
     if (enabled_ && scanning_) {
@@ -348,8 +348,8 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
         const double phase = static_cast<double>(now % 900) / 900.0;
         cairo_t* cr2 = p.cr();
         cairo_new_path(cr2);  // cairo_arc appends: detach from any leftover path
-        cairo_set_source_rgba(cr2, theme::color::background.r, theme::color::background.g,
-                              theme::color::background.b, theme::color::background.a);
+        cairo_set_source_rgba(cr2, theme().colors.background.r, theme().colors.background.g,
+                              theme().colors.background.b, theme().colors.background.a);
         cairo_set_line_width(cr2, 2.0);
         cairo_set_line_cap(cr2, CAIRO_LINE_CAP_ROUND);
         const double a0 = phase * 2.0 * M_PI;
@@ -374,9 +374,9 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
         text = ssid_;
     }
 
-    TextStyle titleStyle{theme::font::family, 11.5, PANGO_WEIGHT_BOLD, theme::color::text};
-    TextStyle subStyle{theme::font::family, 10.0, PANGO_WEIGHT_NORMAL,
-                       enabled_ ? theme::color::primary : theme::color::textSubtle};
+    TextStyle titleStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD, theme().colors.text};
+    TextStyle subStyle{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL,
+                       enabled_ ? theme().colors.primary : theme().colors.textSubtle};
 
     Size titleSz = p.measureText("Wi-Fi", titleStyle, maxW);
     Size subSz = p.measureText(text, subStyle, maxW);
@@ -388,9 +388,9 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
     // Power zone affordance: a hairline divider and a radio glyph, so the two
     // hit zones are visible (body = picker, right strip = on/off).
     const double px = bounds.x + bounds.w - kPowerZoneW;
-    p.fillRect({px, bounds.y + 10.0, 1.0, bounds.h - 20.0}, theme::statusbar::panelSurfaceHover());
-    TextStyle const powerStyle{theme::font::iconFamily, 13.0, PANGO_WEIGHT_NORMAL,
-                               enabled_ ? theme::color::primary : theme::color::textSubtle};
+    p.fillRect({px, bounds.y + 10.0, 1.0, bounds.h - 20.0}, theme().panelSurfaceHover());
+    TextStyle const powerStyle{theme().font.iconFamily, 13.0, PANGO_WEIGHT_NORMAL,
+                               enabled_ ? theme().colors.primary : theme().colors.textSubtle};
     const char* powerGlyph = enabled_ ? "󰐬" : "󰐭";  // power-off / power (plug glyphs)
     Size powerSz = p.measureText(powerGlyph, powerStyle);
     p.drawText(px + (kPowerZoneW - powerSz.w) / 2.0, bounds.y + (bounds.h - powerSz.h) / 2.0,
@@ -452,15 +452,15 @@ void QSVolumeTile::draw(Painter& p, int64_t) {
     double val = getValue_ ? getValue_() : 0.7;
     bool isMuted = dimmed_ && dimmed_();
 
-    p.fillRoundedRectSource(bounds, kSectionRadius, theme::statusbar::panelSurface());
-    p.strokeRoundedRectSource(bounds, kSectionRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.fillRoundedRectSource(bounds, kSectionRadius, theme().panelSurface());
+    p.strokeRoundedRectSource(bounds, kSectionRadius, theme().panelSurfaceHover(), 1.0);
 
     double pad = 12.0;
 
     // Left Speaker Icon
     const std::string glyph = currentIcon();
-    Color iconCol = isMuted ? theme::color::error : theme::color::primary;
-    TextStyle iconStyle{theme::font::iconFamily, 16.0, PANGO_WEIGHT_NORMAL, iconCol};
+    Color iconCol = isMuted ? theme().colors.error : theme().colors.primary;
+    TextStyle iconStyle{theme().font.iconFamily, 16.0, PANGO_WEIGHT_NORMAL, iconCol};
     Size iconSz = p.measureText(glyph, iconStyle);
     double iconX = bounds.x + pad;
     double iconY = bounds.y + (bounds.h - iconSz.h) / 2.0;
@@ -468,16 +468,16 @@ void QSVolumeTile::draw(Painter& p, int64_t) {
     iconBounds_ = {bounds.x, bounds.y, iconX + iconSz.w + 6.0 - bounds.x, bounds.h};
 
     // Right chevron + percentage readout
-    TextStyle arrStyle{theme::font::iconFamily, 12.0, PANGO_WEIGHT_NORMAL,
-                       theme::color::textSubtle};
+    TextStyle arrStyle{theme().font.iconFamily, 12.0, PANGO_WEIGHT_NORMAL,
+                       theme().colors.textSubtle};
     Size arrSz = p.measureText("󰅂", arrStyle);
     double arrX = bounds.x + bounds.w - pad - arrSz.w;
     double arrY = bounds.y + (bounds.h - arrSz.h) / 2.0;
     p.drawText(arrX, arrY, "󰅂", arrStyle);
 
     std::string pctText = std::to_string(static_cast<int>(std::round(val * 100))) + "%";
-    TextStyle pctStyle{theme::font::family, 11.5, PANGO_WEIGHT_BOLD,
-                       isMuted ? theme::color::textMuted : theme::color::primary};
+    TextStyle pctStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD,
+                       isMuted ? theme().colors.textMuted : theme().colors.primary};
     Size pctSz = p.measureText(pctText, pctStyle);
     double pctX = arrX - 8.0 - pctSz.w;
     double pctY = bounds.y + (bounds.h - pctSz.h) / 2.0;
@@ -490,11 +490,11 @@ void QSVolumeTile::draw(Painter& p, int64_t) {
     double trackY = bounds.y + (bounds.h - trackH) / 2.0;
     trackBounds_ = {trackX, trackY, trackW, trackH};
 
-    p.fillRoundedRectSource(trackBounds_, trackH / 2.0, theme::statusbar::panelBackground());
+    p.fillRoundedRectSource(trackBounds_, trackH / 2.0, theme().panelBackground());
     if (!isMuted && val > 0.0) {
         Rect filled{trackX, trackY, trackW * val, trackH};
-        p.fillRoundedRect(filled, trackH / 2.0, theme::color::primary);
-        p.fillCircle(trackX + trackW * val, trackY + trackH / 2.0, 5.5, theme::color::text);
+        p.fillRoundedRect(filled, trackH / 2.0, theme().colors.primary);
+        p.fillCircle(trackX + trackW * val, trackY + trackH / 2.0, 5.5, theme().colors.text);
     }
 }
 
@@ -511,8 +511,8 @@ void QSMediaTile::onClick(double x, double y) {
 }
 
 void QSMediaTile::draw(Painter& p, int64_t) {
-    p.fillRoundedRectSource(bounds, kSectionRadius, theme::statusbar::panelSurface());
-    p.strokeRoundedRectSource(bounds, kSectionRadius, theme::statusbar::panelSurfaceHover(), 1.0);
+    p.fillRoundedRectSource(bounds, kSectionRadius, theme().panelSurface());
+    p.strokeRoundedRectSource(bounds, kSectionRadius, theme().panelSurfaceHover(), 1.0);
 
     double pad = 12.0;
 
@@ -525,10 +525,10 @@ void QSMediaTile::draw(Painter& p, int64_t) {
 
     cairo_t* cr = p.cr();
     cairo_pattern_t* pat = cairo_pattern_create_linear(artX, artY, artX + artW, artY + artH);
-    cairo_pattern_add_color_stop_rgba(pat, 0.0, theme::color::primary.r, theme::color::primary.g,
-                                      theme::color::primary.b, 1.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1.0, theme::color::mauve.r, theme::color::mauve.g,
-                                      theme::color::mauve.b, 1.0);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, theme().colors.primary.r, theme().colors.primary.g,
+                                      theme().colors.primary.b, 1.0);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, theme().colors.mauve.r, theme().colors.mauve.g,
+                                      theme().colors.mauve.b, 1.0);
     cairo_new_sub_path(cr);
     cairo_arc(cr, artRect.x + artRect.w - 10.0, artRect.y + 10.0, 10.0, -M_PI / 2, 0);
     cairo_arc(cr, artRect.x + artRect.w - 10.0, artRect.y + artRect.h - 10.0, 10.0, 0, M_PI / 2);
@@ -539,8 +539,8 @@ void QSMediaTile::draw(Painter& p, int64_t) {
     cairo_fill(cr);
     cairo_pattern_destroy(pat);
 
-    TextStyle noteStyle{theme::font::iconFamily, 18.0, PANGO_WEIGHT_NORMAL,
-                        theme::color::background};
+    TextStyle noteStyle{theme().font.iconFamily, 18.0, PANGO_WEIGHT_NORMAL,
+                        theme().colors.background};
     Size noteSz = p.measureText("󰎈", noteStyle);
     p.drawText(artX + (artW - noteSz.w) / 2.0, artY + (artH - noteSz.h) / 2.0, "󰎈", noteStyle);
 
@@ -559,8 +559,8 @@ void QSMediaTile::draw(Painter& p, int64_t) {
     double ctrlBoxW = 90.0;
     double textMaxW = bounds.w - (textX - bounds.x) - ctrlBoxW - pad;
 
-    TextStyle titleStyle{theme::font::family, 12.0, PANGO_WEIGHT_BOLD, theme::color::text};
-    TextStyle subStyle{theme::font::family, 10.5, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+    TextStyle titleStyle{theme().font.family, 12.0, PANGO_WEIGHT_BOLD, theme().colors.text};
+    TextStyle subStyle{theme().font.family, 10.5, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
 
     Size tSz = p.measureText(titleStr, titleStyle, textMaxW);
     Size aSz = p.measureText(artistStr, subStyle, textMaxW);
@@ -578,17 +578,17 @@ void QSMediaTile::draw(Painter& p, int64_t) {
     prevBounds_ = {rightX - 86.0, btnY + 4.0, 20.0, 20.0};
 
     // Prev button
-    TextStyle ctrlStyle{theme::font::iconFamily, 14.0, PANGO_WEIGHT_NORMAL,
-                        theme::color::textSubtle};
+    TextStyle ctrlStyle{theme().font.iconFamily, 14.0, PANGO_WEIGHT_NORMAL,
+                        theme().colors.textSubtle};
     Size prevSz = p.measureText("󰒮", ctrlStyle);
     p.drawText(prevBounds_.x + (prevBounds_.w - prevSz.w) / 2.0,
                prevBounds_.y + (prevBounds_.h - prevSz.h) / 2.0, "󰒮", ctrlStyle);
 
     // Play/Pause circle button
-    p.fillCircle(playBounds_.x + 14.0, playBounds_.y + 14.0, 14.0, theme::color::primary);
+    p.fillCircle(playBounds_.x + 14.0, playBounds_.y + 14.0, 14.0, theme().colors.primary);
     const char* playGlyph = playing ? "󰏤" : "󰐊";
-    TextStyle playStyle{theme::font::iconFamily, 13.0, PANGO_WEIGHT_NORMAL,
-                        theme::color::background};
+    TextStyle playStyle{theme().font.iconFamily, 13.0, PANGO_WEIGHT_NORMAL,
+                        theme().colors.background};
     Size playSz = p.measureText(playGlyph, playStyle);
     p.drawText(playBounds_.x + 14.0 - playSz.w / 2.0, playBounds_.y + 14.0 - playSz.h / 2.0,
                playGlyph, playStyle);

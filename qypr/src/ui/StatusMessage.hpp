@@ -5,10 +5,11 @@
 #include <string>
 
 #include "render/Painter.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
-class StatusMessage {
+class StatusMessage : public theme::ThemeAware {
 public:
     std::string message;
     bool isError = false;

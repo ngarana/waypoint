@@ -25,9 +25,8 @@ public:
         Rect b = getBounds();
         b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
 
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
 
         tile_->bounds = {b.x + 12.0, b.y + 10.0, b.w - 24.0, 64.0};

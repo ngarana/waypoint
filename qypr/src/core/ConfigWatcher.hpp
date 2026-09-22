@@ -1,7 +1,7 @@
 // ConfigWatcher.hpp - inotify watcher for live config reload.
 //
 // Watches bar.conf for writes/renames and fires a user-supplied callback so
-// the bar can re-read its Config and re-apply theme::loadTheme() without a
+// the bar can re-read its Config and re-apply the theme without a
 // restart. Integrates with EventLoop via addFd.
 
 #pragma once

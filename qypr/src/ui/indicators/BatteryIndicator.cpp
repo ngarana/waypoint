@@ -98,21 +98,20 @@ public:
         // Slide down 6px while opening (fade is applied by PopoverManager).
         b.y -= (1.0 - openProgress_.value(now)) * 6.0;
 
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
         drawProfiles(p, b);
 
-        const double pad = theme::statusbar::popoverPadding;
+        const double pad = theme().statusbar.popoverPadding;
         double const x = b.x + pad;
         double y = b.y + pad;
         const double innerW = b.w - (2 * pad);
 
-        TextStyle const title{.family = theme::font::family,
+        TextStyle const title{.family = theme().font.family,
                               .size = 14.0,
                               .weight = PANGO_WEIGHT_BOLD,
-                              .color = theme::color::text};
+                              .color = theme().colors.text};
         p.drawText(x, y, "Battery", title);
         p.drawText(b.x + b.w - pad, y, std::to_string(snap_->percentage) + "%", title,
                    HAlign::Right);
@@ -121,25 +120,25 @@ public:
         // Charge bar
         const double barH = 8.0;
         p.fillRoundedRectSource({.x = x, .y = y, .w = innerW, .h = barH}, barH / 2,
-                                theme::statusbar::panelSurface());
+                                theme().panelSurface());
         double const frac = snap_->percentage / 100.0;
         if (frac > 0.01) {
             Color fill;
             if (snap_->percentage > 50) {
-                fill = theme::color::success;
+                fill = theme().colors.success;
             } else if (snap_->percentage > 20) {
-                fill = theme::color::warning;
+                fill = theme().colors.warning;
             } else {
-                fill = theme::color::error;
+                fill = theme().colors.error;
             }
             p.fillRoundedRect({.x = x, .y = y, .w = innerW * frac, .h = barH}, barH / 2, fill);
         }
         y += barH + 16.0;
 
-        TextStyle const line{.family = theme::font::family,
+        TextStyle const line{.family = theme().font.family,
                              .size = 12.5,
                              .weight = PANGO_WEIGHT_NORMAL,
-                             .color = theme::color::textSubtle};
+                             .color = theme().colors.textSubtle};
         if (snap_->state == BatterySnapshot::Discharging && snap_->timeToEmpty > 0) {
             p.drawText(x, y, formatTime(snap_->timeToEmpty) + " remaining", line);
             y += 20.0;
@@ -176,17 +175,17 @@ private:
         profileButtons_.clear();
         if (!hasProfiles()) { return; }
         const auto& snap = profiles_->snapshot();
-        const double pad = theme::statusbar::popoverPadding;
+        const double pad = theme().statusbar.popoverPadding;
         const double innerW = b.w - (2 * pad);
         const double x = b.x + pad;
 
         double hy = b.y + b.h - 62.0;
         p.fillRectSource({.x = x, .y = hy - 12.0, .w = innerW, .h = 1.0},
-                         theme::statusbar::panelSurfaceHover());
-        TextStyle const hdr{.family = theme::font::family,
+                         theme().panelSurfaceHover());
+        TextStyle const hdr{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(x, hy, "POWER PROFILE", hdr);
         hy += 20.0;
 
@@ -200,12 +199,12 @@ private:
             const std::string& name = snap.profiles.at(i);
             const Rect r{.x = x + (static_cast<double>(i) * (pw + gap)), .y = hy, .w = pw, .h = ph};
             const bool active = name == snap.active;
-            p.fillRoundedRect(r, 8.0, active ? theme::color::primary : theme::color::glass);
-            p.strokeRoundedRect(r, 8.0, theme::color::glassBorder, 1.0);
-            TextStyle const ts{.family = theme::font::family,
+            p.fillRoundedRect(r, 8.0, active ? theme().colors.primary : theme().colors.glass);
+            p.strokeRoundedRect(r, 8.0, theme().colors.glassBorder, 1.0);
+            TextStyle const ts{.family = theme().font.family,
                                .size = 12.0,
                                .weight = active ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
-                               .color = active ? Color::fromHex("#1e1e2e") : theme::color::text};
+                               .color = active ? Color::fromHex("#1e1e2e") : theme().colors.text};
             p.drawText(r.x + (r.w / 2.0), r.y + ((ph - 14.0) / 2.0), profileLabel(name), ts,
                        HAlign::Center);
             profileButtons_.push_back({.rect = r, .name = name});
@@ -265,12 +264,12 @@ std::string BatteryIndicator::tooltip() const {
 
 Color BatteryIndicator::iconColor() const {
     if (!loaded_) {
-        return theme::color::text;  // no data yet: neutral, not a red "0%" alarm
+        return theme().colors.text;  // no data yet: neutral, not a red "0%" alarm
     }
     int const pct = lastSnap_.percentage;
-    if (pct > 50) { return theme::color::success; }
-    if (pct > 20) { return theme::color::warning; }
-    return theme::color::error;
+    if (pct > 50) { return theme().colors.success; }
+    if (pct > 20) { return theme().colors.warning; }
+    return theme().colors.error;
 }
 
 void BatteryIndicator::draw(Painter& p, int64_t now) {

@@ -18,6 +18,7 @@
 #include "ui/PasswordField.hpp"
 #include "ui/ConfirmPopover.hpp"
 #include "ui/StatusMessage.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
@@ -25,7 +26,7 @@ class EventLoop;
 class SystemActions;
 class AudioController;
 
-class LockScreen {
+class LockScreen : public theme::ThemeAware {
 public:
     LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power);
 
@@ -41,6 +42,10 @@ public:
     // Render the whole UI at a given output size.
     void draw(cairo_t* cr, int width, int height, int scale);
     bool isAnimating() const;
+
+    // ThemeAware: cascade to every owned widget (audio is borrowed — its
+    // owner binds it).
+    void setTheme(const theme::State& state) override;
 
     // Input handlers delegated by Shell
     void handleTextInput(const std::string& utf8);

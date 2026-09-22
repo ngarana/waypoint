@@ -96,19 +96,18 @@ public:
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
         b.y -= (1.0 - openProgress_.value(now)) * 6.0;
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
 
         hits_.clear();
         double y = b.y + kBPad;
 
         // ── Header: title + radio switch ──
-        TextStyle const hdr{.family = theme::font::family,
+        TextStyle const hdr{.family = theme().font.family,
                             .size = 12.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::text};
+                            .color = theme().colors.text};
         p.drawText(b.x + kBPad, y + 2.0, "Bluetooth", hdr);
         drawSwitch(p, {b.x + b.w - kBPad - kSwitchW, y + 1.0, kSwitchW, kSwitchH}, powered());
         hits_.push_back({.r = {b.x + b.w - kBPad - kSwitchW, y, kSwitchW + kBPad, kSwitchH},
@@ -116,10 +115,10 @@ public:
         y += kBHdrH;
 
         if (!powered()) {
-            TextStyle const e{.family = theme::font::family,
+            TextStyle const e{.family = theme().font.family,
                               .size = 12.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kBPad, y + 4.0, "Bluetooth is off", e);
             // A prompt outlasting the radio is contradictory, but BlueZ still
             // holds a call open until it is answered — never hide the answer.
@@ -148,19 +147,19 @@ public:
         }
 
         if (total > kBMax) {
-            TextStyle const m{.family = theme::font::family,
+            TextStyle const m{.family = theme().font.family,
                               .size = 10.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kBPad, y + 1.0, "scroll for more", m);
             y += 18.0;
         }
 
         if (!snap().error.empty()) {
-            TextStyle const es{.family = theme::font::family,
+            TextStyle const es{.family = theme().font.family,
                                .size = 11.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::error};
+                               .color = theme().colors.error};
             p.drawText(b.x + kBPad, y + 4.0, snap().error, es, HAlign::Left, b.w - (kBPad * 2));
             y += kBErrH;
         }
@@ -379,73 +378,74 @@ private:
 
     // Section heading; the first one carries the scan spinner / refresh button.
     void drawSection(Painter& p, const Rect& b, double y, const Row& r, int64_t now) {
-        TextStyle const sub{.family = theme::font::family,
+        TextStyle const sub{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(b.x + kBPad, y, r.label, sub);
         if (r.label != "MY DEVICES") { return; }
 
         const Rect refresh{b.x + b.w - kBPad - 18.0, y - 3.0, 18.0, 18.0};
         if (snap().discovering) {
-            drawBtSpinner(p, refresh.x + 9.0, refresh.y + 9.0, 6.0, now, theme::color::primary);
+            drawBtSpinner(p, refresh.x + 9.0, refresh.y + 9.0, 6.0, now, theme().colors.primary);
         } else {
-            TextStyle const rs{.family = theme::font::iconFamily,
+            TextStyle const rs{.family = theme().font.iconFamily,
                                .size = 13.0,
                                .weight = PANGO_WEIGHT_NORMAL,
                                .color = refresh.contains(hoverX_, hoverY_)
-                                            ? theme::color::text
-                                            : theme::color::textSubtle};
+                                            ? theme().colors.text
+                                            : theme().colors.textSubtle};
             p.drawText(refresh.x + 2.0, refresh.y + 1.0, kBRefresh, rs);
         }
         hits_.push_back({.r = refresh, .kind = Hit::Kind::Refresh});
     }
 
     void drawNote(Painter& p, const Rect& b, double y, const Row& r) {
-        TextStyle const e{.family = theme::font::family,
+        TextStyle const e{.family = theme().font.family,
                           .size = 12.0,
                           .weight = PANGO_WEIGHT_NORMAL,
-                          .color = theme::color::textSubtle};
+                          .color = theme().colors.textSubtle};
         p.drawText(b.x + kBPad, y + 4.0, r.label, e);
     }
 
     void drawDevice(Painter& p, const Rect& b, double y, const BtDevice& d, int64_t now) {
         const Rect row{.x = b.x + kBPad, .y = y, .w = b.w - (kBPad * 2), .h = kBRow};
         if (row.contains(hoverX_, hoverY_)) {
-            p.fillRoundedRect(row, 8.0, theme::color::glassHover);
+            p.fillRoundedRect(row, 8.0, theme().colors.glassHover);
         }
 
-        const Color accent = d.connected ? theme::color::primary : theme::color::text;
-        TextStyle const gs{.family = theme::font::iconFamily,
+        const Color accent = d.connected ? theme().colors.primary : theme().colors.text;
+        TextStyle const gs{.family = theme().font.iconFamily,
                            .size = 18.0,
                            .weight = PANGO_WEIGHT_NORMAL,
-                           .color = d.paired ? accent : theme::color::textSubtle};
+                           .color = d.paired ? accent : theme().colors.textSubtle};
         p.drawText(row.x + 6.0, row.y + ((kBRow - 20.0) / 2.0), btGlyph(d.icon), gs);
 
-        TextStyle const ns{.family = theme::font::family,
+        TextStyle const ns{.family = theme().font.family,
                            .size = 13.0,
                            .weight = d.connected ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
-                           .color = theme::color::text};
+                           .color = theme().colors.text};
         p.drawText(row.x + 34.0, row.y + 6.0, d.name.empty() ? "Device" : d.name, ns, HAlign::Left,
                    row.w - 66.0);
 
         const bool busy = snap().busy == d.path;
-        TextStyle const ss{.family = theme::font::family,
+        TextStyle const ss{.family = theme().font.family,
                            .size = 11.0,
                            .weight = PANGO_WEIGHT_NORMAL,
-                           .color = d.connected ? theme::color::primary : theme::color::textSubtle};
+                           .color =
+                               d.connected ? theme().colors.primary : theme().colors.textSubtle};
         p.drawText(row.x + 34.0, row.y + 23.0, subtitle(d), ss);
 
         // Right cluster: a spinner while an operation runs, otherwise a check
         // on the connected device.
         if (busy) {
             drawBtSpinner(p, row.x + row.w - 14.0, row.y + (kBRow / 2.0), 6.0, now,
-                          theme::color::primary);
+                          theme().colors.primary);
         } else if (d.connected) {
-            TextStyle const cs{.family = theme::font::iconFamily,
+            TextStyle const cs{.family = theme().font.iconFamily,
                                .size = 14.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::primary};
+                               .color = theme().colors.primary};
             const Size cz = p.measureText(kBCheck, cs);
             p.drawText(row.x + row.w - 6.0 - cz.w, row.y + ((kBRow - 14.0) / 2.0), kBCheck, cs);
         }
@@ -514,12 +514,12 @@ private:
 
         const Rect card{
             .x = b.x + kBPad, .y = y, .w = b.w - (kBPad * 2), .h = promptHeight(r) - 6.0};
-        p.fillRoundedRect(card, 8.0, theme::color::glassHover);
+        p.fillRoundedRect(card, 8.0, theme().colors.glassHover);
 
-        TextStyle const lbl{.family = theme::font::family,
+        TextStyle const lbl{.family = theme().font.family,
                             .size = 11.5,
                             .weight = PANGO_WEIGHT_MEDIUM,
-                            .color = theme::color::text};
+                            .color = theme().colors.text};
         p.drawText(card.x + 10.0, card.y + 8.0, promptTitle(r), lbl, HAlign::Left, card.w - 20.0);
 
         double inner = card.y + 28.0;
@@ -530,29 +530,29 @@ private:
                 if (i == 3 && r.passkey.size() == 6) { spaced += ' '; }
                 spaced += r.passkey[i];
             }
-            TextStyle const code{.family = theme::font::family,
+            TextStyle const code{.family = theme().font.family,
                                  .size = 22.0,
                                  .weight = PANGO_WEIGHT_BOLD,
-                                 .color = theme::color::primary};
+                                 .color = theme().colors.primary};
             const Size cz = p.measureText(spaced, code);
             p.drawText(card.x + ((card.w - cz.w) / 2.0), inner, spaced, code);
             if (r.kind == BtPairRequest::Kind::Display && r.entered > 0) {
-                TextStyle const prog{.family = theme::font::family,
+                TextStyle const prog{.family = theme().font.family,
                                      .size = 10.0,
                                      .weight = PANGO_WEIGHT_NORMAL,
-                                     .color = theme::color::textSubtle};
+                                     .color = theme().colors.textSubtle};
                 p.drawText(card.x + 10.0, inner + 26.0, std::to_string(r.entered) + " entered",
                            prog);
             }
             inner += 34.0;
         } else if (r.kind == BtPairRequest::Kind::Entry) {
             const Rect box{.x = card.x + 10.0, .y = inner, .w = card.w - 20.0, .h = 22.0};
-            p.fillRoundedRect(box, 6.0, theme::color::background);
+            p.fillRoundedRect(box, 6.0, theme().colors.background);
             const bool blink = (now % 1000) < 500;
-            TextStyle const txt{.family = theme::font::family,
+            TextStyle const txt{.family = theme().font.family,
                                 .size = 13.0,
                                 .weight = PANGO_WEIGHT_NORMAL,
-                                .color = theme::color::text};
+                                .color = theme().colors.text};
             // Shown in the clear: the user is copying it off the other device,
             // so masking it would only make it harder to check.
             p.drawText(box.x + 8.0, box.y + 3.0, blink ? entry_ + "│" : entry_, txt);
@@ -565,20 +565,20 @@ private:
         const char* acceptLabel = r.kind == BtPairRequest::Kind::Service ? "Allow" : "Pair";
         const char* cancelLabel = r.kind == BtPairRequest::Kind::Service ? "Deny" : "Cancel";
 
-        TextStyle const bs{.family = theme::font::family,
+        TextStyle const bs{.family = theme().font.family,
                            .size = 11.5,
                            .weight = PANGO_WEIGHT_MEDIUM,
-                           .color = theme::color::background};
-        TextStyle const xs{.family = theme::font::family,
+                           .color = theme().colors.background};
+        TextStyle const xs{.family = theme().font.family,
                            .size = 11.5,
                            .weight = PANGO_WEIGHT_MEDIUM,
-                           .color = theme::color::textSubtle};
+                           .color = theme().colors.textSubtle};
         const Rect cancel{.x = card.x + card.w - 60.0, .y = inner, .w = 50.0, .h = kBBtnH};
         if (canAccept) {
             const Rect accept{.x = card.x + card.w - 118.0, .y = inner, .w = 52.0, .h = kBBtnH};
             p.fillRoundedRect(accept, kBBtnH / 2.0,
-                              acceptReady ? theme::color::primary
-                                          : theme::color::primary.withAlpha(0.4));
+                              acceptReady ? theme().colors.primary
+                                          : theme().colors.primary.withAlpha(0.4));
             const Size az = p.measureText(acceptLabel, bs);
             p.drawText(accept.x + ((accept.w - az.w) / 2.0), accept.y + 2.0, acceptLabel, bs);
             hits_.push_back({.r = accept, .kind = Hit::Kind::PromptAccept});
@@ -591,11 +591,11 @@ private:
     // Pill switch (on = accent fill, knob right) — same control as the WiFi
     // picker's radio toggle.
     void drawSwitch(Painter& p, const Rect& r, bool on) {
-        p.fillRoundedRect(r, r.h / 2.0, on ? theme::color::primary : theme::color::glassHover);
+        p.fillRoundedRect(r, r.h / 2.0, on ? theme().colors.primary : theme().colors.glassHover);
         const double knobR = (r.h - 4.0) / 2.0;
         const double kx = on ? r.x + r.w - knobR - 2.0 : r.x + knobR + 2.0;
         p.fillCircle(kx, r.y + r.h / 2.0, knobR,
-                     on ? theme::color::background : theme::color::textSubtle);
+                     on ? theme().colors.background : theme().colors.textSubtle);
     }
 
     BluetoothBackend* backend_ = nullptr;
@@ -645,8 +645,8 @@ std::string BluetoothIndicator::tooltip() const {
 
 Color BluetoothIndicator::iconColor() const {
     // Blue accent while something is connected.
-    if (lastSnap_.powered && lastSnap_.connectedCount > 0) { return theme::color::primary; }
-    return theme::color::text;
+    if (lastSnap_.powered && lastSnap_.connectedCount > 0) { return theme().colors.primary; }
+    return theme().colors.text;
 }
 
 void BluetoothIndicator::onBackendUpdate() {

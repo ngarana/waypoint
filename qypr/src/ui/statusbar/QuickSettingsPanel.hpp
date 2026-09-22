@@ -35,6 +35,11 @@ public:
     void addTile(std::unique_ptr<QSTile> tile);
     void clearTiles() { tiles_.clear(); }
 
+    // ThemeAware: bind the owner's live copy and cascade to every owned
+    // tile (grid + header/power/wifi/volume/media), so a re-theme repaints
+    // the whole panel without rebuilding it.
+    void setTheme(const theme::State& state) override;
+
     void draw(Painter& p, int64_t now) override;
     double contentHeight() const override;
     double contentWidth() const override;
@@ -52,6 +57,14 @@ public:
     // Persistent: QS is a deliberate panel with its own pointer-leave dismissal;
     // it must not time out while open.
     int autoDismissMs() const override { return 0; }
+
+    // Geometry shorthands bound to the live theme (replacing the old
+    // file-scope const& to the globals): every layout/draw read goes through
+    // these, so a re-theme repaints at the new metrics without rebuilding.
+    double panelW() const { return theme().statusbar.qsPanelWidth; }
+    double pad() const { return theme().statusbar.qsPadding; }
+    double gap() const { return theme().statusbar.qsTileGap; }
+    double gridRowH() const { return theme().statusbar.qsTileHeight; }
 
     Rect findTileBounds(const std::string& tileTitle) const;
 

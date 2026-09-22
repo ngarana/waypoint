@@ -31,7 +31,7 @@ std::string WorkspacesIndicator::tooltip() const {
 }
 
 double WorkspacesIndicator::pillWidth(Painter& p, const std::string& name) const {
-    TextStyle st{theme::font::family, kFont, PANGO_WEIGHT_MEDIUM, theme::color::text};
+    TextStyle st{theme().font.family, kFont, PANGO_WEIGHT_MEDIUM, theme().colors.text};
     return p.measureText(name, st).w + 2 * kPillPadX;
 }
 
@@ -49,13 +49,13 @@ double WorkspacesIndicator::measureCollapsedWidth(Painter& p) const {
     if (activeName.empty()) activeName = snap_.workspaces.front().name;
 
     // Active pill width.
-    TextStyle st{theme::font::family, kFont, PANGO_WEIGHT_MEDIUM, theme::color::text};
+    TextStyle st{theme().font.family, kFont, PANGO_WEIGHT_MEDIUM, theme().colors.text};
     double pw = p.measureText(activeName, st).w + 2 * kCollapsedPadX;
 
     // Superscript total count (only when >1 workspace).
     if (snap_.workspaces.size() > 1) {
-        TextStyle supSt{theme::font::family, kSuperscriptSize, PANGO_WEIGHT_NORMAL,
-                        theme::color::textSubtle};
+        TextStyle supSt{theme().font.family, kSuperscriptSize, PANGO_WEIGHT_NORMAL,
+                        theme().colors.textSubtle};
         std::string count = std::to_string(snap_.workspaces.size());
         double supW = p.measureText(count, supSt).w;
         pw += kSuperscriptOffsetX + supW;
@@ -93,22 +93,22 @@ void WorkspacesIndicator::drawCollapsed(Painter& p) {
     }
 
     // Measure the active pill.
-    TextStyle st{theme::font::family, kFont, PANGO_WEIGHT_MEDIUM, theme::color::background};
+    TextStyle st{theme().font.family, kFont, PANGO_WEIGHT_MEDIUM, theme().colors.background};
     Size ts = p.measureText(active->name, st);
     double pw = ts.w + 2 * kCollapsedPadX;
     double pillY = bounds.y + (bounds.h - kCollapsedPillH) / 2.0;
 
     // Draw the active pill.
     p.fillRoundedRect({bounds.x, pillY, pw, kCollapsedPillH}, kCollapsedPillH / 2.0,
-                      theme::color::primary);
+                      theme().colors.primary);
     double tx = bounds.x + (pw - ts.w) / 2.0;
     double ty = bounds.y + (bounds.h - ts.h) / 2.0;
     p.drawText(tx, ty, active->name, st, HAlign::Left);
 
     // Superscript total count (only when >1 workspace).
     if (snap_.workspaces.size() > 1) {
-        TextStyle supSt{theme::font::family, kSuperscriptSize, PANGO_WEIGHT_NORMAL,
-                        theme::color::textSubtle};
+        TextStyle supSt{theme().font.family, kSuperscriptSize, PANGO_WEIGHT_NORMAL,
+                        theme().colors.textSubtle};
         std::string count = std::to_string(snap_.workspaces.size());
         double sx = bounds.x + pw + kSuperscriptOffsetX;
         double sy = pillY + kSuperscriptOffsetY;
@@ -143,26 +143,26 @@ void WorkspacesIndicator::draw(Painter& p, int64_t now) {
             Color txtColor;
             bool onFill = false;
             if (w.active) {
-                p.fillRoundedRect({x, pillY, pw, kPillH}, kPillH / 2.0, theme::color::primary);
-                txtColor = theme::color::background;
+                p.fillRoundedRect({x, pillY, pw, kPillH}, kPillH / 2.0, theme().colors.primary);
+                txtColor = theme().colors.background;
                 onFill = true;
             } else if (w.urgent) {
                 p.fillRoundedRect({x, pillY, pw, kPillH}, kPillH / 2.0,
-                                  theme::color::warning.withAlpha(0.28));
-                txtColor = theme::color::warning;
+                                  theme().colors.warning.withAlpha(0.28));
+                txtColor = theme().colors.warning;
             } else {
-                txtColor = theme::color::textSubtle;
+                txtColor = theme().colors.textSubtle;
             }
 
-            TextStyle st{theme::font::family, kFont, PANGO_WEIGHT_MEDIUM, txtColor};
+            TextStyle st{theme().font.family, kFont, PANGO_WEIGHT_MEDIUM, txtColor};
             Size ts = p.measureText(w.name, st);
             double tx = x + (pw - ts.w) / 2.0;
             double ty = bounds.y + (bounds.h - ts.h) / 2.0;
             if (onFill) {
                 p.drawText(tx, ty, w.name, st, HAlign::Left);
             } else {
-                p.drawTextShadowed(tx, ty, w.name, st, HAlign::Left, theme::effects::shadowOpacity,
-                                   theme::effects::shadowOffset);
+                p.drawTextShadowed(tx, ty, w.name, st, HAlign::Left, theme().effects.shadowOpacity,
+                                   theme().effects.shadowOffset);
             }
 
             hits_.push_back({x, x + pw, w.name});

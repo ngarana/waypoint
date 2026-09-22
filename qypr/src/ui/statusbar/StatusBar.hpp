@@ -22,9 +22,9 @@ class Invalidator;
 // overrides them from bar.conf (Phase 9). `bottom` mirrors the bar to the lower
 // screen edge — including the direction popovers open.
 struct BarGeometry {
-    double height = theme::statusbar::height;
-    double edgeMargin = theme::statusbar::topMargin;  // gap from the anchored edge
-    double sideMargin = theme::statusbar::sideMargin;
+    double height = theme::kDefaultState.statusbar.height;
+    double edgeMargin = theme::kDefaultState.statusbar.topMargin;  // gap from the anchored edge
+    double sideMargin = theme::kDefaultState.statusbar.sideMargin;
     bool bottom = false;
 };
 
@@ -95,6 +95,14 @@ public:
     // turns it on so the glyphs stay legible over an arbitrary wallpaper.
     // `alpha` < 0 keeps the built-in default.
     void setBackdrop(bool enabled, double alpha = -1.0);
+
+    // ThemeAware: the bar OWNS its theme copy (derived values like the
+    // nested-surface alpha are folded in here), and every indicator, tile,
+    // and popover under it reads this copy. Re-binding on host re-theme
+    // re-cascades; no cross-instance leak is possible by construction
+    // (the global version of this reset lived in the ctor).
+    void setTheme(const theme::State& state) override;
+    const theme::State& theme() const override;
 
     // Panel geometry (size + which edge the bar is anchored to).
     void setGeometry(const BarGeometry& g);
@@ -205,6 +213,12 @@ private:
     // Borrowed wifi backend (may be null on the lock screen): feeds the QS
     // Wi-Fi combo tile on every backend push (see notifyBackendUpdate).
     WifiBackend* wifi_ = nullptr;
+
+    // Owned theme copy: nested-surface alpha and friends are derived here,
+    // children read this copy (never the host's) via the setTheme cascade.
+    theme::State theme_;
+    void cascadeTheme();
+    void applyBackdropAlpha();
 
     // ── Tooltips ─────────────────────────────────────────────────────────
     // After the pointer sits over one indicator for `kTooltipDelayMs` we paint

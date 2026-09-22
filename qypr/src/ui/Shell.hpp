@@ -16,6 +16,7 @@
 #include "system/DndState.hpp"
 #include "ui/LockScreen.hpp"
 #include "ui/statusbar/StatusBar.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
@@ -23,7 +24,7 @@ class EventLoop;
 class AudioController;
 class VideoPlayer;
 
-class Shell : public InputSink {
+class Shell : public InputSink, public theme::ThemeAware {
 public:
     Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
           const SystemBackends& backends);
@@ -50,6 +51,9 @@ public:
     // Access for App wiring.
     LockScreen& lockScreen() { return lockScreen_; }
     StatusBar& statusBar() { return statusBar_; }
+
+    // ThemeAware: cascade the owner's live copy to both children.
+    void setTheme(const theme::State& state) override;
 
 private:
     void wakeFromIdle();
