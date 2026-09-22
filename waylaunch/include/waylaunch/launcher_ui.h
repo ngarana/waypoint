@@ -4,7 +4,7 @@
 #include "waylaunch/history.h"
 #include "waylaunch/list_item.h"
 #include "waylaunch/renderer.h"
-#include "waylaunch/solar.h" // solar_tracker for theme mode=auto
+#include "waylaunch/theme_manager.h" // [theme] ownership (matugen + solar + watch)
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
@@ -143,13 +143,10 @@ class LauncherUI {
     HistoryStore history_;
 
     // Matugen live theming (all overlays render through build_theme()).
-    std::unique_ptr<MatugenTheme> matugen_;
-    // Solar day/night for [theme] mode=auto (GeoClue fix, dark fallback).
-    // Resolved per poll tick; converging after first paint never delays it.
-    solar_tracker solar_;
-    // config.toml mtime: only the [theme] section is re-read live; everything
-    // else still applies at startup (providers snapshot their config in init).
-    std::optional<std::filesystem::file_time_type> config_mtime_;
+    // Owned by ThemeManager: matugen source, solar day/night, config watch
+    // (only [theme] is re-read live; everything else still applies at
+    // startup — providers snapshot their config in init).
+    ThemeManager themes_;
 
     // Pluggable search sources (§5.2). Being migrated incrementally; providers
     // already registered here own their query + activation, the rest still runs

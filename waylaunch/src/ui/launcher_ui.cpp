@@ -4,7 +4,6 @@
 #include "waylaunch/config.h"
 #include "waylaunch/content/config.h"
 #include "waylaunch/content/store.h"
-#include "waylaunch/matugen_theme.h"
 #include "waylaunch/power/power_action_backend.h"
 #include "waylaunch/power/power_input_controller.h"
 #include "waylaunch/power/power_manager.h"
@@ -347,7 +346,7 @@ bool try_enable_backdrop_blur() {
 
 } // namespace
 
-LauncherUI::LauncherUI() : matugen_(std::make_unique<MatugenTheme>()) {}
+LauncherUI::LauncherUI() = default;
 
 LauncherUI::~LauncherUI() {
     {
@@ -779,13 +778,10 @@ void LauncherUI::quit() {
 // ---------------------------------------------------------------------------
 
 Theme LauncherUI::build_theme() {
-    auto tc = config_->get().theme;
-    // Solar mode: "auto" resolves against the GeoClue window (dark fallback),
-    // so every overlay — launcher, switcher, power — follows the same sun.
-    tc.mode = solar_.effective_mode(tc.mode);
-    // Matugen source: Material tokens overlaid on the static [theme.colors]
-    // (cached by mtime, so this stays cheap enough to call every frame).
-    const ColorConfig cc = (matugen_ != nullptr) ? matugen_->resolve(tc) : tc.colors;
+    const auto& tc = config_->get().theme;
+    // Effective colors (matugen scheme overlaid on the static [theme.colors],
+    // cached by mtime) come from the ThemeManager; shape/fonts stay here.
+    const ColorConfig cc = themes_.colors(*config_, config_path_);
     Theme t;
     t.background = Color::from_hex(cc.background);
     t.background_alt = Color::from_hex(cc.background_alt);
@@ -815,20 +811,10 @@ Theme LauncherUI::build_theme() {
 }
 
 void LauncherUI::poll_theme() {
-    if (config_ == nullptr || matugen_ == nullptr || config_path_.empty()) return;
-    // A config edit re-reads [theme] live (providers keep their init-time
-    // snapshot; only colors/fonts/shape repaint). Parse failures keep the
-    // running theme — never blank the overlay over a half-saved file.
-    std::error_code ec;
-    auto mtime = std::filesystem::last_write_time(config_path_, ec);
-    if (!ec && (!config_mtime_.has_value() || *config_mtime_ != mtime)) {
-        config_mtime_ = mtime;
-        Config fresh;
-        if (fresh.load(config_path_)) config_->get().theme = fresh.get().theme;
-    }
-    auto tc = config_->get().theme;
-    tc.mode = solar_.effective_mode(tc.mode);
-    if (matugen_->poll(tc)) needs_redraw_ = true;
+    if (config_ == nullptr || config_path_.empty()) return;
+    // A config/matugen edit — or a solar flip — repaints without a restart.
+    // Providers keep their init-time snapshot; only colors/fonts/shape repaint.
+    if (themes_.poll(*config_, config_path_)) needs_redraw_ = true;
 }
 
 // ---------------------------------------------------------------------------
