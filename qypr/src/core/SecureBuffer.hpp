@@ -64,9 +64,7 @@ public:
     // PAM's conversation needs this; it strdup()s it into a reply that libpam
     // owns and wipes.
     const char* cStr() const { return buf_ != nullptr ? buf_ : ""; }
-    std::string_view view() const {
-        return {buf_ != nullptr ? buf_ : "", size_};
-    }
+    std::string_view view() const { return {buf_ != nullptr ? buf_ : "", size_}; }
 
     // True when the bytes are actually pinned in RAM: `mlock` can fail under
     // RLIMIT_MEMLOCK (the buffer is then still wiped, but swappable).

@@ -22,9 +22,13 @@ void wipe(char* p, size_t n) {
 bool warnedAboutMlock = false;
 }  // namespace
 
-SecureBuffer::SecureBuffer(size_t capacity) { allocate(capacity); }
+SecureBuffer::SecureBuffer(size_t capacity) {
+    allocate(capacity);
+}
 
-SecureBuffer::~SecureBuffer() { release(); }
+SecureBuffer::~SecureBuffer() {
+    release();
+}
 
 // Ownership transfer that cannot throw. `other` is deliberately *not* left
 // inert: the caller (LockScreen) keeps typing into it, so it gets its own fresh
@@ -52,8 +56,7 @@ void SecureBuffer::allocate(size_t capacity) noexcept {
     locked_ = ::mlock(buf_, cap_) == 0;
     if (!locked_ && !warnedAboutMlock) {
         warnedAboutMlock = true;
-        std::fprintf(stderr,
-                     "qypr: mlock(%zu) failed (%s); the secret stays swappable\n", cap_,
+        std::fprintf(stderr, "qypr: mlock(%zu) failed (%s); the secret stays swappable\n", cap_,
                      std::strerror(errno));
     }
 }

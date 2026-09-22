@@ -374,17 +374,16 @@ TEST(PaletteReaderParsesMatugenFormats) {
     // CSS custom properties + GTK define-color + nested JSON + flat JSON
     // may appear in one file; first occurrence of a token wins; names are
     // normalised (lower-case, `--` stripped, `_` → `-`).
-    const std::string mixed =
-        ":root {\n"
-        "  --primary: #aabbcc;\n"
-        "  --on_surface: #ddeeff;\n"  // matugen underscore name
-        "}\n"
-        "@define-color error #ff5544;\n"
-        "{\n"
-        "  \"tertiary\": { \"hex\": \"#66d9a0\" },\n"
-        "  \"surface_container\": \"#223344\"\n"
-        "}\n"
-        "outline: #556677;\n";
+    const std::string mixed = ":root {\n"
+                              "  --primary: #aabbcc;\n"
+                              "  --on_surface: #ddeeff;\n"  // matugen underscore name
+                              "}\n"
+                              "@define-color error #ff5544;\n"
+                              "{\n"
+                              "  \"tertiary\": { \"hex\": \"#66d9a0\" },\n"
+                              "  \"surface_container\": \"#223344\"\n"
+                              "}\n"
+                              "outline: #556677;\n";
     const auto tokens = qypr::theme::parsePalette(mixed);
     EXPECT_EQ(tokens.at("primary"), std::string("#aabbcc"));
     EXPECT_EQ(tokens.at("on-surface"), std::string("#ddeeff"));
