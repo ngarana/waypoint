@@ -85,7 +85,8 @@ std::unique_ptr<QSTile> BrightnessIndicator::createTile() {
         "󰃠", [snap]() { return snap->fraction(); },
         [backend](double v) {
             if (backend) { backend->setFraction(v); }
-        });
+        },
+        nullptr, nullptr, nullptr, "Q27G41ZDF", QSTile::Role::Brightness);
 }
 
 std::unique_ptr<DetailedPopover> BrightnessIndicator::createDetailedView() {

@@ -60,7 +60,8 @@ std::unique_ptr<QSTile> IdleInhibitorIndicator::createTile() {
         [backend]() -> std::string {
             if (!backend || !backend->available()) return "Unavailable";
             return backend->active() ? "On" : "Off";
-        });
+        },
+        Color{0, 0, 0, 0}, QSTile::Role::KeepAwake);
 }
 
 REGISTER_INDICATOR("idle-inhibitor", Zone::Right, 250, IdleInhibitorIndicator)

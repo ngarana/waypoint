@@ -113,16 +113,17 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
         wifiCombo_ = std::make_unique<QSWifiComboTile>("", 0, false, false, theme::color::primary);
     }
 
-    // Remove any indicator-created WiFi/Network tiles — the combo tile replaces them.
+    // Remove any indicator-created WiFi tile — the combo tile replaces it.
+    // Matched by stable role, never by display title (titles are free to
+    // change without breaking ownership).
     std::erase_if(tiles_, [](const std::unique_ptr<QSTile>& t) {
         if (t == nullptr) { return false; }
-        std::string const title = t->title();
-        return title == "WiFi" || title == "Network" || title == "Wired";
+        return t->role() == QSTile::Role::Wifi;
     });
 
     // Purge any volume tiles from grid (volume is handled in dedicated QSVolumeTile card at bottom)
     std::erase_if(tiles_, [](const std::unique_ptr<QSTile>& t) {
-        return t && (t->type() == QSTile::Type::Volume || t->title() == "Volume");
+        return t && (t->type() == QSTile::Type::Volume || t->role() == QSTile::Role::Volume);
     });
 
     bool hasBt = false;
@@ -132,17 +133,18 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
     bool hasSs = false;
     for (const auto& t : tiles_) {
         if (!t) { continue; }
-        std::string const title = t->title();
-        if (title == "Bluetooth") {
+        // Roles, not titles: a relabelled indicator tile still fills its
+        // slot, and an unrelated custom tile never does.
+        const auto role = t->role();
+        if (role == QSTile::Role::Bluetooth) {
             hasBt = true;
-        } else if (t->type() == QSTile::Type::Slider || title == "Q27G41ZDF" ||
-                   title == "Brightness") {
+        } else if (t->type() == QSTile::Type::Slider || role == QSTile::Role::Brightness) {
             hasBr = true;
-        } else if (title == "Do Not Disturb") {
+        } else if (role == QSTile::Role::Dnd) {
             hasDnd = true;
-        } else if (title == "Keep awake" || title == "Idle Inhibitor") {
+        } else if (role == QSTile::Role::KeepAwake) {
             hasKa = true;
-        } else if (title == "Screenshot") {
+        } else if (role == QSTile::Role::Screenshot) {
             hasSs = true;
         }
     }
@@ -158,12 +160,14 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
                     if (!bt->snapshot().powered) { return "Off"; }
                     if (bt->snapshot().connectedCount == 0) { return "Not Connected"; }
                     return bt->snapshot().firstDevice;
-                })));
+                }),
+                Color{0, 0, 0, 0}, QSTile::Role::Bluetooth));
         } else {
             tiles_.push_back(std::make_unique<QSToggleTile>(
                 "Bluetooth", "󰂯", std::function<bool()>([]() { return false; }),
                 std::function<void()>([]() {}),
-                std::function<std::string()>([]() -> std::string { return "Not Connected"; })));
+                std::function<std::string()>([]() -> std::string { return "Not Connected"; }),
+                Color{0, 0, 0, 0}, QSTile::Role::Bluetooth));
         }
     }
 
@@ -173,12 +177,12 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
             tiles_.push_back(std::make_unique<QSSliderTile>(
                 "󰃟", std::function<double()>([br]() { return br->snapshot().fraction(); }),
                 std::function<void(double)>([br](double v) { br->setFraction(v); }), nullptr,
-                nullptr, nullptr, "Q27G41ZDF"));
+                nullptr, nullptr, "Q27G41ZDF", QSTile::Role::Brightness));
         } else {
             tiles_.push_back(std::make_unique<QSSliderTile>(
                 "󰃟", std::function<double()>([]() { return 0.8; }),
-                std::function<void(double)>([](double) {}), nullptr, nullptr, nullptr,
-                "Q27G41ZDF"));
+                std::function<void(double)>([](double) {}), nullptr, nullptr, nullptr, "Q27G41ZDF",
+                QSTile::Role::Brightness));
         }
     }
 
@@ -189,11 +193,12 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
                 "Do Not Disturb", "󰂜", std::function<bool()>([dnd]() { return dnd->enabled(); }),
                 std::function<void()>([dnd]() { dnd->toggle(); }),
                 std::function<std::string()>(
-                    [dnd]() -> std::string { return dnd->enabled() ? "On" : "Off"; })));
+                    [dnd]() -> std::string { return dnd->enabled() ? "On" : "Off"; }),
+                Color{0, 0, 0, 0}, QSTile::Role::Dnd));
         } else {
             tiles_.push_back(std::make_unique<QSToggleTile>(
                 "Do Not Disturb", "󰂜", []() { return false; }, []() {},
-                []() -> std::string { return "Off"; }));
+                []() -> std::string { return "Off"; }, Color{0, 0, 0, 0}, QSTile::Role::Dnd));
         }
     }
 
@@ -202,7 +207,7 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
     // consistent regardless of how the indicator was set up.
     {
         std::erase_if(tiles_, [](const std::unique_ptr<QSTile>& t) {
-            return t && t->title() == "Night Light";
+            return t && t->role() == QSTile::Role::NightLight;
         });
 
         if (backends.nightLight != nullptr) {
@@ -215,7 +220,8 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
                 std::function<std::string()>([nl]() -> std::string {
                     if (!nl || !nl->available()) { return "Off"; }
                     return nl->enabled() ? "On" : "Off";
-                }));
+                }),
+                Color{0, 0, 0, 0}, QSTile::Role::NightLight);
             tile->setOnScroll([nl](double dx, double dy) {
                 if (!nl || !nl->available()) { return false; }
                 const double delta = dy != 0.0 ? dy : dx;
@@ -227,7 +233,8 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
         } else {
             tiles_.push_back(std::make_unique<QSToggleTile>(
                 "Night Light", "", []() { return false; }, []() {},
-                []() -> std::string { return "Off"; }));
+                []() -> std::string { return "Off"; }, Color{0, 0, 0, 0},
+                QSTile::Role::NightLight));
         }
     }
 
@@ -242,11 +249,12 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
                 std::function<std::string()>([ii]() -> std::string {
                     if (!ii || !ii->available()) { return "Off"; }
                     return ii->active() ? "On" : "Off";
-                })));
+                }),
+                Color{0, 0, 0, 0}, QSTile::Role::KeepAwake));
         } else {
             tiles_.push_back(std::make_unique<QSToggleTile>(
                 "Keep awake", "󰅶", []() { return false; }, []() {},
-                []() -> std::string { return "Off"; }));
+                []() -> std::string { return "Off"; }, Color{0, 0, 0, 0}, QSTile::Role::KeepAwake));
         }
     }
 
@@ -269,7 +277,8 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
         tiles_.push_back(std::make_unique<QSToggleTile>(
             "Screenshot", "󰄄", []() { return false; },
             [l = &loop, ssCmd]() { runCommand(*l, ssCmd); },
-            []() -> std::string { return "Screenshot"; }));
+            []() -> std::string { return "Screenshot"; }, Color{0, 0, 0, 0},
+            QSTile::Role::Screenshot));
     }
 
     // Volume section
