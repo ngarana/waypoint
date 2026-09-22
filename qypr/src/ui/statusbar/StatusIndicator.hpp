@@ -5,6 +5,7 @@
 #include "core/Types.hpp"
 #include "ui/statusbar/QSTile.hpp"
 #include "ui/statusbar/DetailedPopover.hpp"
+#include "ui/statusbar/IndicatorCapabilities.hpp"
 #include <string>
 #include <memory>
 
@@ -84,7 +85,13 @@ struct SystemBackends {
     bool sessionSurface = false;
 };
 
-class StatusIndicator : public Widget {
+class StatusIndicator : public Widget,
+                        public ICompactView,
+                        public ITileProvider,
+                        public IDetailProvider,
+                        public IIndicatorLifecycle,
+                        public IIndicatorInput,
+                        public IIndicatorPolicy {
 public:
     StatusIndicator(const std::string& id, Zone zone, int priority)
         : id_(id),

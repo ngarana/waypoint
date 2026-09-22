@@ -546,6 +546,40 @@ TEST(DNDIndicatorVisibilityAndTile) {
     EXPECT_FALSE(dnd.enabled());
 }
 
+// Narrow capability contracts (IndicatorCapabilities): consumers depend on
+// the subset they use, never the whole applet. The same object serves a
+// tile-only caller, a policy gate, and the frame loop through disjoint
+// interfaces.
+TEST(IndicatorCapabilitySeam) {
+    qypr::DndState dnd;
+    qypr::SystemBackends backends{};
+    backends.dnd = &dnd;
+    qypr::DNDIndicator ind(backends);
+
+    qypr::ITileProvider* tiles = &ind;
+    auto tile = tiles->createTile();
+    EXPECT_TRUE(tile != nullptr);
+    EXPECT_TRUE(tile->role() == qypr::QSTile::Role::Dnd);
+
+    const qypr::IIndicatorPolicy* policy = &ind;
+    EXPECT_FALSE(policy->sensitive());
+    EXPECT_FALSE(policy->lockInteractive());  // default deny stands
+    EXPECT_TRUE(policy->qsOnly());            // DND lives only in the panel
+
+    qypr::IIndicatorLifecycle* life = &ind;
+    dnd.setEnabled(true);
+    life->onBackendUpdate();
+    EXPECT_TRUE(ind.visible);
+    EXPECT_FALSE(life->animating(qypr::nowMs()));
+
+    qypr::IIndicatorInput* input = &ind;
+    EXPECT_TRUE(input->onClick(0, 0));  // DND toggles on click (consumes)
+    EXPECT_FALSE(dnd.enabled());
+
+    const qypr::ICompactView* view = &ind;
+    EXPECT_FALSE(view->tooltip().empty());
+}
+
 // =============================================================================
 // Phase 4: Volume Tests
 // =============================================================================
@@ -926,7 +960,7 @@ TEST(SessionAppletsAbsentWithoutTheirBackends) {
 }
 TEST(SessionAppletsAppearWithBackends) {
     qypr::EventLoop loop;
-    qypr::SystemActions pm(loop);          // TESTING: actions are no-ops
+    qypr::SystemActions pm(loop);         // TESTING: actions are no-ops
     qypr::NotificationMonitor mon(loop);  // not started: empty, but present
     qypr::SystemBackends b{};
     b.power = &pm;

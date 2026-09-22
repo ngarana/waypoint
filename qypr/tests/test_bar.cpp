@@ -350,8 +350,8 @@ TEST(QuickSettingsPanelSecondaryRouting) {
     // the panel keeps this one instead of creating its own placeholder.
     // The role (not the title) is what reserves the Bluetooth slot.
     auto bt = std::make_unique<qypr::QSToggleTile>(
-        "Bluetooth", "󰂯", []() { return true; }, []() {}, nullptr, qypr::Color{0, 0, 0, 0},
-        qypr::QSTile::Role::Bluetooth);
+        "Bluetooth", "󰂯", []() { return true; }, []() {}, nullptr,
+        qypr::Color{.r = 0, .g = 0, .b = 0, .a = 0}, qypr::QSTile::Role::Bluetooth);
     bt->setOnSecondary([&detailOpened]() { detailOpened = true; });
     panel.addTile(std::move(bt));
     panel.buildTiles(loop, backends, [&pickerOpened]() { pickerOpened = true; });
@@ -387,8 +387,8 @@ TEST(QuickSettingsPanelRoleDedup) {
     qypr::SystemBackends const backends{};
     qypr::QuickSettingsPanel panel;
     panel.addTile(std::make_unique<qypr::QSToggleTile>(
-        "Wireless", "󰂯", []() { return true; }, []() {}, nullptr, qypr::Color{0, 0, 0, 0},
-        qypr::QSTile::Role::Bluetooth));
+        "Wireless", "󰂯", []() { return true; }, []() {}, nullptr,
+        qypr::Color{.r = 0, .g = 0, .b = 0, .a = 0}, qypr::QSTile::Role::Bluetooth));
     panel.addTile(std::make_unique<qypr::QSSliderTile>(
         " ", []() { return 0.5; }, [](double) {}, nullptr, nullptr, nullptr, "Lumen",
         qypr::QSTile::Role::Brightness));

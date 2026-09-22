@@ -172,6 +172,7 @@ set(SOURCES
     src/util/search_util.cpp
     src/config/config.cpp
     src/config/matugen_theme.cpp
+    src/ui/theme_manager.cpp
     src/system/solar.cpp
     src/system/geoclue.cpp
     ${LIBWL_COMMON}/core/SolarCalc.cpp
@@ -435,6 +436,21 @@ if(BUILD_TESTING)
     target_compile_options(solar_mode_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG
         ${SYSTEMD_CFLAGS})
     add_test(NAME solar_mode_test COMMAND solar_mode_test)
+
+    # Theme ownership: matugen source + solar mode + config watch.
+    add_executable(theme_manager_test tests/theme_manager_test.cpp src/ui/theme_manager.cpp
+        src/config/config.cpp
+        src/config/matugen_theme.cpp
+        src/system/solar.cpp
+        src/system/geoclue.cpp
+        ${LIBWL_COMMON}/core/SolarCalc.cpp)
+    target_link_libraries(theme_manager_test PRIVATE tomlplusplus::tomlplusplus
+        ${SYSTEMD_LIBRARIES})
+    target_include_directories(theme_manager_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON} ${SYSTEMD_INCLUDE_DIRS})
+    target_compile_options(theme_manager_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG
+        ${SYSTEMD_CFLAGS})
+    add_test(NAME theme_manager_test COMMAND theme_manager_test)
 
     add_executable(provider_test tests/provider_test.cpp
         src/providers/calculator_provider.cpp
