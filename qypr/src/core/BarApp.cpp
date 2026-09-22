@@ -74,7 +74,7 @@ BarApp::BarApp() = default;
 int BarApp::run() {
     // The bar owns its day/night state: apply the palette before anything
     // draws (previously done inside loadConfig).
-    theme::loadTheme(config_, palette_);
+    applyTheme();
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-bar: no Wayland display or no wlr-layer-shell support\n");
         return 1;
@@ -137,7 +137,7 @@ int BarApp::run() {
         loop_.addTimer(60'000, /*repeat=*/true, [this] {
             refreshSolarTimes();
             if (palette_.tick(theme::localHourNow())) {
-                theme::loadTheme(config_, palette_);
+                applyTheme();
                 invalidate();
             }
         });
@@ -169,7 +169,7 @@ void BarApp::startBackends() {
     geoClue_.setOnChange([this] {
         refreshSolarTimes();
         if (palette_.tick(theme::localHourNow())) {
-            theme::loadTheme(config_, palette_);
+            applyTheme();
             invalidate();
         }
     });
@@ -213,7 +213,7 @@ std::string stripExt(const std::string& path) {
 }  // namespace
 
 int BarApp::preview(const std::string& path, int width, int height) {
-    theme::loadTheme(config_, palette_);
+    applyTheme();
     // Start backends for real indicator state.
     battery_.start();
     brightness_.start();
@@ -340,7 +340,7 @@ void BarApp::reloadConfig() {
     palette_ = theme::AutoPalette::fromConfig(config_, theme::localHourNow());
     refreshSolarTimes();
     palette_.tick(theme::localHourNow());
-    theme::loadTheme(config_, palette_);
+    applyTheme();
 
     watchPalette();
 
@@ -359,6 +359,12 @@ void BarApp::reloadConfig() {
     statusBar_.reloadModules(backends_, modules_ ? &*modules_ : nullptr);
 
     invalidate();
+}
+
+void BarApp::applyTheme() {
+    theme_ = theme::loadThemeState(config_, palette_);
+    statusBar_.setTheme(theme_);
+    notifications_.setTheme(theme_);
 }
 
 void BarApp::refreshSolarTimes() {

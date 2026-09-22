@@ -102,19 +102,18 @@ public:
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
         b.y -= (1.0 - openProgress_.value(now)) * 6.0;
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
 
         hits_.clear();
         double y = b.y + kWPad;
 
         // ── Header: title + radio switch ──
-        TextStyle const hdr{.family = theme::font::family,
+        TextStyle const hdr{.family = theme().font.family,
                             .size = 12.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::text};
+                            .color = theme().colors.text};
         p.drawText(b.x + kWPad, y + 2.0, "Wi-Fi", hdr);
         drawSwitch(p, {b.x + b.w - kWPad - kSwitchW, y + 1.0, kSwitchW, kSwitchH}, enabled());
         hits_.push_back({.r = {b.x + b.w - kWPad - kSwitchW, y, kSwitchW + kWPad, kSwitchH},
@@ -122,32 +121,32 @@ public:
         y += kWHeaderH;
 
         if (!enabled()) {
-            TextStyle const e{.family = theme::font::family,
+            TextStyle const e{.family = theme().font.family,
                               .size = 12.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kWPad, y + 10.0, "Wi-Fi is off", e);
             return;
         }
 
         // ── Subheader: section label + scan spinner / refresh button ──
-        TextStyle const sub{.family = theme::font::family,
+        TextStyle const sub{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(b.x + kWPad, y, "VISIBLE NETWORKS", sub);
         const bool scanning = snap().scanning;
         const Rect refreshRect{b.x + b.w - kWPad - 18.0, y - 2.0, 18.0, 18.0};
         if (scanning) {
             drawSpinner(p, refreshRect.x + 9.0, refreshRect.y + 9.0, 6.0, now,
-                        theme::color::primary);
+                        theme().colors.primary);
         } else {
-            TextStyle const rs{.family = theme::font::iconFamily,
+            TextStyle const rs{.family = theme().font.iconFamily,
                                .size = 13.0,
                                .weight = PANGO_WEIGHT_NORMAL,
                                .color = refreshRect.contains(hoverX_, hoverY_)
-                                            ? theme::color::text
-                                            : theme::color::textSubtle};
+                                            ? theme().colors.text
+                                            : theme().colors.textSubtle};
             p.drawText(refreshRect.x + 2.0, refreshRect.y + 1.0, kRefresh, rs);
         }
         hits_.push_back({.r = refreshRect, .kind = Hit::Kind::Refresh});
@@ -156,10 +155,10 @@ public:
         // ── Network rows (live snapshot) ──
         const auto& nets = networks();
         if (nets.empty()) {
-            TextStyle const e{.family = theme::font::family,
+            TextStyle const e{.family = theme().font.family,
                               .size = 12.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kWPad, y + 8.0, scanning ? "Scanning…" : "No networks found", e);
             return;
         }
@@ -171,49 +170,49 @@ public:
             const WifiAp& a = nets.at(i);
             const Rect row{.x = b.x + kWPad, .y = y, .w = b.w - (kWPad * 2), .h = kWRow};
             if (row.contains(hoverX_, hoverY_)) {
-                p.fillRoundedRect(row, 8.0, theme::color::glassHover);
+                p.fillRoundedRect(row, 8.0, theme().colors.glassHover);
             }
 
-            TextStyle const gs{.family = theme::font::iconFamily,
+            TextStyle const gs{.family = theme().font.iconFamily,
                                .size = 15.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = a.active ? theme::color::primary : theme::color::text};
+                               .color = a.active ? theme().colors.primary : theme().colors.text};
             p.drawText(row.x + 4.0, row.y + ((kWRow - 16.0) / 2.0), apGlyph(a.strength), gs);
 
-            TextStyle const ns{.family = theme::font::family,
+            TextStyle const ns{.family = theme().font.family,
                                .size = 13.0,
                                .weight = a.active ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::text};
+                               .color = theme().colors.text};
             p.drawText(row.x + 30.0, row.y + ((kWRow - 15.0) / 2.0), a.ssid, ns, HAlign::Left,
                        row.w - 90.0);
 
             // Right cluster: saved hint · lock · active check.
             double rx = row.x + row.w - 6.0;
             if (a.active) {
-                TextStyle const cs{.family = theme::font::iconFamily,
+                TextStyle const cs{.family = theme().font.iconFamily,
                                    .size = 14.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::primary};
+                                   .color = theme().colors.primary};
                 const Size cz = p.measureText(kCheck, cs);
                 rx -= cz.w;
                 p.drawText(rx, row.y + ((kWRow - 14.0) / 2.0), kCheck, cs);
                 rx -= 6.0;
             }
             if (a.secured) {
-                TextStyle const ls{.family = theme::font::iconFamily,
+                TextStyle const ls{.family = theme().font.iconFamily,
                                    .size = 12.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::textSubtle};
+                                   .color = theme().colors.textSubtle};
                 const Size lz = p.measureText(kLock, ls);
                 rx -= lz.w;
                 p.drawText(rx, row.y + ((kWRow - 12.0) / 2.0), kLock, ls);
                 rx -= 6.0;
             }
             if (a.saved && !a.active) {
-                TextStyle const ss{.family = theme::font::family,
+                TextStyle const ss{.family = theme().font.family,
                                    .size = 10.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::textSubtle};
+                                   .color = theme().colors.textSubtle};
                 const Size sz = p.measureText("saved", ss);
                 rx -= sz.w;
                 p.drawText(rx, row.y + ((kWRow - 12.0) / 2.0), "saved", ss);
@@ -224,10 +223,10 @@ public:
         }
 
         if (total > kWMax) {
-            TextStyle const m{.family = theme::font::family,
+            TextStyle const m{.family = theme().font.family,
                               .size = 10.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kWPad, y + 1.0,
                        std::to_string(first + 1) + "–" + std::to_string(last) + " of " +
                            std::to_string(total) + "  ·  scroll for more",
@@ -379,30 +378,30 @@ private:
 
     // Pill switch (on = accent fill, knob right).
     void drawSwitch(Painter& p, const Rect& r, bool on) {
-        p.fillRoundedRect(r, r.h / 2.0, on ? theme::color::primary : theme::color::glassHover);
+        p.fillRoundedRect(r, r.h / 2.0, on ? theme().colors.primary : theme().colors.glassHover);
         const double knobR = (r.h - 4.0) / 2.0;
         const double kx = on ? r.x + r.w - knobR - 2.0 : r.x + knobR + 2.0;
         p.fillCircle(kx, r.y + r.h / 2.0, knobR,
-                     on ? theme::color::background : theme::color::textSubtle);
+                     on ? theme().colors.background : theme().colors.textSubtle);
     }
 
     void drawEditor(Painter& p, const Rect& b, double y, int64_t now) {
         const Rect card{b.x + kWPad, y, b.w - (kWPad * 2), kWEditorH - 6.0};
-        p.fillRoundedRect(card, 8.0, theme::color::glassHover);
+        p.fillRoundedRect(card, 8.0, theme().colors.glassHover);
 
-        TextStyle const lbl{.family = theme::font::family,
+        TextStyle const lbl{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_NORMAL,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(card.x + 10.0, card.y + 7.0, "Password for " + authSsid_, lbl);
 
         // Entry box: dots for each typed char, caret blink, hidden text.
         const Rect entry{card.x + 10.0, card.y + 24.0, card.w - 20.0, 22.0};
-        p.fillRoundedRect(entry, 6.0, theme::color::background);
-        TextStyle const dots{.family = theme::font::family,
+        p.fillRoundedRect(entry, 6.0, theme().colors.background);
+        TextStyle const dots{.family = theme().font.family,
                              .size = 12.0,
                              .weight = PANGO_WEIGHT_NORMAL,
-                             .color = theme::color::text};
+                             .color = theme().colors.text};
         // One • per typed codepoint (count non-continuation bytes).
         std::string masked;
         for (char c : psk_) {
@@ -412,21 +411,21 @@ private:
         p.drawText(entry.x + 8.0, entry.y + 4.0, blink ? masked + "│" : masked, dots);
 
         // Buttons.
-        TextStyle const bs{.family = theme::font::family,
+        TextStyle const bs{.family = theme().font.family,
                            .size = 11.5,
                            .weight = PANGO_WEIGHT_MEDIUM,
-                           .color = theme::color::background};
+                           .color = theme().colors.background};
         const Rect connect{card.x + card.w - 118.0, card.y + 52.0, 52.0, 18.0};
         const Rect cancel{card.x + card.w - 60.0, card.y + 52.0, 50.0, 18.0};
         p.fillRoundedRect(connect, 9.0,
-                          psk_.empty() ? theme::color::primary.withAlpha(0.4)
-                                       : theme::color::primary);
+                          psk_.empty() ? theme().colors.primary.withAlpha(0.4)
+                                       : theme().colors.primary);
         const Size cs = p.measureText("Connect", bs);
         p.drawText(connect.x + (connect.w - cs.w) / 2.0, connect.y + 2.0, "Connect", bs);
-        TextStyle const xs{.family = theme::font::family,
+        TextStyle const xs{.family = theme().font.family,
                            .size = 11.5,
                            .weight = PANGO_WEIGHT_MEDIUM,
-                           .color = theme::color::textSubtle};
+                           .color = theme().colors.textSubtle};
         const Size xs2 = p.measureText("Cancel", xs);
         p.drawText(cancel.x + (cancel.w - xs2.w) / 2.0, cancel.y + 2.0, "Cancel", xs);
         hits_.push_back({.r = connect, .kind = Hit::Kind::Connect});

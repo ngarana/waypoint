@@ -66,8 +66,8 @@ private:
     // Natural width of one cluster under `m`. `expanded` selects what is shown
     // (names on every chip) independently of pixel sizes, mirroring the
     // threshold-draw/lerped-reserve behaviour of the old accordion.
-    static double clusterWidth(Painter& p, const SessionCluster& c, const Metrics& m,
-                               bool expanded);
+    static double clusterWidth(const theme::State& theme, Painter& p, const SessionCluster& c,
+                               const Metrics& m, bool expanded);
     double measureState(Painter& p, bool expanded) const;
 
     void drawChip(Painter& p, double x, const SessionCluster& c, const Metrics& m, bool expanded);

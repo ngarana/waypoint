@@ -7,12 +7,13 @@
 namespace qypr {
 
 namespace {
-TextStyle timeStyle() {
-    return {theme::font::family, theme::font::sizeClock, PANGO_WEIGHT_BOLD, theme::color::text};
+TextStyle timeStyle(const theme::State& theme) {
+    return {theme.font.family, static_cast<double>(theme.font.sizeClock), PANGO_WEIGHT_BOLD,
+            theme.colors.text};
 }
-TextStyle dateStyle() {
-    return {theme::font::family, theme::font::sizeDate, PANGO_WEIGHT_BOLD,
-            theme::color::textSubtle};
+TextStyle dateStyle(const theme::State& theme) {
+    return {theme.font.family, static_cast<double>(theme.font.sizeDate), PANGO_WEIGHT_BOLD,
+            theme.colors.textSubtle};
 }
 
 std::string formatNow(const char* fmt) {
@@ -33,21 +34,21 @@ std::string Clock::dateString() const {
 }
 
 Size Clock::measure(Painter& p) const {
-    Size t = p.measureText(timeString(), timeStyle());
-    Size d = p.measureText(dateString(), dateStyle());
-    return {std::max(t.w, d.w), t.h + theme::spacing::small + d.h};
+    Size t = p.measureText(timeString(), timeStyle(theme()));
+    Size d = p.measureText(dateString(), dateStyle(theme()));
+    return {std::max(t.w, d.w), t.h + theme().spacing.small + d.h};
 }
 
 void Clock::draw(Painter& p, double centerX, double topY) const {
-    const double shadowA = theme::effects::shadowOpacity;
-    const double shadowOff = theme::effects::shadowOffset;
+    const double shadowA = theme().effects.shadowOpacity;
+    const double shadowOff = theme().effects.shadowOffset;
 
     std::string time = timeString();
-    Size t = p.measureText(time, timeStyle());
-    p.drawTextShadowed(centerX, topY, time, timeStyle(), HAlign::Center, shadowA, shadowOff);
+    Size t = p.measureText(time, timeStyle(theme()));
+    p.drawTextShadowed(centerX, topY, time, timeStyle(theme()), HAlign::Center, shadowA, shadowOff);
 
-    double dateY = topY + t.h + theme::spacing::small;
-    p.drawTextShadowed(centerX, dateY, dateString(), dateStyle(), HAlign::Center, shadowA,
+    double dateY = topY + t.h + theme().spacing.small;
+    p.drawTextShadowed(centerX, dateY, dateString(), dateStyle(theme()), HAlign::Center, shadowA,
                        shadowOff);
 }
 

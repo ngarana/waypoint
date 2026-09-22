@@ -25,24 +25,17 @@ namespace qypr {
 
 namespace {
 // Panel geometry tracks the theme so QS stays visually consistent with the bar
-// strip and the other popovers, and honours any [theme] override. These are
-// *references* to the theme's inline variables, never cached copies: copying
-// into a file-scope `const double` produces a dynamically-initialised global
-// whose init order relative to the theme variables (defined in another TU) is
-// unspecified — it can be read as 0 (static-init-order fiasco) and would also
-// miss any value loadTheme() applies at startup. Binding a reference to a
-// static-storage object is constant-initialised, so it is always valid and
-// always reflects the live theme value.
-const double& kPanelW = theme::statusbar::qsPanelWidth;
-const double& kPad = theme::statusbar::qsPadding;
-const double& kGap = theme::statusbar::qsTileGap;
+// strip and the other popovers, and honours any [theme] override. These were
+// file-scope const& bound to the theme globals (with a static-init-order
+// essay attached); they are gone with the globals. Call sites below use the
+// panel's live theme through theme() instead — see the private geometry
+// shorthands on QuickSettingsPanel.
 
 // Header
 constexpr double kHeaderH = 52.0;
 
 // Toggle grid: 3 equal columns
 constexpr int kGridCols = 3;
-const double& kGridRowH = theme::statusbar::qsTileHeight;
 
 // Volume section
 constexpr double kVolumeH = 52.0;
@@ -88,7 +81,7 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
     // Header
     std::string const user = getUserName();
     std::string const host = getHostName();
-    header_ = std::make_unique<QSHeaderTile>(user, user + "@" + host, theme::color::primary);
+    header_ = std::make_unique<QSHeaderTile>(user, user + "@" + host, theme().colors.primary);
 
     // Power button (right of header)
     std::string powerCmd = "waylaunch --power";
@@ -105,12 +98,12 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
         const auto& ws = backends.wifi->snapshot();
         onOpenWifi_ = onOpenWifi;
         wifiCombo_ = std::make_unique<QSWifiComboTile>(
-            ws.ssid, ws.strength, ws.enabled, ws.connected, theme::color::primary,
+            ws.ssid, ws.strength, ws.enabled, ws.connected, theme().colors.primary,
             [snap = backends.wifi]() { snap->setEnabled(!snap->snapshot().enabled); }, onOpenWifi);
         if (wifiCombo_) { wifiCombo_->setScanning(ws.scanning); }
     } else if (!wifiCombo_) {
         onOpenWifi_ = onOpenWifi;
-        wifiCombo_ = std::make_unique<QSWifiComboTile>("", 0, false, false, theme::color::primary);
+        wifiCombo_ = std::make_unique<QSWifiComboTile>("", 0, false, false, theme().colors.primary);
     }
 
     // Remove any indicator-created WiFi tile — the combo tile replaces it.
@@ -300,6 +293,10 @@ void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backe
 
     // Media card
     media_ = std::make_unique<QSMediaTile>(backends.mpris);
+
+    // Everything just built binds the panel's current theme (default until
+    // the host cascades the live copy; addTile covers later arrivals).
+    setTheme(theme());
 }
 
 void QuickSettingsPanel::updateWifi(const WifiSnapshot& s) {
@@ -312,17 +309,30 @@ void QuickSettingsPanel::updateWifi(const WifiSnapshot& s) {
 }
 
 void QuickSettingsPanel::addTile(std::unique_ptr<QSTile> tile) {
+    if (tile) { tile->setTheme(theme()); }
     tiles_.push_back(std::move(tile));
+}
+
+void QuickSettingsPanel::setTheme(const theme::State& state) {
+    theme::ThemeAware::setTheme(state);
+    for (const auto& tile : tiles_) {
+        if (tile) { tile->setTheme(state); }
+    }
+    if (header_) { header_->setTheme(state); }
+    if (power_) { power_->setTheme(state); }
+    if (wifiCombo_) { wifiCombo_->setTheme(state); }
+    if (volume_) { volume_->setTheme(state); }
+    if (media_) { media_->setTheme(state); }
 }
 
 // ─── Geometry ─────────────────────────────────────────────────────────────
 
 double QuickSettingsPanel::contentWidth() const {
-    return kPanelW;
+    return panelW();
 }
 
 double QuickSettingsPanel::contentHeight() const {
-    double h = kPad;  // top padding
+    double h = pad();  // top padding
 
     // Header row
     h += kHeaderH;
@@ -336,27 +346,27 @@ double QuickSettingsPanel::contentHeight() const {
     }
     int const rows = (totalGrid + kGridCols - 1) / kGridCols;
     if (rows > 0) {
-        h += kGap;
-        h += (rows * kGridRowH) + ((rows - 1) * kGap);
+        h += gap();
+        h += (rows * gridRowH()) + ((rows - 1) * gap());
     }
 
     // Slider tiles (e.g. Brightness)
     for (const auto& t : tiles_) {
-        if (t && t->type() == QSTile::Type::Slider) { h += kGap + 48.0; }
+        if (t && t->type() == QSTile::Type::Slider) { h += gap() + 48.0; }
     }
 
     // Volume section
-    if (volume_) { h += kGap + kVolumeH; }
+    if (volume_) { h += gap() + kVolumeH; }
 
     // Info tiles (e.g. Battery)
     for (const auto& t : tiles_) {
-        if (t && t->type() == QSTile::Type::Info) { h += kGap + 50.0; }
+        if (t && t->type() == QSTile::Type::Info) { h += gap() + 50.0; }
     }
 
     // Media card
-    if (media_) { h += kGap + kMediaH; }
+    if (media_) { h += gap() + kMediaH; }
 
-    h += kPad;  // bottom padding
+    h += pad();  // bottom padding
     return h;
 }
 
@@ -364,24 +374,24 @@ double QuickSettingsPanel::contentHeight() const {
 
 void QuickSettingsPanel::layoutTiles() {
     Rect const popBounds = getBounds();
-    double const contentW = popBounds.w - (2 * kPad);
-    double const colW = (contentW - ((kGridCols - 1) * kGap)) / kGridCols;
-    double y = popBounds.y + kPad;
+    double const contentW = popBounds.w - (2 * pad());
+    double const colW = (contentW - ((kGridCols - 1) * gap())) / kGridCols;
+    double y = popBounds.y + pad();
 
     // 1. Header (left side) & Power button (right side)
     double const powerW = 52.0;
-    double const headerW = contentW - powerW - kGap;
+    double const headerW = contentW - powerW - gap();
     if (header_) {
-        header_->bounds = {.x = popBounds.x + kPad, .y = y, .w = headerW, .h = kHeaderH};
+        header_->bounds = {.x = popBounds.x + pad(), .y = y, .w = headerW, .h = kHeaderH};
     }
 
     if (power_) {
-        double const px = popBounds.x + popBounds.w - kPad - powerW;
+        double const px = popBounds.x + popBounds.w - pad() - powerW;
         powerBounds_ = {.x = px, .y = y, .w = powerW, .h = kHeaderH};
         power_->bounds = powerBounds_;
     }
 
-    y += kHeaderH + kGap;
+    y += kHeaderH + gap();
 
     // 2. 3-Column Toggle Grid
     std::vector<QSTile*> gridTiles;
@@ -397,46 +407,46 @@ void QuickSettingsPanel::layoutTiles() {
     for (auto tile : gridTiles) {
         if (col >= kGridCols) {
             col = 0;
-            rowY += kGridRowH + kGap;
+            rowY += gridRowH() + gap();
         }
-        double const tx = popBounds.x + kPad + (col * (colW + kGap));
-        tile->bounds = {.x = tx, .y = rowY, .w = colW, .h = kGridRowH};
+        double const tx = popBounds.x + pad() + (col * (colW + gap()));
+        tile->bounds = {.x = tx, .y = rowY, .w = colW, .h = gridRowH()};
         col++;
     }
 
-    if (!gridTiles.empty()) { y = rowY + kGridRowH; }
+    if (!gridTiles.empty()) { y = rowY + gridRowH(); }
 
     // 3. Slider section (Brightness)
     for (auto& t : tiles_) {
         if (t && t->type() == QSTile::Type::Slider) {
-            y += kGap;
+            y += gap();
             double const sliderH = 48.0;
-            t->bounds = {.x = popBounds.x + kPad, .y = y, .w = contentW, .h = sliderH};
+            t->bounds = {.x = popBounds.x + pad(), .y = y, .w = contentW, .h = sliderH};
             y += sliderH;
         }
     }
 
     // 4. Volume section
     if (volume_) {
-        y += kGap;
-        volume_->bounds = {.x = popBounds.x + kPad, .y = y, .w = contentW, .h = kVolumeH};
+        y += gap();
+        volume_->bounds = {.x = popBounds.x + pad(), .y = y, .w = contentW, .h = kVolumeH};
         y += kVolumeH;
     }
 
     // 5. Info section (Battery)
     for (auto& t : tiles_) {
         if (t && t->type() == QSTile::Type::Info) {
-            y += kGap;
+            y += gap();
             double const infoH = 50.0;
-            t->bounds = {.x = popBounds.x + kPad, .y = y, .w = contentW, .h = infoH};
+            t->bounds = {.x = popBounds.x + pad(), .y = y, .w = contentW, .h = infoH};
             y += infoH;
         }
     }
 
     // 6. Media card
     if (media_) {
-        y += kGap;
-        media_->bounds = {.x = popBounds.x + kPad, .y = y, .w = contentW, .h = kMediaH};
+        y += gap();
+        media_->bounds = {.x = popBounds.x + pad(), .y = y, .w = contentW, .h = kMediaH};
     }
 }
 
@@ -468,26 +478,28 @@ void QuickSettingsPanel::draw(Painter& p, int64_t now) {
 
     // Match the bar's shared backdrop. If this panel is hosted by the lock
     // screen, draw its original opaque surface instead.
-    if (!drawSharedBackdrop(p, popBounds, theme::statusbar::qsCornerRadius)) {
-        p.fillRoundedRect(popBounds, theme::statusbar::qsCornerRadius, theme::color::surface);
+    if (!drawSharedBackdrop(p, popBounds, theme().statusbar.qsCornerRadius)) {
+        p.fillRoundedRect(popBounds, theme().statusbar.qsCornerRadius, theme().colors.surface);
     }
 
     // Close button (×) at top right — a subtle circular button.
-    closeBounds_ = {
-        .x = popBounds.x + popBounds.w - kPad - 24.0, .y = popBounds.y + 8.0, .w = 24.0, .h = 24.0};
+    closeBounds_ = {.x = popBounds.x + popBounds.w - pad() - 24.0,
+                    .y = popBounds.y + 8.0,
+                    .w = 24.0,
+                    .h = 24.0};
     p.fillCircleSource(closeBounds_.x + 12.0, closeBounds_.y + 12.0, 12.0,
-                       theme::statusbar::panelSurfaceHover());
-    TextStyle const closeStyle{.family = theme::font::iconFamily,
+                       theme().panelSurfaceHover());
+    TextStyle const closeStyle{.family = theme().font.iconFamily,
                                .size = 11.0,
                                .weight = PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::textSubtle};
+                               .color = theme().colors.textSubtle};
     Size const closeSz = p.measureText("󰅖", closeStyle);
     p.drawText(closeBounds_.x + 12.0 - (closeSz.w / 2.0), closeBounds_.y + 12.0 - (closeSz.h / 2.0),
                "󰅖", closeStyle);
 
     auto drawOrSkip = [&](auto& tile) {
         if (!tile) { return; }
-        tile->hoverAnim_.animateTo(tile->hovered ? 1.0 : 0.0, theme::anim::fast, ease::inOutQuad);
+        tile->hoverAnim_.animateTo(tile->hovered ? 1.0 : 0.0, theme().anim.fast, ease::inOutQuad);
         tile->draw(p, now);
     };
 

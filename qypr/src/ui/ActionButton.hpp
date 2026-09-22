@@ -19,7 +19,8 @@ class ActionButton : public Widget {
 public:
     std::string icon;
     std::string label;  // tooltip text
-    std::string iconFamily = theme::font::iconFamily;
+    // Icon font override (empty = the theme's icon family, live on re-theme).
+    std::string iconFamily;
     double diameter = 52;
     double iconSize = 20;
     bool enabled = true;

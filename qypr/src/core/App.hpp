@@ -29,6 +29,8 @@
 
 namespace qypr {
 
+class Config;
+
 class App : public RenderHost {
 public:
     App();
@@ -90,6 +92,10 @@ private:
     // Owned day/night state (same contract as the bar): parsed from the
     // config in run(), ticked by the loop, fed by the GeoClue fix.
     theme::AutoPalette palette_;
+    // Owned design values: reassigned on every apply; cascaded to the shell,
+    // the audio controller, and the notification monitor.
+    theme::State theme_;
+    void applyTheme(const Config& config);
 
     Shell shell_;
 };

@@ -6,10 +6,11 @@
 #pragma once
 
 #include "render/Painter.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
-class Clock {
+class Clock : public theme::ThemeAware {
 public:
     // Total block size (used to place widgets below the clock).
     Size measure(Painter& p) const;

@@ -45,21 +45,20 @@ public:
         Rect b = getBounds();
         b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
 
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius))
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         if (!mpris_) return;
 
         // Source (player identity).
-        TextStyle src{theme::font::family, 11.0, PANGO_WEIGHT_BOLD, theme::color::primary};
+        TextStyle src{theme().font.family, 11.0, PANGO_WEIGHT_BOLD, theme().colors.primary};
         p.drawText(b.x + kPad, b.y + kPad, mpris_->sourceLabel(), src, HAlign::Left,
                    b.w - kPad * 2);
 
         // Title + artist.
-        TextStyle title{theme::font::family, 14.0, PANGO_WEIGHT_NORMAL, theme::color::text};
+        TextStyle title{theme().font.family, 14.0, PANGO_WEIGHT_NORMAL, theme().colors.text};
         p.drawText(b.x + kPad, b.y + kPad + 16.0, mpris_->title(), title, HAlign::Left,
                    b.w - kPad * 2);
-        TextStyle artist{theme::font::family, 12.0, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+        TextStyle artist{theme().font.family, 12.0, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
         p.drawText(b.x + kPad, b.y + kPad + 36.0, mpris_->artist(), artist, HAlign::Left,
                    b.w - kPad * 2);
 
@@ -68,9 +67,9 @@ public:
         if (dur > 0.0) {
             const double frac = std::min(1.0, std::max(0.0, mpris_->positionSeconds() / dur));
             const Rect track{b.x + kPad, b.y + kPad + 60.0, b.w - kPad * 2, 3.0};
-            p.fillRoundedRect(track, 1.5, theme::color::textSubtle.withAlpha(0.25));
+            p.fillRoundedRect(track, 1.5, theme().colors.textSubtle.withAlpha(0.25));
             p.fillRoundedRect({track.x, track.y, track.w * frac, track.h}, 1.5,
-                              theme::color::primary);
+                              theme().colors.primary);
         }
 
         // Transport row: prev / play-pause / next, centred.
@@ -91,10 +90,11 @@ public:
             const Rect r{cx + btn.dx - 16.0, cy - 16.0, 32.0, 32.0};
             buttons_.push_back(r);
             if (r.contains(hoverX_, hoverY_) && btn.enabled) {
-                p.fillRoundedRect(r, 16.0, theme::color::glassHover);
+                p.fillRoundedRect(r, 16.0, theme().colors.glassHover);
             }
-            TextStyle g{theme::font::iconFamily, 17.0, PANGO_WEIGHT_NORMAL,
-                        btn.enabled ? theme::color::text : theme::color::textSubtle.withAlpha(0.4)};
+            TextStyle g{theme().font.iconFamily, 17.0, PANGO_WEIGHT_NORMAL,
+                        btn.enabled ? theme().colors.text
+                                    : theme().colors.textSubtle.withAlpha(0.4)};
             const Size sz = p.measureText(btn.glyph, g);
             p.drawText(r.x + (r.w - sz.w) / 2.0, r.y + (r.h - sz.h) / 2.0, btn.glyph, g);
         }
@@ -166,7 +166,7 @@ std::string MediaIndicator::tooltip() const {
 }
 
 Color MediaIndicator::iconColor() const {
-    return playing() ? theme::color::primary : theme::color::textSubtle;
+    return playing() ? theme().colors.primary : theme().colors.textSubtle;
 }
 
 bool MediaIndicator::onClick(double, double) {

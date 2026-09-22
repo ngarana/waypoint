@@ -89,6 +89,9 @@ private:
     // typically on a wallpaper change — re-themes the bar live. No-op when no
     // palette file is configured or its directory doesn't exist yet.
     void watchPalette();
+    // Rebuild the owned State from config_ + palette_ and cascade to the
+    // status bar + monitor.
+    void applyTheme();
 
     // --- config helpers (used in the member-init list; see the ctor) ---
     static Config loadConfig();
@@ -110,6 +113,10 @@ private:
     // Owned day/night state (ARCHITECTURE_REVIEW finding 10): parsed from the
     // config, ticked by the loop, fed by the GeoClue fix. No palette globals.
     theme::AutoPalette palette_{theme::AutoPalette::fromConfig(config_, theme::localHourNow())};
+    // Owned design values: reassigned from loadThemeState() on every apply
+    // (startup, reload, solar flip); widgets read this copy via the setTheme
+    // cascade, never globals.
+    theme::State theme_;
 
     EventLoop loop_;
     BarDisplay display_{loop_, reservedFor(geom_), geom_.bottom};

@@ -29,7 +29,7 @@ struct Notification {
     std::string title;     // heading (falls back to app when empty)
     std::string body;      // detail text (single line, ellipsised)
     std::string icon;      // optional glyph for the tile
-    Color accent = theme::color::primary;
+    Color accent = theme::kDefaultState.colors.primary;
     uint32_t daemonId = 0;   // id assigned by the notification daemon (0 = not yet known)
     uint8_t urgency = 1;     // freedesktop urgency hint: 0 low, 1 normal, 2 critical
     bool sensitive = false;  // true if the notification contains sensitive content
@@ -41,7 +41,7 @@ struct Notification {
     std::string desktopEntry;
 };
 
-class NotificationView {
+class NotificationView : public theme::ThemeAware {
 public:
     // Reconcile the visible set with `notes` by id: keep existing cards (no
     // re-animation), fade in new ones, drop the rest.
@@ -68,8 +68,10 @@ private:
     };
 
     // Per-card height at a given width (text may wrap to one line only).
-    static double cardHeight(const Card& c, Painter& p, double w, int64_t now);
-    static void drawCard(Card& c, Painter& p, int64_t now, const Rect& r);
+    static double cardHeight(const theme::State& theme, const Card& c, Painter& p, double w,
+                             int64_t now);
+    static void drawCard(const theme::State& theme, Card& c, Painter& p, int64_t now,
+                         const Rect& r);
 
     std::vector<Card> cards_;
     // Hit-test cache rebuilt each draw (pointer handlers have no Painter).

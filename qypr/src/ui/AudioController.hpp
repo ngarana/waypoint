@@ -6,13 +6,14 @@
 
 #include "core/Types.hpp"
 #include "ui/ActionButton.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr {
 
 class Painter;
 class MprisController;
 
-class AudioController {
+class AudioController : public theme::ThemeAware {
 public:
     explicit AudioController(MprisController& mpris);
 
@@ -21,6 +22,9 @@ public:
 
     // Draw the panel centred on centerX with its top at topY.
     void draw(Painter& p, int64_t now, double centerX, double topY, double maxWidth);
+
+    // ThemeAware: cascade to the transport buttons.
+    void setTheme(const theme::State& state) override;
 
     // Pointer interaction (surface coordinates). handlePress returns true if the
     // event hit a control (so the caller stops hit-testing further).

@@ -18,11 +18,11 @@ constexpr double kDotChipW = 10.0;   // empty collapsed chip: a bare dot
 constexpr double kUnderlineH = 2.0;  // focused-window marker under its icon
 constexpr double kLooseAlpha = 0.85;
 
-TextStyle nameStyle(double px, const Color& c) {
-    return {theme::font::family, px, PANGO_WEIGHT_MEDIUM, c};
+TextStyle nameStyle(const theme::State& theme, double px, const Color& c) {
+    return {theme.font.family, px, PANGO_WEIGHT_MEDIUM, c};
 }
-TextStyle badgeStyle(double px, const Color& c) {
-    return {theme::font::family, px, PANGO_WEIGHT_BOLD, c};
+TextStyle badgeStyle(const theme::State& theme, double px, const Color& c) {
+    return {theme.font.family, px, PANGO_WEIGHT_BOLD, c};
 }
 }  // namespace
 
@@ -76,8 +76,8 @@ std::string PagerIndicator::tooltip() const {
     return tip;
 }
 
-double PagerIndicator::clusterWidth(Painter& p, const SessionCluster& c, const Metrics& m,
-                                    bool expanded) {
+double PagerIndicator::clusterWidth(const theme::State& theme, Painter& p, const SessionCluster& c,
+                                    const Metrics& m, bool expanded) {
     const bool showName = expanded || c.active;
     const size_t cap = expanded ? kMaxIconsExpanded : kMaxIconsCollapsed;
     const size_t n = std::min(c.windows.size(), cap);
@@ -85,14 +85,15 @@ double PagerIndicator::clusterWidth(Painter& p, const SessionCluster& c, const M
 
     double w = 2 * m.chipPadX;
     if (showName) {
-        const Size ts = p.measureText(c.name, nameStyle(m.fontPx, theme::color::text));
+        const Size ts = p.measureText(c.name, nameStyle(theme, m.fontPx, theme.colors.text));
         w += ts.w + (m.iconGap * 2);
     }
     if (n > 0) {
         w += (static_cast<double>(n) * m.iconPx) + (static_cast<double>(n - 1) * m.iconGap);
         if (overflow) {
             const std::string badge = "+" + std::to_string(c.windows.size() - n);
-            w += m.iconGap + p.measureText(badge, badgeStyle(m.badgePx, theme::color::text)).w;
+            w +=
+                m.iconGap + p.measureText(badge, badgeStyle(theme, m.badgePx, theme.colors.text)).w;
         }
     } else if (!showName) {
         return kDotChipW;
@@ -107,7 +108,7 @@ double PagerIndicator::measureState(Painter& p, bool expanded) const {
     bool first = true;
     for (const auto& c : v.clusters) {
         if (!first) { w += m.chipGap; }
-        w += clusterWidth(p, c, m, expanded);
+        w += clusterWidth(theme(), p, c, m, expanded);
         first = false;
     }
     if (!v.unassigned.empty()) {
@@ -140,46 +141,47 @@ void PagerIndicator::drawChip(Painter& p, double x, const SessionCluster& c, con
     double w = 2 * m.chipPadX;
     Size ts{};
     if (showName) {
-        ts = p.measureText(c.name, nameStyle(m.fontPx, theme::color::text));
+        ts = p.measureText(c.name, nameStyle(theme(), m.fontPx, theme().colors.text));
         w += ts.w + (m.iconGap * 2);
     }
     w += (static_cast<double>(n) * m.iconPx) + (static_cast<double>(n > 0 ? n - 1 : 0) * m.iconGap);
     if (overflow) {
         const std::string badge = "+" + std::to_string(c.windows.size() - n);
-        w += m.iconGap + p.measureText(badge, badgeStyle(m.badgePx, theme::color::text)).w;
+        w +=
+            m.iconGap + p.measureText(badge, badgeStyle(theme(), m.badgePx, theme().colors.text)).w;
     }
     if (n == 0 && !showName) { w = kDotChipW; }
     w = std::max(w, kDotChipW);
 
     // Chip body.
-    Color txtColor = theme::color::textSubtle;
+    Color txtColor = theme().colors.textSubtle;
     if (c.active) {
-        p.fillRoundedRect({x, chipY, w, m.chipH}, m.chipH / 2.0, theme::color::primary);
-        txtColor = theme::color::background;
+        p.fillRoundedRect({x, chipY, w, m.chipH}, m.chipH / 2.0, theme().colors.primary);
+        txtColor = theme().colors.background;
     } else if (c.urgent) {
         p.fillRoundedRect({x, chipY, w, m.chipH}, m.chipH / 2.0,
-                          theme::color::warning.withAlpha(0.28));
-        txtColor = theme::color::warning;
+                          theme().colors.warning.withAlpha(0.28));
+        txtColor = theme().colors.warning;
     } else if (!c.windows.empty()) {
         p.fillRoundedRect({x, chipY, w, m.chipH}, m.chipH / 2.0,
-                          theme::color::glassHover.withAlpha(0.55));
-        txtColor = theme::color::text;
+                          theme().colors.glassHover.withAlpha(0.55));
+        txtColor = theme().colors.text;
     }
 
     double cx = x + m.chipPadX;
     if (showName) {
-        const TextStyle st = nameStyle(m.fontPx, txtColor);
+        const TextStyle st = nameStyle(theme(), m.fontPx, txtColor);
         const double ty = bounds.y + ((bounds.h - ts.h) / 2.0);
         if (c.active || c.urgent || !c.windows.empty()) {
             p.drawText(cx, ty, c.name, st, HAlign::Left);
         } else {
-            p.drawTextShadowed(cx, ty, c.name, st, HAlign::Left, theme::effects::shadowOpacity,
-                               theme::effects::shadowOffset);
+            p.drawTextShadowed(cx, ty, c.name, st, HAlign::Left, theme().effects.shadowOpacity,
+                               theme().effects.shadowOffset);
         }
         cx += ts.w + (m.iconGap * 2);
     } else if (n == 0) {
         p.fillCircle(x + (w / 2.0), bounds.y + (bounds.h / 2.0), 2.0,
-                     c.urgent ? theme::color::warning : theme::color::textMuted);
+                     c.urgent ? theme().colors.warning : theme().colors.textMuted);
     }
 
     // Resident app icons.
@@ -198,7 +200,7 @@ void PagerIndicator::drawChip(Painter& p, double x, const SessionCluster& c, con
             const Rect tile{cx, iconY, m.iconPx, m.iconPx};
             p.fillRoundedRect(tile, 4.0, apptile::fallbackColor(win->appId).withAlpha(alpha));
             const TextStyle st =
-                badgeStyle(m.iconPx * 0.62, Color::fromHex("#1e1e2e").withAlpha(alpha));
+                badgeStyle(theme(), m.iconPx * 0.62, Color::fromHex("#1e1e2e").withAlpha(alpha));
             const std::string ch = apptile::initialFor(win->appId);
             const Size cs = p.measureText(ch, st);
             p.drawText(cx + ((m.iconPx - cs.w) / 2.0), iconY + ((m.iconPx - cs.h) / 2.0), ch, st);
@@ -207,7 +209,7 @@ void PagerIndicator::drawChip(Painter& p, double x, const SessionCluster& c, con
         // Focused-window marker: a short underline beneath the icon. Inside the
         // accented active chip the accent would vanish, so invert there.
         if (win->active) {
-            const Color uc = c.active ? theme::color::background : theme::color::primary;
+            const Color uc = c.active ? theme().colors.background : theme().colors.primary;
             p.fillRoundedRect({cx + 3.0, iconY + m.iconPx + 1.5, m.iconPx - 6.0, kUnderlineH},
                               kUnderlineH / 2.0, uc.withAlpha(alpha));
         }
@@ -219,7 +221,7 @@ void PagerIndicator::drawChip(Painter& p, double x, const SessionCluster& c, con
     if (overflow) {
         const std::string badge = "+" + std::to_string(c.windows.size() - n);
         p.drawText(cx, bounds.y + ((bounds.h - (m.badgePx * 1.4)) / 2.0), badge,
-                   badgeStyle(m.badgePx, txtColor));
+                   badgeStyle(theme(), m.badgePx, txtColor));
     }
 
     // The whole chip body switches workspace — recorded last so icon hits
@@ -242,8 +244,8 @@ void PagerIndicator::drawLooseIcons(Painter& p, double x, const Metrics& m) {
         } else {
             const Rect tile{x, iconY, m.iconPx, m.iconPx};
             p.fillRoundedRect(tile, 4.0, apptile::fallbackColor(win->appId).withAlpha(kLooseAlpha));
-            const TextStyle st =
-                badgeStyle(m.iconPx * 0.62, Color::fromHex("#1e1e2e").withAlpha(kLooseAlpha));
+            const TextStyle st = badgeStyle(theme(), m.iconPx * 0.62,
+                                            Color::fromHex("#1e1e2e").withAlpha(kLooseAlpha));
             const std::string ch = apptile::initialFor(win->appId);
             const Size cs = p.measureText(ch, st);
             p.drawText(x + ((m.iconPx - cs.w) / 2.0), iconY + ((m.iconPx - cs.h) / 2.0), ch, st);
@@ -268,7 +270,7 @@ void PagerIndicator::draw(Painter& p, int64_t now) {
     double x = bounds.x + m.sidePad;
     for (const auto& c : v.clusters) {
         drawChip(p, x, c, m, expanded);
-        x += clusterWidth(p, c, m, expanded) + m.chipGap;
+        x += clusterWidth(theme(), p, c, m, expanded) + m.chipGap;
     }
     if (!v.unassigned.empty()) { drawLooseIcons(p, x, m); }
 }

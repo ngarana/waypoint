@@ -86,9 +86,8 @@ public:
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
         b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius))
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
 
         // Displayed month = current month + monthOffset_.
         std::time_t t = std::time(nullptr);
@@ -112,23 +111,23 @@ public:
         const std::string head = strf(title, "%B %Y");
 
         const double hy = b.y + kPad;
-        TextStyle nav{theme::font::family, 20.0, PANGO_WEIGHT_NORMAL, theme::color::text};
+        TextStyle nav{theme().font.family, 20.0, PANGO_WEIGHT_NORMAL, theme().colors.text};
         prev_ = {b.x + kPad, hy - 2.0, 28.0, 28.0};
         next_ = {b.x + b.w - kPad - 28.0, hy - 2.0, 28.0, 28.0};
         if (prev_.contains(hoverX_, hoverY_))
-            p.fillRoundedRect(prev_, 8.0, theme::color::glassHover);
+            p.fillRoundedRect(prev_, 8.0, theme().colors.glassHover);
         if (next_.contains(hoverX_, hoverY_))
-            p.fillRoundedRect(next_, 8.0, theme::color::glassHover);
+            p.fillRoundedRect(next_, 8.0, theme().colors.glassHover);
         p.drawText(prev_.x, hy, "‹", nav, HAlign::Left);
         p.drawText(next_.x + 6.0, hy, "›", nav, HAlign::Left);
 
-        TextStyle ht{theme::font::family, 15.0, PANGO_WEIGHT_BOLD, theme::color::text};
+        TextStyle ht{theme().font.family, 15.0, PANGO_WEIGHT_BOLD, theme().colors.text};
         p.drawText(b.x + b.w / 2.0, hy, head, ht, HAlign::Center);
 
         // A "Today" reset, only while off the current month.
         today_ = {0, 0, 0, 0};
         if (monthOffset_ != 0) {
-            TextStyle tt{theme::font::family, 11.0, PANGO_WEIGHT_NORMAL, theme::color::primary};
+            TextStyle tt{theme().font.family, 11.0, PANGO_WEIGHT_NORMAL, theme().colors.primary};
             const Size ts = p.measureText("Today", tt);
             today_ = {b.x + b.w / 2.0 - ts.w / 2.0 - 6.0, hy + 20.0, ts.w + 12.0, 18.0};
             p.drawText(b.x + b.w / 2.0, hy + 21.0, "Today", tt, HAlign::Center);
@@ -138,10 +137,10 @@ public:
         static const std::array<const char*, 7> wd = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
         const double gridX = b.x + kPad;
         double wy = b.y + kPad + kHeaderH;
-        TextStyle wds{theme::font::family, 11.0, PANGO_WEIGHT_BOLD, theme::color::textSubtle};
+        TextStyle wds{theme().font.family, 11.0, PANGO_WEIGHT_BOLD, theme().colors.textSubtle};
         for (int c = 0; c < 7; ++c) {
             const double cx = gridX + kWeekColW + c * kCellW + kCellW / 2.0;
-            Color col = c >= 5 ? theme::color::primary.withAlpha(0.7) : theme::color::textSubtle;
+            Color col = c >= 5 ? theme().colors.primary.withAlpha(0.7) : theme().colors.textSubtle;
             p.drawText(cx, wy, wd[c], {wds.family, wds.size, wds.weight, col}, HAlign::Center);
         }
 
@@ -158,8 +157,8 @@ public:
         const double gy = b.y + kPad + kHeaderH + kWeekdayH;
         for (int r = 0; r < kRows; ++r) {
             // Week number from the row's Monday.
-            TextStyle wn{theme::font::family, 10.0, PANGO_WEIGHT_NORMAL,
-                         theme::color::textSubtle.withAlpha(0.6)};
+            TextStyle wn{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL,
+                         theme().colors.textSubtle.withAlpha(0.6)};
             p.drawText(gridX + kWeekColW / 2.0, gy + r * kCellH + (kCellH - 12.0) / 2.0,
                        strf(cell, "%V"), wn, HAlign::Center);
 
@@ -171,13 +170,13 @@ public:
                 const double cyTop = gy + r * kCellH;
 
                 if (isToday) {
-                    p.fillCircle(cx, cyTop + kCellH / 2.0, 13.0, theme::color::primary);
+                    p.fillCircle(cx, cyTop + kCellH / 2.0, 13.0, theme().colors.primary);
                 }
                 Color fg = isToday    ? Color::fromHex("#1e1e2e")
-                           : !inMonth ? theme::color::textSubtle.withAlpha(0.35)
-                           : c >= 5   ? theme::color::primary.withAlpha(0.85)
-                                      : theme::color::text;
-                TextStyle ds{theme::font::family, 12.0,
+                           : !inMonth ? theme().colors.textSubtle.withAlpha(0.35)
+                           : c >= 5   ? theme().colors.primary.withAlpha(0.85)
+                                      : theme().colors.text;
+                TextStyle ds{theme().font.family, 12.0,
                              isToday ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL, fg};
                 const std::string d = std::to_string(cell.tm_mday);
                 const Size dsz = p.measureText(d, ds);
@@ -191,13 +190,12 @@ public:
         // ── Secondary timezones ──────────────────────────────────────────────
         if (!zones_.empty()) {
             double ty = gy + kRows * kCellH + 8.0;
-            p.fillRectSource({b.x + kPad, ty, b.w - kPad * 2, 1.0},
-                             theme::statusbar::panelSurfaceHover());
+            p.fillRectSource({b.x + kPad, ty, b.w - kPad * 2, 1.0}, theme().panelSurfaceHover());
             ty += 6.0;
             for (const auto& z : zones_) {
-                TextStyle ls{theme::font::family, 12.0, PANGO_WEIGHT_NORMAL, theme::color::text};
-                TextStyle rs{theme::font::family, 12.0, PANGO_WEIGHT_BOLD,
-                             theme::color::textSubtle};
+                TextStyle ls{theme().font.family, 12.0, PANGO_WEIGHT_NORMAL, theme().colors.text};
+                TextStyle rs{theme().font.family, 12.0, PANGO_WEIGHT_BOLD,
+                             theme().colors.textSubtle};
                 p.drawText(b.x + kPad, ty + 3.0, zoneLabel(z), ls, HAlign::Left);
                 p.drawText(b.x + b.w - kPad, ty + 3.0, zoneTime(z, "%H:%M"), rs, HAlign::Right);
                 ty += kTzRowH;
@@ -271,7 +269,7 @@ std::string ClockIndicator::tooltip() const {
 }
 
 double ClockIndicator::labelFontSize() const {
-    return theme::statusbar::clockIconSize;
+    return theme().statusbar.clockIconSize;
 }
 
 void ClockIndicator::poll(int64_t now) {

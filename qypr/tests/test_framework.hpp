@@ -222,7 +222,7 @@ public:
 
     [[nodiscard]] std::string icon() const override { return icon_; }
     [[nodiscard]] std::string tooltip() const override { return tooltip_; }
-    [[nodiscard]] qypr::Color iconColor() const override { return qypr::theme::color::primary; }
+    [[nodiscard]] qypr::Color iconColor() const override { return theme().colors.primary; }
 
     std::string icon_ = "T";
     std::string tooltip_ = "Test Indicator";

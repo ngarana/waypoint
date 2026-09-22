@@ -34,7 +34,7 @@ namespace qypr {
 
 class Painter;
 
-class ConfirmPopover {
+class ConfirmPopover : public theme::ThemeAware {
 public:
     bool active() const { return visible_ || fadeAnim_.target() > 0.001; }
 

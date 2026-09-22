@@ -61,9 +61,8 @@ public:
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
         b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
-        if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius)) {
-            p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                    theme::statusbar::panelSurface());
+        if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
+            p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
 
         sinkRows_.clear();
@@ -71,37 +70,37 @@ public:
         double y = b.y + kAPad;
 
         // ── Output devices ───────────────────────────────────────────────────
-        TextStyle const hdr{.family = theme::font::family,
+        TextStyle const hdr{.family = theme().font.family,
                             .size = 11.0,
                             .weight = PANGO_WEIGHT_BOLD,
-                            .color = theme::color::textSubtle};
+                            .color = theme().colors.textSubtle};
         p.drawText(b.x + kAPad, y, "OUTPUT", hdr);
         y += kSecHdr;
 
         const auto& sinks = backend_->sinks();
         if (sinks.empty()) {
-            TextStyle const e{.family = theme::font::family,
+            TextStyle const e{.family = theme().font.family,
                               .size = 12.0,
                               .weight = PANGO_WEIGHT_NORMAL,
-                              .color = theme::color::textSubtle};
+                              .color = theme().colors.textSubtle};
             p.drawText(b.x + kAPad, y + 6.0, "No output devices", e);
             y += kSinkH;
         }
         for (const auto& s : sinks) {
             const Rect row{.x = b.x + kAPad, .y = y, .w = b.w - (kAPad * 2), .h = kSinkH};
             if (row.contains(hoverX_, hoverY_)) {
-                p.fillRoundedRect(row, 6.0, theme::color::glassHover);
+                p.fillRoundedRect(row, 6.0, theme().colors.glassHover);
             }
-            TextStyle const dot{.family = theme::font::family,
+            TextStyle const dot{.family = theme().font.family,
                                 .size = 12.0,
                                 .weight = PANGO_WEIGHT_NORMAL,
-                                .color =
-                                    s.isDefault ? theme::color::primary : theme::color::textSubtle};
+                                .color = s.isDefault ? theme().colors.primary
+                                                     : theme().colors.textSubtle};
             p.drawText(row.x + 4.0, y + ((kSinkH - 14.0) / 2.0), s.isDefault ? "●" : "○", dot);
-            TextStyle const ls{.family = theme::font::family,
+            TextStyle const ls{.family = theme().font.family,
                                .size = 12.0,
                                .weight = s.isDefault ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
-                               .color = theme::color::text};
+                               .color = theme().colors.text};
             p.drawText(row.x + 24.0, y + ((kSinkH - 14.0) / 2.0), s.description, ls, HAlign::Left,
                        row.w - 28.0);
             sinkRows_.push_back({.rect = row, .name = s.name});
@@ -113,22 +112,22 @@ public:
         if (showStreams_ && !streams.empty()) {
             y += kDiv;  // gap after the device list
             p.fillRect({.x = b.x + kAPad, .y = y - 6.0, .w = b.w - (kAPad * 2), .h = 1.0},
-                       theme::color::glassBorder);
+                       theme().colors.glassBorder);
             p.drawText(b.x + kAPad, y, "APPLICATIONS", hdr);
             y += kSecHdr;
             for (const auto& s : streams) {
                 // Name + percentage.
-                TextStyle const ns{.family = theme::font::family,
+                TextStyle const ns{.family = theme().font.family,
                                    .size = 12.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::text};
+                                   .color = theme().colors.text};
                 p.drawText(b.x + kAPad, y + 2.0, s.appName, ns, HAlign::Left,
                            b.w - (kAPad * 2) - 48.0);
                 const int pct = static_cast<int>(std::round(s.level * 100.0));
-                TextStyle const ps{.family = theme::font::family,
+                TextStyle const ps{.family = theme().font.family,
                                    .size = 11.0,
                                    .weight = PANGO_WEIGHT_NORMAL,
-                                   .color = theme::color::textSubtle};
+                                   .color = theme().colors.textSubtle};
                 p.drawText(b.x + b.w - kAPad, y + 2.0, std::to_string(pct) + "%", ps,
                            HAlign::Right);
 
@@ -137,10 +136,10 @@ public:
                 const double tw = b.w - (kAPad * 2);
                 const double ty = y + 26.0;
                 const Rect track{.x = tx, .y = ty, .w = tw, .h = 4.0};
-                p.fillRoundedRectSource(track, 2.0, theme::statusbar::panelSurface());
+                p.fillRoundedRectSource(track, 2.0, theme().panelSurface());
                 Rect fill = track;
                 fill.w = tw * std::clamp(s.level, 0.0, 1.0);
-                const Color fg = s.muted ? theme::color::textSubtle : theme::color::primary;
+                const Color fg = s.muted ? theme().colors.textSubtle : theme().colors.primary;
                 p.fillRoundedRect(fill, 2.0, fg);
                 p.fillCircle(tx + fill.w, ty + 2.0, 6.0, fg);
                 streamTracks_.push_back({.track = track, .index = s.index});

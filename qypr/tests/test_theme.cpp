@@ -4,26 +4,25 @@
 
 #include "core/SolarCalc.hpp"
 
-// Apply a config with a deterministic noon resolution; returns the
-// owned day/night value. Tests never touch palette globals or the
-// wall clock, so they are order-independent.
-qypr::theme::AutoPalette applyTheme(qypr::Config& cfg) {
+// Apply a config with a deterministic noon resolution; returns the owned
+// design value. Tests assert on the returned State — never on shared
+// globals — so they are order-independent.
+qypr::theme::State applyTheme(qypr::Config& cfg) {
     qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(cfg, 12);
-    qypr::theme::loadTheme(cfg, pal);
-    return pal;
+    return qypr::theme::loadThemeState(cfg, pal);
 }
 
 TEST(ThemeLoadThemeDefaults) {
     qypr::Config c;
     c.load("/nonexistent");
-    applyTheme(c);
-    EXPECT_EQ(qypr::theme::font::family, std::string("Inter"));
-    EXPECT_EQ(qypr::theme::font::iconFamily, std::string("CaskaydiaCove Nerd Font"));
-    EXPECT_EQ(qypr::theme::font::size, 16);
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0.537, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::height, 36.0, 0.01);
+    qypr::theme::State stC = applyTheme(c);
+    EXPECT_EQ(stC.font.family, std::string("Inter"));
+    EXPECT_EQ(stC.font.iconFamily, std::string("CaskaydiaCove Nerd Font"));
+    EXPECT_EQ(stC.font.size, 16);
+    EXPECT_NEAR(stC.colors.primary.r, 0.537, 0.01);
+    EXPECT_NEAR(stC.statusbar.height, 36.0, 0.01);
     // Icons default to Auto (themed-when-available, else glyph).
-    EXPECT_TRUE(qypr::theme::icons::mode == qypr::theme::icons::Mode::Auto);
+    EXPECT_TRUE(stC.icons.mode == qypr::theme::icons::Mode::Auto);
 }
 
 // The bar backdrop tint/border colours follow the active palette (no hardcoded
@@ -42,20 +41,20 @@ TEST(ThemeFollowsSystemPalette) {
     }
     qypr::Config c;
     c.load(path);
-    applyTheme(c);
+    qypr::theme::State stC = applyTheme(c);
 
     // `macos` is accepted but resolves to the generic glass rendering path.
-    EXPECT_EQ(qypr::theme::style::mode, std::string("glass"));
+    EXPECT_EQ(stC.style.mode, std::string("glass"));
     // icon-style honoured.
-    EXPECT_TRUE(qypr::theme::icons::mode == qypr::theme::icons::Mode::Glyph);
+    EXPECT_TRUE(stC.icons.mode == qypr::theme::icons::Mode::Glyph);
     // Backdrop tint defaults to the configured background, border to the text
     // colour — the strip tracks whatever palette the user set, not a fixed hue.
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.r, 0x11 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.g, 0x22 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.b, 0x33 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barBorder.r, 0xff / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barBorder.g, 0xee / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barBorder.b, 0xdd / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barTint.r, 0x11 / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barTint.g, 0x22 / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barTint.b, 0x33 / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barBorder.r, 0xff / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barBorder.g, 0xee / 255.0, 0.01);
+    EXPECT_NEAR(stC.statusbar.barBorder.b, 0xdd / 255.0, 0.01);
 
     // An explicit bar-tint override wins over the derived default.
     {
@@ -67,11 +66,11 @@ TEST(ThemeFollowsSystemPalette) {
     }
     qypr::Config c2;
     c2.load(path);
-    applyTheme(c2);
-    EXPECT_TRUE(qypr::theme::icons::mode == qypr::theme::icons::Mode::Symbolic);
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.r, 0x44 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.g, 0x55 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::statusbar::barTint.b, 0x66 / 255.0, 0.01);
+    qypr::theme::State stC2 = applyTheme(c2);
+    EXPECT_TRUE(stC2.icons.mode == qypr::theme::icons::Mode::Symbolic);
+    EXPECT_NEAR(stC2.statusbar.barTint.r, 0x44 / 255.0, 0.01);
+    EXPECT_NEAR(stC2.statusbar.barTint.g, 0x55 / 255.0, 0.01);
+    EXPECT_NEAR(stC2.statusbar.barTint.b, 0x66 / 255.0, 0.01);
 
     std::remove(path.c_str());
 }
@@ -96,22 +95,22 @@ TEST(ThemeMatugenCssPalette) {
                                              palette + "\n");
     qypr::Config c;
     c.load(conf);
-    applyTheme(c);
+    qypr::theme::State stC = applyTheme(c);
 
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0xaa / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::primary.g, 0xbb / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::primary.b, 0xcc / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.primary.r, 0xaa / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.primary.g, 0xbb / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.primary.b, 0xcc / 255.0, 0.01);
     // No `background` token: falls back to the M3 `surface` tone.
-    EXPECT_NEAR(qypr::theme::color::background.b, 0x20 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.background.b, 0x20 / 255.0, 0.01);
     // surface / hover come from the M3 container tones.
-    EXPECT_NEAR(qypr::theme::color::surface.r, 0x22 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::surfaceHover.r, 0x33 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::text.r, 0xdd / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::textSubtle.r, 0x99 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::textMuted.r, 0x55 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::error.g, 0x55 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.surface.r, 0x22 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.surfaceHover.r, 0x33 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.text.r, 0xdd / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.textSubtle.r, 0x99 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.textMuted.r, 0x55 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.error.g, 0x55 / 255.0, 0.01);
     // success has no dedicated token: falls back to tertiary.
-    EXPECT_NEAR(qypr::theme::color::success.g, 0xd9 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.success.g, 0xd9 / 255.0, 0.01);
 
     // An explicit colour key wins over the palette.
     const std::string conf2 = writeTempConfig("[theme]\n"
@@ -121,10 +120,10 @@ TEST(ThemeMatugenCssPalette) {
                                               "primary = #010203\n");
     qypr::Config c2;
     c2.load(conf2);
-    applyTheme(c2);
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0x01 / 255.0, 0.01);
+    qypr::theme::State stC2 = applyTheme(c2);
+    EXPECT_NEAR(stC2.colors.primary.r, 0x01 / 255.0, 0.01);
     // ...while palette-driven keys still apply.
-    EXPECT_NEAR(qypr::theme::color::text.r, 0xdd / 255.0, 0.01);
+    EXPECT_NEAR(stC2.colors.text.r, 0xdd / 255.0, 0.01);
 
     std::remove(conf.c_str());
     std::remove(conf2.c_str());
@@ -145,11 +144,11 @@ TEST(ThemeMatugenJsonAndDefineColor) {
                                              json + "\n");  // alias key
     qypr::Config c;
     c.load(conf);
-    applyTheme(c);
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0x11 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::primary.b, 0x33 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::error.g, 0x55 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::text.r, 0x88 / 255.0, 0.01);
+    qypr::theme::State stC = applyTheme(c);
+    EXPECT_NEAR(stC.colors.primary.r, 0x11 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.primary.b, 0x33 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.error.g, 0x55 / 255.0, 0.01);
+    EXPECT_NEAR(stC.colors.text.r, 0x88 / 255.0, 0.01);
     std::remove(conf.c_str());
     std::remove(json.c_str());
 
@@ -160,9 +159,9 @@ TEST(ThemeMatugenJsonAndDefineColor) {
                                               gtk + "\n");
     qypr::Config c2;
     c2.load(conf2);
-    applyTheme(c2);
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0xab / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::error.r, 0x65 / 255.0, 0.01);
+    qypr::theme::State stC2 = applyTheme(c2);
+    EXPECT_NEAR(stC2.colors.primary.r, 0xab / 255.0, 0.01);
+    EXPECT_NEAR(stC2.colors.error.r, 0x65 / 255.0, 0.01);
     std::remove(conf2.c_str());
     std::remove(gtk.c_str());
 }
@@ -184,11 +183,12 @@ TEST(ThemePaletteModeSelection) {
                             "\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    auto palDark = applyTheme(cd);
+    qypr::theme::AutoPalette palDark = qypr::theme::AutoPalette::fromConfig(cd, 12);
+    qypr::theme::State stCd = qypr::theme::loadThemeState(cd, palDark);
     EXPECT_EQ(palDark.resolved, std::string("dark"));
-    EXPECT_NEAR(qypr::theme::color::background.r, 0x11 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::primary.g, 0x22 / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.6, 0.01);
+    EXPECT_NEAR(stCd.colors.background.r, 0x11 / 255.0, 0.01);
+    EXPECT_NEAR(stCd.colors.primary.g, 0x22 / 255.0, 0.01);
+    EXPECT_NEAR(stCd.effects.shadowOpacity, 0.6, 0.01);
 
     // light mode → light file, shadow disabled (no ghost shades).
     qypr::Config cl;
@@ -199,11 +199,12 @@ TEST(ThemePaletteModeSelection) {
                             "\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    auto palLight = applyTheme(cl);
+    qypr::theme::AutoPalette palLight = qypr::theme::AutoPalette::fromConfig(cl, 12);
+    qypr::theme::State stCl = qypr::theme::loadThemeState(cl, palLight);
     EXPECT_EQ(palLight.resolved, std::string("light"));
-    EXPECT_NEAR(qypr::theme::color::background.r, 0xee / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::color::primary.b, 0xaa / 255.0, 0.01);
-    EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.0, 0.01);
+    EXPECT_NEAR(stCl.colors.background.r, 0xee / 255.0, 0.01);
+    EXPECT_NEAR(stCl.colors.primary.b, 0xaa / 255.0, 0.01);
+    EXPECT_NEAR(stCl.effects.shadowOpacity, 0.0, 0.01);
 
     // A dark load after a light one restores the default shadow.
     qypr::Config cd2;
@@ -211,8 +212,8 @@ TEST(ThemePaletteModeSelection) {
                              "palette-mode = dark\n"
                              "colors-file = " +
                              darkPal + "\n"));
-    applyTheme(cd2);
-    EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.6, 0.01);
+    qypr::theme::State stCd2 = applyTheme(cd2);
+    EXPECT_NEAR(stCd2.effects.shadowOpacity, 0.6, 0.01);
 
     // An explicit shadow-opacity wins over the light-mode softening.
     qypr::Config ce;
@@ -221,8 +222,8 @@ TEST(ThemePaletteModeSelection) {
                             "shadow-opacity = 0.5\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    applyTheme(ce);
-    EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.5, 0.01);
+    qypr::theme::State stCe = applyTheme(ce);
+    EXPECT_NEAR(stCe.effects.shadowOpacity, 0.5, 0.01);
 
     // light mode with no light file falls back to the dark file's palette.
     qypr::Config cf;
@@ -230,8 +231,8 @@ TEST(ThemePaletteModeSelection) {
                             "palette-mode = light\n"
                             "colors-file = " +
                             darkPal + "\n"));
-    applyTheme(cf);
-    EXPECT_NEAR(qypr::theme::color::background.r, 0x11 / 255.0, 0.01);
+    qypr::theme::State stCf = applyTheme(cf);
+    EXPECT_NEAR(stCf.colors.background.r, 0x11 / 255.0, 0.01);
 }
 
 // The auto palette mode resolves by hour: light in [sunrise, sunset), dark
@@ -297,8 +298,8 @@ TEST(ThemeMatugenHomeExpansion) {
                                              "colors-file = ~/palette.css\n");
     qypr::Config c;
     c.load(conf);
-    applyTheme(c);
-    EXPECT_NEAR(qypr::theme::color::primary.r, 0x24 / 255.0, 0.01);
+    qypr::theme::State stC = applyTheme(c);
+    EXPECT_NEAR(stC.colors.primary.r, 0x24 / 255.0, 0.01);
 
     if (savedHome.empty()) {
         // NOLINTNEXTLINE(concurrency-mt-unsafe): single-threaded test binary.

@@ -50,9 +50,8 @@ double MenuPopover::contentHeight() const {
 void MenuPopover::draw(Painter& p, int64_t now) {
     Rect b = getBounds();
     b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
-    if (!drawSharedBackdrop(p, b, theme::statusbar::popoverRadius))
-        p.fillRoundedRectSource(b, theme::statusbar::popoverRadius,
-                                theme::statusbar::panelSurface());
+    if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
+        p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
 
     hits_.clear();
     double y = b.y + kPad;
@@ -60,20 +59,20 @@ void MenuPopover::draw(Painter& p, int64_t now) {
     // Back header when drilled into a submenu.
     if (stack_.size() > 1) {
         const Rect hr{b.x + kPad, y, b.w - kPad * 2, kHeaderH};
-        if (hr.contains(hoverX_, hoverY_)) p.fillRoundedRect(hr, 6.0, theme::color::glassHover);
-        TextStyle cs{theme::font::family, 15.0, PANGO_WEIGHT_NORMAL, theme::color::primary};
+        if (hr.contains(hoverX_, hoverY_)) p.fillRoundedRect(hr, 6.0, theme().colors.glassHover);
+        TextStyle cs{theme().font.family, 15.0, PANGO_WEIGHT_NORMAL, theme().colors.primary};
         p.drawText(hr.x + 6.0, y + (kHeaderH - 17.0) / 2.0, "‹", cs);  // back chevron
-        TextStyle bs{theme::font::family, 12.0, PANGO_WEIGHT_BOLD, theme::color::text};
+        TextStyle bs{theme().font.family, 12.0, PANGO_WEIGHT_BOLD, theme().colors.text};
         p.drawText(hr.x + 22.0, y + (kHeaderH - 14.0) / 2.0, cur().title, bs);
         hits_.push_back({hr, Hit::Back, 0, ""});
         // Divider under the header.
         p.fillRect({b.x + kPad, y + kHeaderH - 1.0, b.w - kPad * 2, 1.0},
-                   theme::color::glassBorder);
+                   theme().colors.glassBorder);
         y += kHeaderH;
     }
 
     if (rowsHeight() <= 0) {
-        TextStyle es{theme::font::family, 12.0, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+        TextStyle es{theme().font.family, 12.0, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
         p.drawText(b.x + kPad + kLeftCol, y + (kRowH - 14.0) / 2.0, "(empty)", es);
         return;
     }
@@ -82,33 +81,34 @@ void MenuPopover::draw(Painter& p, int64_t now) {
         if (!it.visible) continue;
         if (it.separator) {
             p.fillRect({b.x + kPad + 4.0, y + kSepH / 2.0, b.w - kPad * 2 - 8.0, 1.0},
-                       theme::color::glassBorder);
+                       theme().colors.glassBorder);
             y += kSepH;
             continue;
         }
 
         const Rect row{b.x + kPad, y, b.w - kPad * 2, kRowH};
         const bool hot = it.enabled && row.contains(hoverX_, hoverY_);
-        if (hot) p.fillRoundedRect(row, 6.0, theme::color::glassHover);
+        if (hot) p.fillRoundedRect(row, 6.0, theme().colors.glassHover);
 
-        const Color fg = it.enabled ? theme::color::text : theme::color::textSubtle.withAlpha(0.5);
+        const Color fg =
+            it.enabled ? theme().colors.text : theme().colors.textSubtle.withAlpha(0.5);
 
         // Toggle marker in the left gutter.
         if (it.toggleType == "checkmark" && it.toggleState == 1) {
-            TextStyle ts{theme::font::family, 12.0, PANGO_WEIGHT_BOLD, theme::color::primary};
+            TextStyle ts{theme().font.family, 12.0, PANGO_WEIGHT_BOLD, theme().colors.primary};
             p.drawText(row.x + 6.0, y + (kRowH - 14.0) / 2.0, kCheck, ts);
         } else if (it.toggleType == "radio" && it.toggleState == 1) {
-            TextStyle ts{theme::font::family, 12.0, PANGO_WEIGHT_NORMAL, theme::color::primary};
+            TextStyle ts{theme().font.family, 12.0, PANGO_WEIGHT_NORMAL, theme().colors.primary};
             p.drawText(row.x + 6.0, y + (kRowH - 14.0) / 2.0, kRadioOn, ts);
         }
 
-        TextStyle ls{theme::font::family, 12.0, PANGO_WEIGHT_NORMAL, fg};
+        TextStyle ls{theme().font.family, 12.0, PANGO_WEIGHT_NORMAL, fg};
         const double labelMax = row.w - kLeftCol - (it.hasSubmenu ? 20.0 : 8.0);
         p.drawText(row.x + kLeftCol, y + (kRowH - 14.0) / 2.0, it.label, ls, HAlign::Left,
                    labelMax);
 
         if (it.hasSubmenu) {
-            TextStyle ss{theme::font::family, 15.0, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+            TextStyle ss{theme().font.family, 15.0, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
             p.drawText(row.x + row.w - 16.0, y + (kRowH - 17.0) / 2.0, kSubmenu, ss);
         }
 

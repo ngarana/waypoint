@@ -139,7 +139,9 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
 
     // ─── Fonts ───────────────────────────────────────────────────────
     if (cfg.has(kS, "font-family")) { state.font.family = cfg.getString(kS, "font-family", ""); }
-    if (cfg.has(kS, "icon-family")) { state.font.iconFamily = cfg.getString(kS, "icon-family", ""); }
+    if (cfg.has(kS, "icon-family")) {
+        state.font.iconFamily = cfg.getString(kS, "icon-family", "");
+    }
     overrideInt(state.font.size, cfg, kS, "font-size");
     overrideInt(state.font.sizeLarge, cfg, kS, "font-size-large");
     overrideInt(state.font.sizeClock, cfg, kS, "font-size-clock");
@@ -215,7 +217,8 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     overrideDouble(state.statusbar.barTintAlpha, cfg, kS, "bar-tint-alpha");
     overrideColor(state.statusbar.barBorder, cfg, kS, "bar-border-color");
     overrideDouble(state.statusbar.barBorderAlpha, cfg, kS, "bar-border-alpha");
-    state.statusbar.barBorderEnabled = cfg.getBool(kS, "bar-border", state.statusbar.barBorderEnabled);
+    state.statusbar.barBorderEnabled =
+        cfg.getBool(kS, "bar-border", state.statusbar.barBorderEnabled);
 
     // ─── Notification ────────────────────────────────────────────────
     overrideInt(state.notification.cardWidth, cfg, kS, "notification-card-width");
@@ -329,15 +332,19 @@ const std::vector<PaletteMapping>& paletteMappings() {
                     "surface"}},
         {.target = &State::Colors::surfaceHover,
          .tokens = {"surface-container-high", "surface-container-highest", "surface-container"}},
-        {.target = &State::Colors::primary, .tokens = {"primary", "primary-fixed", "primary-container"}},
+        {.target = &State::Colors::primary,
+         .tokens = {"primary", "primary-fixed", "primary-container"}},
         // The glow is a translucent primary unless the template ships its own
         // 8-digit (AARRGGBB) value.
-        {.target = &State::Colors::primaryGlow, .tokens = {"primary-glow", "primary"}, .alpha = 0.25},
+        {.target = &State::Colors::primaryGlow,
+         .tokens = {"primary-glow", "primary"},
+         .alpha = 0.25},
         {.target = &State::Colors::text,
          .tokens = {"on-surface", "foreground", "on-primary-container", "text"}},
         {.target = &State::Colors::textSubtle,
          .tokens = {"on-surface-variant", "outline", "text-secondary"}},
-        {.target = &State::Colors::textMuted, .tokens = {"outline", "outline-variant", "text-muted"}},
+        {.target = &State::Colors::textMuted,
+         .tokens = {"outline", "outline-variant", "text-muted"}},
         {.target = &State::Colors::error, .tokens = {"error"}},
         // M3 has no success/warning hues; tertiary (and secondary for a
         // warning-ish tone) are the usual stand-ins. `success`/`warning`
@@ -492,108 +499,6 @@ bool AutoPalette::tick(int hour) {
     resolved = want;
     std::fprintf(stderr, "qypr: theme: auto palette switched to %s\n", want.c_str());
     return true;
-}
-
-
-// Interim shim (deleted with the globals): feeds not-yet-migrated readers
-// from a freshly built State. Field-for-field copy, nothing more.
-void toGlobals(const State& state) {
-    color::background = state.colors.background;
-    color::surface = state.colors.surface;
-    color::surfaceHover = state.colors.surfaceHover;
-    color::glass = state.colors.glass;
-    color::glassHover = state.colors.glassHover;
-    color::glassBorder = state.colors.glassBorder;
-    color::primary = state.colors.primary;
-    color::primaryGlow = state.colors.primaryGlow;
-    color::text = state.colors.text;
-    color::textSubtle = state.colors.textSubtle;
-    color::textMuted = state.colors.textMuted;
-    color::error = state.colors.error;
-    color::success = state.colors.success;
-    color::warning = state.colors.warning;
-    color::blue = state.colors.blue;
-    color::lavender = state.colors.lavender;
-    color::mauve = state.colors.mauve;
-    color::pink = state.colors.pink;
-    color::red = state.colors.red;
-    color::peach = state.colors.peach;
-    color::yellow = state.colors.yellow;
-    color::green = state.colors.green;
-    color::teal = state.colors.teal;
-    color::sky = state.colors.sky;
-    color::maroon = state.colors.maroon;
-    font::size = state.font.size;
-    font::sizeLarge = state.font.sizeLarge;
-    font::sizeClock = state.font.sizeClock;
-    font::sizeDate = state.font.sizeDate;
-    font::family = state.font.family;
-    font::iconFamily = state.font.iconFamily;
-    spacing::small = state.spacing.small;
-    spacing::medium = state.spacing.medium;
-    spacing::large = state.spacing.large;
-    spacing::xlarge = state.spacing.xlarge;
-    spacing::xxlarge = state.spacing.xxlarge;
-    radius::small = state.radius.small;
-    radius::medium = state.radius.medium;
-    radius::large = state.radius.large;
-    radius::xlarge = state.radius.xlarge;
-    radius::round = state.radius.round;
-    anim::fast = state.anim.fast;
-    anim::medium = state.anim.medium;
-    anim::slow = state.anim.slow;
-    anim::reveal = state.anim.reveal;
-    effects::shadowOpacity = state.effects.shadowOpacity;
-    effects::shadowOffset = state.effects.shadowOffset;
-    style::mode = state.style.mode;
-    icons::mode = state.icons.mode;
-    audio::buttonSize = state.audio.buttonSize;
-    audio::buttonIconSize = state.audio.buttonIconSize;
-    audio::minWidth = state.audio.minWidth;
-    audio::maxWidth = state.audio.maxWidth;
-    audio::progressHeight = state.audio.progressHeight;
-    audio::volumeSliderWidth = state.audio.volumeSliderWidth;
-    audio::spacing = state.audio.spacing;
-    audio::panelPadding = state.audio.panelPadding;
-    notification::cardWidth = state.notification.cardWidth;
-    notification::iconSize = state.notification.iconSize;
-    notification::padding = state.notification.padding;
-    notification::gap = state.notification.gap;
-    notification::titleSize = state.notification.titleSize;
-    notification::bodySize = state.notification.bodySize;
-    notification::maxVisible = state.notification.maxVisible;
-    notification::radius = state.notification.radius;
-    statusbar::height = state.statusbar.height;
-    statusbar::topMargin = state.statusbar.topMargin;
-    statusbar::sideMargin = state.statusbar.sideMargin;
-    statusbar::cornerRadius = state.statusbar.cornerRadius;
-    statusbar::iconSize = state.statusbar.iconSize;
-    statusbar::clockIconSize = state.statusbar.clockIconSize;
-    statusbar::symbolicIconSize = state.statusbar.symbolicIconSize;
-    statusbar::iconSpacing = state.statusbar.iconSpacing;
-    statusbar::padding = state.statusbar.padding;
-    statusbar::separatorWidth = state.statusbar.separatorWidth;
-    statusbar::qsPanelWidth = state.statusbar.qsPanelWidth;
-    statusbar::qsTileSize = state.statusbar.qsTileSize;
-    statusbar::qsTileHeight = state.statusbar.qsTileHeight;
-    statusbar::qsTileGap = state.statusbar.qsTileGap;
-    statusbar::qsSliderHeight = state.statusbar.qsSliderHeight;
-    statusbar::qsPadding = state.statusbar.qsPadding;
-    statusbar::qsCornerRadius = state.statusbar.qsCornerRadius;
-    statusbar::popoverWidth = state.statusbar.popoverWidth;
-    statusbar::popoverPadding = state.statusbar.popoverPadding;
-    statusbar::popoverRadius = state.statusbar.popoverRadius;
-    statusbar::arrowSize = state.statusbar.arrowSize;
-    statusbar::barTint = state.statusbar.barTint;
-    statusbar::barTintAlpha = state.statusbar.barTintAlpha;
-    statusbar::barBorder = state.statusbar.barBorder;
-    statusbar::barBorderAlpha = state.statusbar.barBorderAlpha;
-    statusbar::barBorderEnabled = state.statusbar.barBorderEnabled;
-    statusbar::panelSurfaceAlpha = state.statusbar.panelSurfaceAlpha;
-}
-
-void loadTheme(const Config& cfg, AutoPalette& palette) {
-    toGlobals(loadThemeState(cfg, palette));
 }
 
 }  // namespace qypr::theme

@@ -322,24 +322,19 @@ TEST(StatusBarAnimating) {
 }
 
 // Test theme::statusbar constants are accessible.
+// Test theme::State compiled defaults are sane geometry (no config, no
+// globals — the default-constructed value is the whole fixture).
 TEST(StatusBarThemeConstants) {
-    // Reset to compiled defaults — a prior test may have loaded a user config
-    // that overrode statusbar geometry (e.g. bar-corner-radius = 0).
-    qypr::Config dummy;
-    dummy.load("/nonexistent");
-    qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(dummy, 12);
-    qypr::theme::loadTheme(dummy, pal);
-
-    using namespace qypr::theme::statusbar;
-    EXPECT_TRUE(height > 0);
-    EXPECT_TRUE(topMargin >= 0);
-    EXPECT_TRUE(sideMargin >= 0);
-    EXPECT_TRUE(cornerRadius > 0);
-    EXPECT_TRUE(iconSize > 0);
-    EXPECT_TRUE(iconSpacing > 0);
-    EXPECT_TRUE(padding > 0);
-    EXPECT_TRUE(qsPanelWidth > 0);
-    EXPECT_TRUE(qsTileHeight > 0);
+    qypr::theme::State st;
+    EXPECT_TRUE(st.statusbar.height > 0);
+    EXPECT_TRUE(st.statusbar.topMargin >= 0);
+    EXPECT_TRUE(st.statusbar.sideMargin >= 0);
+    EXPECT_TRUE(st.statusbar.cornerRadius > 0);
+    EXPECT_TRUE(st.statusbar.iconSize > 0);
+    EXPECT_TRUE(st.statusbar.iconSpacing > 0);
+    EXPECT_TRUE(st.statusbar.padding > 0);
+    EXPECT_TRUE(st.statusbar.qsPanelWidth > 0);
+    EXPECT_TRUE(st.statusbar.qsTileHeight > 0);
 }
 TEST(QuickSettingsPanelSecondaryRouting) {
     qypr::EventLoop loop;

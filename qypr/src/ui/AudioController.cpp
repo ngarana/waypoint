@@ -12,14 +12,16 @@ namespace qypr {
 namespace {
 constexpr const char* kAudioIconFamily = "Noto Sans";  // colourless media glyphs
 
-TextStyle smallMuted() {
-    return {theme::font::family, 11, PANGO_WEIGHT_MEDIUM, theme::color::textMuted};
+TextStyle smallMuted(const theme::State& theme) {
+    return {theme.font.family, 11.0, PANGO_WEIGHT_MEDIUM, theme.colors.textMuted};
 }
-TextStyle titleStyle() {
-    return {theme::font::family, theme::font::sizeLarge, PANGO_WEIGHT_BOLD, theme::color::text};
+TextStyle titleStyle(const theme::State& theme) {
+    return {theme.font.family, static_cast<double>(theme.font.sizeLarge), PANGO_WEIGHT_BOLD,
+            theme.colors.text};
 }
-TextStyle subtitleStyle() {
-    return {theme::font::family, theme::font::size, PANGO_WEIGHT_NORMAL, theme::color::textSubtle};
+TextStyle subtitleStyle(const theme::State& theme) {
+    return {theme.font.family, static_cast<double>(theme.font.size), PANGO_WEIGHT_NORMAL,
+            theme.colors.textSubtle};
 }
 
 std::string formatArtistAlbum(const std::string& artist, const std::string& album) {
@@ -38,11 +40,7 @@ std::string formatTime(double seconds) {
 }  // namespace
 
 AudioController::AudioController(MprisController& mpris) : mpris_(mpris) {
-    for (ActionButton* b : {&prev_, &playPause_, &next_}) {
-        b->iconFamily = kAudioIconFamily;
-        b->diameter = theme::audio::buttonSize;
-        b->iconSize = theme::audio::buttonIconSize;
-    }
+    for (ActionButton* b : {&prev_, &playPause_, &next_}) { b->iconFamily = kAudioIconFamily; }
     prev_.label = "Previous";
     playPause_.label = "Play/Pause";
     next_.label = "Next";
@@ -55,6 +53,18 @@ AudioController::AudioController(MprisController& mpris) : mpris_(mpris) {
     next_.onClick = [this] {
         mpris_.next();
     };
+    // Deterministic pre-bind state (compiled defaults); the owner re-binds
+    // the live copy via setTheme().
+    setTheme(theme::kDefaultState);
+}
+
+void AudioController::setTheme(const theme::State& state) {
+    theme::ThemeAware::setTheme(state);
+    for (ActionButton* b : {&prev_, &playPause_, &next_}) {
+        b->setTheme(state);
+        b->diameter = state.audio.buttonSize;
+        b->iconSize = state.audio.buttonIconSize;
+    }
 }
 
 bool AudioController::active() const {
@@ -65,10 +75,10 @@ void AudioController::refresh() {
 }
 
 void AudioController::draw(Painter& p, int64_t now, double centerX, double topY, double maxWidth) {
-    const double panelW = std::clamp(maxWidth, static_cast<double>(theme::audio::minWidth),
-                                     static_cast<double>(theme::audio::maxWidth));
-    const double pad = theme::audio::panelPadding;
-    const double sp = theme::audio::spacing;
+    const double panelW = std::clamp(maxWidth, static_cast<double>(theme().audio.minWidth),
+                                     static_cast<double>(theme().audio.maxWidth));
+    const double pad = theme().audio.panelPadding;
+    const double sp = theme().audio.spacing;
     const double cw = panelW - 2 * pad;
 
     const bool hasDuration = mpris_.durationSeconds() > 0;
@@ -78,15 +88,15 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     const bool showVolume = mpris_.canSetVolume();
 
     // Measure block heights to size the panel before painting its background.
-    double hSource = source.empty() ? 0 : p.measureText(source, smallMuted()).h;
-    double hNow = p.measureText("Now Playing", smallMuted()).h;
-    double hTitle = p.measureText(title, titleStyle(), cw).h;
-    double hSub = p.measureText(sub, subtitleStyle(), cw).h;
-    double hTime = p.measureText("0:00", smallMuted()).h;
-    double hProgress = hasDuration ? (theme::audio::progressHeight + theme::spacing::small + hTime)
-                                   : p.measureText("LIVE", smallMuted()).h;
-    double hTransport = theme::audio::buttonSize;
-    double hVolume = showVolume ? std::max(p.measureText("Vol", smallMuted()).h, 12.0) : 0;
+    double hSource = source.empty() ? 0 : p.measureText(source, smallMuted(theme())).h;
+    double hNow = p.measureText("Now Playing", smallMuted(theme())).h;
+    double hTitle = p.measureText(title, titleStyle(theme()), cw).h;
+    double hSub = p.measureText(sub, subtitleStyle(theme()), cw).h;
+    double hTime = p.measureText("0:00", smallMuted(theme())).h;
+    double hProgress = hasDuration ? (theme().audio.progressHeight + theme().spacing.small + hTime)
+                                   : p.measureText("LIVE", smallMuted(theme())).h;
+    double hTransport = theme().audio.buttonSize;
+    double hVolume = showVolume ? std::max(p.measureText("Vol", smallMuted(theme())).h, 12.0) : 0;
 
     int blocks = 0;
     double content = 0;
@@ -107,8 +117,8 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     const double panelH = content + 2 * pad;
     const double panelX = centerX - panelW / 2.0;
     Rect panel{panelX, topY, panelW, panelH};
-    p.fillRoundedRect(panel, theme::radius::large, theme::color::glass);
-    p.strokeRoundedRect(panel, theme::radius::large, theme::color::glassBorder, 1);
+    p.fillRoundedRect(panel, theme().radius.large, theme().colors.glass);
+    p.strokeRoundedRect(panel, theme().radius.large, theme().colors.glassBorder, 1);
 
     const double cx0 = panelX + pad;
     double y = topY + pad;
@@ -117,30 +127,32 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     };
 
     if (!source.empty()) {
-        p.drawText(cx0, y, source, smallMuted(), HAlign::Left, cw);
+        p.drawText(cx0, y, source, smallMuted(theme()), HAlign::Left, cw);
         advance(hSource);
     }
-    p.drawText(cx0, y, "Now Playing", smallMuted(), HAlign::Left, cw);
+    p.drawText(cx0, y, "Now Playing", smallMuted(theme()), HAlign::Left, cw);
     advance(hNow);
-    p.drawText(cx0, y, title, titleStyle(), HAlign::Left, cw);
+    p.drawText(cx0, y, title, titleStyle(theme()), HAlign::Left, cw);
     advance(hTitle);
-    p.drawText(cx0, y, sub, subtitleStyle(), HAlign::Left, cw);
+    p.drawText(cx0, y, sub, subtitleStyle(theme()), HAlign::Left, cw);
     advance(hSub);
 
     // Progress bar + times, or a LIVE indicator.
     if (hasDuration) {
-        Rect track{cx0, y, cw, static_cast<double>(theme::audio::progressHeight)};
-        p.fillRoundedRect(track, track.h / 2, theme::color::glassBorder);
+        Rect track{cx0, y, cw, static_cast<double>(theme().audio.progressHeight)};
+        p.fillRoundedRect(track, track.h / 2, theme().colors.glassBorder);
         double ratio = clamp01(mpris_.positionSeconds() / mpris_.durationSeconds());
         if (ratio > 0)
             p.fillRoundedRect({track.x, track.y, track.w * ratio, track.h}, track.h / 2,
-                              theme::color::primary);
-        double ty = y + theme::audio::progressHeight + theme::spacing::small;
-        p.drawText(cx0, ty, formatTime(mpris_.positionSeconds()), smallMuted(), HAlign::Left);
-        p.drawText(cx0 + cw, ty, formatTime(mpris_.durationSeconds()), smallMuted(), HAlign::Right);
+                              theme().colors.primary);
+        double ty = y + theme().audio.progressHeight + theme().spacing.small;
+        p.drawText(cx0, ty, formatTime(mpris_.positionSeconds()), smallMuted(theme()),
+                   HAlign::Left);
+        p.drawText(cx0 + cw, ty, formatTime(mpris_.durationSeconds()), smallMuted(theme()),
+                   HAlign::Right);
     } else {
-        p.fillCircle(cx0 + 4, y + hProgress / 2, 4, theme::color::error);
-        TextStyle live{theme::font::family, 11, PANGO_WEIGHT_BOLD, theme::color::error};
+        p.fillCircle(cx0 + 4, y + hProgress / 2, 4, theme().colors.error);
+        TextStyle live{theme().font.family, 11.0, PANGO_WEIGHT_BOLD, theme().colors.error};
         p.drawText(cx0 + 14, y, "LIVE", live, HAlign::Left);
     }
     advance(hProgress);
@@ -153,7 +165,7 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     playPause_.enabled = mpris_.canTogglePlaying();
     next_.enabled = mpris_.canGoNext();
 
-    const double bd = theme::audio::buttonSize;
+    const double bd = theme().audio.buttonSize;
     const double totalW = 3 * bd + 2 * sp;
     double bx = centerX - totalW / 2.0;
     ActionButton* buttons[3] = {&prev_, &playPause_, &next_};
@@ -166,23 +178,23 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
 
     // Volume row.
     if (showVolume) {
-        TextStyle lbl = smallMuted();
+        TextStyle lbl = smallMuted(theme());
         Size volLbl = p.measureText("Vol", lbl);
         std::string pct = std::to_string(static_cast<int>(mpris_.volume() * 100 + 0.5)) + "%";
         Size pctSz = p.measureText(pct, lbl);
-        double sliderMax = cw - volLbl.w - pctSz.w - 2 * theme::spacing::small;
-        double sliderW = std::min(static_cast<double>(theme::audio::volumeSliderWidth), sliderMax);
+        double sliderMax = cw - volLbl.w - pctSz.w - 2 * theme().spacing.small;
+        double sliderW = std::min(static_cast<double>(theme().audio.volumeSliderWidth), sliderMax);
         double rowMid = y + hVolume / 2.0;
 
         p.drawText(cx0, rowMid - volLbl.h / 2.0, "Vol", lbl, HAlign::Left);
-        double trackX = cx0 + volLbl.w + theme::spacing::small;
-        double trackH = theme::audio::progressHeight * 3;
+        double trackX = cx0 + volLbl.w + theme().spacing.small;
+        double trackH = theme().audio.progressHeight * 3;
         volumeTrack_ = {trackX, rowMid - trackH / 2.0, sliderW, trackH};
-        p.fillRoundedRect(volumeTrack_, trackH / 2, theme::color::glassBorder);
+        p.fillRoundedRect(volumeTrack_, trackH / 2, theme().colors.glassBorder);
         double vol = clamp01(mpris_.volume());
         if (vol > 0)
             p.fillRoundedRect({trackX, volumeTrack_.y, sliderW * vol, trackH}, trackH / 2,
-                              theme::color::primary);
+                              theme().colors.primary);
         p.drawText(cx0 + cw, rowMid - pctSz.h / 2.0, pct, lbl, HAlign::Right);
     } else {
         volumeTrack_ = {};

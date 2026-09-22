@@ -16,7 +16,7 @@ DNDIndicator::DNDIndicator(const SystemBackends& backends)
 }
 
 Color DNDIndicator::iconColor() const {
-    return theme::color::primary;  // accent while shown (i.e. active)
+    return theme().colors.primary;  // accent while shown (i.e. active)
 }
 
 void DNDIndicator::onBackendUpdate() {

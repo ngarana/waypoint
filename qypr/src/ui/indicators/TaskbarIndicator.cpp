@@ -55,9 +55,9 @@ void TaskbarIndicator::draw(Painter& p, int64_t now) {
 
         // Focused window: a filled pill + an accent underline. Others are bare.
         if (w.active) {
-            p.fillRoundedRect(btn, 8.0, theme::color::glassHover);
+            p.fillRoundedRect(btn, 8.0, theme().colors.glassHover);
             const Rect ul{btn.x + 6.0, btn.y + btn.h - kUnderlineH, btn.w - 12.0, kUnderlineH};
-            p.fillRoundedRect(ul, kUnderlineH / 2.0, theme::color::primary);
+            p.fillRoundedRect(ul, kUnderlineH / 2.0, theme().colors.primary);
         }
 
         const double iconX = x + (kBtnW - kIconPx) / 2.0;
@@ -75,7 +75,7 @@ void TaskbarIndicator::draw(Painter& p, int64_t now) {
             // Initial-letter tile.
             const Rect tile{iconX, iconY, kIconPx, kIconPx};
             p.fillRoundedRect(tile, 5.0, apptile::fallbackColor(w.appId).withAlpha(alpha));
-            TextStyle st{theme::font::family, 12.0, PANGO_WEIGHT_BOLD,
+            TextStyle st{theme().font.family, 12.0, PANGO_WEIGHT_BOLD,
                          Color::fromHex("#1e1e2e").withAlpha(alpha)};
             const std::string ch = apptile::initialFor(w.appId);
             const Size cs = p.measureText(ch, st);

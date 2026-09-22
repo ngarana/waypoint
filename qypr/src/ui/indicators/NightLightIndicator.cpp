@@ -50,8 +50,8 @@ std::string NightLightIndicator::tooltip() const {
 }
 
 Color NightLightIndicator::iconColor() const {
-    if (backend_ && backend_->enabled()) return theme::color::primary;
-    return theme::color::textSubtle;
+    if (backend_ && backend_->enabled()) return theme().colors.primary;
+    return theme().colors.textSubtle;
 }
 
 void NightLightIndicator::onBackendUpdate() {
