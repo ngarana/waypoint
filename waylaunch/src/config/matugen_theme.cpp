@@ -1,5 +1,6 @@
 #include "waylaunch/matugen_theme.h"
 
+#include "render/MatugenTokens.hpp" // shared token lookup (libwl-common subtree)
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -175,13 +176,11 @@ class JsonCursor {
 };
 
 // First non-empty token from the scheme, or "" when none is present.
+// Shared lookup (common/render/MatugenTokens): same priority + empty-token
+// rule as the qypr bar's palette mapping.
 std::string pick_token(const std::map<std::string, std::string>& scheme,
                        std::initializer_list<const char*> keys) {
-    for (const char* key : keys) {
-        auto it = scheme.find(key);
-        if (it != scheme.end() && !it->second.empty()) return it->second;
-    }
-    return "";
+    return qypr::pickMatugenToken(scheme, keys);
 }
 
 void use_token(std::string& slot, const std::string& token) {

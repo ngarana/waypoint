@@ -1,7 +1,7 @@
 #include "render/Painter.hpp"
 
-
 #include <cmath>
+#include <numbers>
 
 namespace qypr {
 
@@ -9,19 +9,18 @@ namespace {
 void setSource(cairo_t* cr, const Color& c) {
     cairo_set_source_rgba(cr, c.r, c.g, c.b, c.a);
 }
+}  // namespace
 
-// Append a rounded-rectangle sub-path (radius clamped to half the shorter side).
-void roundedPath(cairo_t* cr, const Rect& r, double radius) {
-    double const rad = std::min(radius, std::min(r.w, r.h) / 2.0);
-    const double deg = M_PI / 180.0;
+void roundedRectPath(cairo_t* cr, double x, double y, double w, double h, double radius) {
+    const double rad = std::min(radius, std::min(w, h) / 2.0);
+    const double deg = std::numbers::pi / 180.0;
     cairo_new_sub_path(cr);
-    cairo_arc(cr, r.x + r.w - rad, r.y + rad, rad, -90 * deg, 0);
-    cairo_arc(cr, r.x + r.w - rad, r.y + r.h - rad, rad, 0, 90 * deg);
-    cairo_arc(cr, r.x + rad, r.y + r.h - rad, rad, 90 * deg, 180 * deg);
-    cairo_arc(cr, r.x + rad, r.y + rad, rad, 180 * deg, 270 * deg);
+    cairo_arc(cr, x + w - rad, y + rad, rad, -90 * deg, 0);
+    cairo_arc(cr, x + w - rad, y + h - rad, rad, 0, 90 * deg);
+    cairo_arc(cr, x + rad, y + h - rad, rad, 90 * deg, 180 * deg);
+    cairo_arc(cr, x + rad, y + rad, rad, 180 * deg, 270 * deg);
     cairo_close_path(cr);
 }
-}  // namespace
 
 void Painter::fillRect(const Rect& r, const Color& c) {
     setSource(cr_, c);
@@ -37,7 +36,7 @@ void Painter::fillRectSource(const Rect& r, const Color& c) {
 }
 
 void Painter::fillRoundedRect(const Rect& r, double radius, const Color& c) {
-    roundedPath(cr_, r, radius);
+    roundedRectPath(cr_, r.x, r.y, r.w, r.h, radius);
     setSource(cr_, c);
     cairo_fill(cr_);
 }
@@ -58,8 +57,11 @@ void Painter::fillCircleSource(double cx, double cy, double radius, const Color&
 
 void Painter::strokeRoundedRect(const Rect& r, double radius, const Color& c, double lineWidth) {
     // Inset by half the line width so the stroke stays inside the bounds.
-    Rect const inset{.x=r.x + (lineWidth / 2), .y=r.y + (lineWidth / 2), .w=r.w - lineWidth, .h=r.h - lineWidth};
-    roundedPath(cr_, inset, radius);
+    Rect const inset{.x = r.x + (lineWidth / 2),
+                     .y = r.y + (lineWidth / 2),
+                     .w = r.w - lineWidth,
+                     .h = r.h - lineWidth};
+    roundedRectPath(cr_, inset.x, inset.y, inset.w, inset.h, radius);
     setSource(cr_, c);
     cairo_set_line_width(cr_, lineWidth);
     cairo_stroke(cr_);
@@ -74,7 +76,7 @@ void Painter::strokeRoundedRectSource(const Rect& r, double radius, const Color&
 }
 
 void Painter::fillGlass(const Rect& r, double radius, const Color& base, const Color& border,
-                       bool solid) {
+                        bool solid) {
     if (solid) {
         // Solid card: opaque rounded rect with the same hue (no alpha), no
         // sheen, no top highlight — just the border.  The caller still passes
@@ -87,7 +89,7 @@ void Painter::fillGlass(const Rect& r, double radius, const Color& base, const C
     double const rad = std::min(radius, std::min(r.w, r.h) / 2.0);
 
     // 1. Translucent base fill.
-    roundedPath(cr_, r, radius);
+    roundedRectPath(cr_, r.x, r.y, r.w, r.h, radius);
     setSource(cr_, base);
     cairo_fill(cr_);
 
@@ -95,7 +97,7 @@ void Painter::fillGlass(const Rect& r, double radius, const Color& base, const C
     //    clipped to the rounded shape. This is a light effect, not a theme
     //    colour, so white-with-low-alpha is deliberate.
     cairo_save(cr_);
-    roundedPath(cr_, r, radius);
+    roundedRectPath(cr_, r.x, r.y, r.w, r.h, radius);
     cairo_clip(cr_);
     cairo_pattern_t* sheen = cairo_pattern_create_linear(0, r.y, 0, r.y + r.h);
     cairo_pattern_add_color_stop_rgba(sheen, 0.0, 1, 1, 1, 0.10);
@@ -143,12 +145,10 @@ void Painter::verticalGradient(int w, int h, const Color& top, const Color& mid,
 }
 
 void Painter::drawSurface(cairo_surface_t* surface, const Rect& dest) {
-    if (surface == nullptr) { return;
-}
+    if (surface == nullptr) { return; }
     int const sw = cairo_image_surface_get_width(surface);
     int const sh = cairo_image_surface_get_height(surface);
-    if (sw <= 0 || sh <= 0) { return;
-}
+    if (sw <= 0 || sh <= 0) { return; }
 
     double const scale = std::min(dest.w / sw, dest.h / sh);
     double const dw = sw * scale;
@@ -167,12 +167,10 @@ void Painter::drawSurface(cairo_surface_t* surface, const Rect& dest) {
 }
 
 void Painter::drawSurfaceTinted(cairo_surface_t* surface, const Rect& dest, const Color& tint) {
-    if (surface == nullptr) { return;
-}
+    if (surface == nullptr) { return; }
     int const sw = cairo_image_surface_get_width(surface);
     int const sh = cairo_image_surface_get_height(surface);
-    if (sw <= 0 || sh <= 0) { return;
-}
+    if (sw <= 0 || sh <= 0) { return; }
 
     double const scale = std::min(dest.w / sw, dest.h / sh);
     double const dw = sw * scale;
@@ -229,7 +227,7 @@ Size Painter::measureText(const std::string& text, const TextStyle& style, doubl
     int h;
     pango_layout_get_pixel_size(layout, &w, &h);
     g_object_unref(layout);
-    return {.w=static_cast<double>(w), .h=static_cast<double>(h)};
+    return {.w = static_cast<double>(w), .h = static_cast<double>(h)};
 }
 
 void Painter::drawText(double x, double y, const std::string& text, const TextStyle& style,

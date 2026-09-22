@@ -1,4 +1,5 @@
 #include "waylaunch/renderer.h"
+#include "render/Painter.hpp" // shared rounded-rect path (libwl-common subtree)
 #include <algorithm>
 #include <cairo/cairo.h>
 #include <cctype>
@@ -179,17 +180,14 @@ void Renderer::draw_search_glyph(int cx, int cy, int size, const Color& color) {
 cairo_t* Renderer::cr() const { return cairo_ ? cairo_->cr : nullptr; }
 
 void Renderer::round_rect_path(cairo_t* cr, int x, int y, int w, int h, int radius) {
+    // Shared four-arc walk (common/render/Painter.hpp); the clamp order and
+    // the sub-pixel rectangle fast path stay exactly as they were.
     double r = std::min({static_cast<double>(radius), w / 2.0, h / 2.0});
     if (r < 1.0) {
         cairo_rectangle(cr, x, y, w, h);
         return;
     }
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2);
-    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2, M_PI);
-    cairo_arc(cr, x + r, y + r, r, M_PI, 3 * M_PI / 2);
-    cairo_close_path(cr);
+    qypr::roundedRectPath(cr, x, y, w, h, r);
 }
 
 int Renderer::text_width(const std::string& text, const RenderFontConfig& font) {

@@ -177,6 +177,8 @@ set(SOURCES
     src/system/geoclue.cpp
     ${LIBWL_COMMON}/core/SolarCalc.cpp
     ${LIBWL_COMMON}/toplevel/ToplevelStates.cpp
+    ${LIBWL_COMMON}/render/MatugenTokens.cpp
+    ${LIBWL_COMMON}/render/Painter.cpp
     src/switcher/wlr_toplevel_backend.cpp
     src/switcher/hyprland_focus.cpp
     src/switcher/app_switcher_manager.cpp
@@ -295,6 +297,7 @@ if(BUILD_TESTING)
         ${LIBWL_COMMON}/core/Process.cpp
         ${LIBWL_COMMON}/toplevel/ToplevelStates.cpp
         ${LIBWL_COMMON}/render/BackdropBlur.cpp
+        ${LIBWL_COMMON}/render/Painter.cpp
         ${LIBWL_COMMON}/render/IconResolver.cpp
         ${PROTOCOL_SOURCES}
     )
@@ -441,6 +444,7 @@ if(BUILD_TESTING)
     add_executable(theme_manager_test tests/theme_manager_test.cpp src/ui/theme_manager.cpp
         src/config/config.cpp
         src/config/matugen_theme.cpp
+        ${LIBWL_COMMON}/render/MatugenTokens.cpp
         src/system/solar.cpp
         src/system/geoclue.cpp
         ${LIBWL_COMMON}/core/SolarCalc.cpp)
@@ -485,14 +489,17 @@ if(BUILD_TESTING)
     target_compile_options(config_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME config_test COMMAND config_test)
 
-    add_executable(matugen_theme_test tests/matugen_theme_test.cpp src/config/matugen_theme.cpp)
+    add_executable(matugen_theme_test tests/matugen_theme_test.cpp src/config/matugen_theme.cpp
+        ${LIBWL_COMMON}/render/MatugenTokens.cpp)
     target_link_libraries(matugen_theme_test PRIVATE tomlplusplus::tomlplusplus)
-    target_include_directories(matugen_theme_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(matugen_theme_test PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON})
     target_compile_options(matugen_theme_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME matugen_theme_test COMMAND matugen_theme_test)
 
     add_executable(renderer_golden_test tests/renderer_golden_test.cpp src/ui/renderer.cpp
         ${LIBWL_COMMON}/render/BackdropBlur.cpp
+        ${LIBWL_COMMON}/render/Painter.cpp
         ${LIBWL_COMMON}/render/IconResolver.cpp)
     target_include_directories(renderer_golden_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -517,6 +524,7 @@ if(BUILD_TESTING)
         src/dropdown/tab_strip.cpp
         src/ui/renderer.cpp
         ${LIBWL_COMMON}/render/BackdropBlur.cpp
+        ${LIBWL_COMMON}/render/Painter.cpp
         ${LIBWL_COMMON}/render/IconResolver.cpp)
     target_include_directories(tab_strip_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include

@@ -249,7 +249,8 @@ set(WL_COMMON_SOURCES
 # into it would drag the graphics stack into a daemon).
 set(WL_COMMON_RENDER_SOURCES
     "${WL_COMMON_DIR}/render/Painter.cpp"
-    "${WL_COMMON_DIR}/render/IconResolver.cpp")
+    "${WL_COMMON_DIR}/render/IconResolver.cpp"
+    "${WL_COMMON_DIR}/render/MatugenTokens.cpp")
 # CPU shm buffers (bar/lock/test; recorder never draws).
 set(WL_COMMON_WAYLAND_SOURCES "${WL_COMMON_DIR}/wayland/ShmBuffer.cpp")
 

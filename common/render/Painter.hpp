@@ -90,4 +90,11 @@ private:
     cairo_t* cr_;
 };
 
+// Append a rounded-rectangle sub-path (radius clamped to half the shorter
+// side). Shared neutral primitive (ARCHITECTURE_REVIEW finding 9): Painter's
+// fill/strokeRoundedRect and waylaunch's Renderer build on this instead of
+// each carrying the four-arc walk. Doubles throughout so both Color models
+// (and integer callers) use it without conversion scaffolding.
+void roundedRectPath(cairo_t* cr, double x, double y, double w, double h, double radius);
+
 }  // namespace qypr
