@@ -55,4 +55,18 @@ if(BUILD_TESTING)
     target_include_directories(toplevel_state_test PRIVATE ${CMAKE_SOURCE_DIR})
     target_compile_options(toplevel_state_test PRIVATE -Wall -Wextra -UNDEBUG)
     add_test(NAME toplevel_state_test COMMAND toplevel_state_test)
+
+    pkg_check_modules(PANGOCAIRO REQUIRED pangocairo)
+    add_executable(painter_test tests/painter_test.cpp render/Painter.cpp)
+    target_include_directories(painter_test PRIVATE ${CMAKE_SOURCE_DIR}
+        ${CAIRO_INCLUDE_DIRS} ${PANGOCAIRO_INCLUDE_DIRS})
+    target_link_libraries(painter_test PRIVATE ${CAIRO_LIBRARIES} ${PANGOCAIRO_LIBRARIES})
+    target_compile_options(painter_test PRIVATE ${CAIRO_CFLAGS} ${PANGOCAIRO_CFLAGS}
+        -Wall -Wextra -UNDEBUG)
+    add_test(NAME painter_test COMMAND painter_test)
+
+    add_executable(matugen_tokens_test tests/matugen_tokens_test.cpp render/MatugenTokens.cpp)
+    target_include_directories(matugen_tokens_test PRIVATE ${CMAKE_SOURCE_DIR})
+    target_compile_options(matugen_tokens_test PRIVATE -Wall -Wextra -UNDEBUG)
+    add_test(NAME matugen_tokens_test COMMAND matugen_tokens_test)
 endif()

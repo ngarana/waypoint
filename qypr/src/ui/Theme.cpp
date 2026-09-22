@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/Config.hpp"
+#include "render/MatugenTokens.hpp"
 
 namespace qypr::theme {
 
@@ -430,17 +431,16 @@ int applyColorsFile(const std::string& path) {
 
     int applied = 0;
     for (const auto& m : paletteMappings()) {
-        // Candidates are in priority order — take the first token present.
-        for (const char* name : m.tokens) {
-            if (const auto it = tokens.find(name); it != tokens.end()) {
-                Color c = Color::fromHex(it->second);
-                if (m.alpha >= 0.0 && it->second.size() == 7) {
-                    c.a = m.alpha;  // no alpha in hex
-                }
-                *m.target = c;
-                ++applied;
-                break;
+        // Candidates are in priority order — shared first-present-non-empty
+        // lookup (common/render/MatugenTokens).
+        const std::string hit = pickMatugenToken(tokens, m.tokens);
+        if (!hit.empty()) {
+            Color c = Color::fromHex(hit);
+            if (m.alpha >= 0.0 && hit.size() == 7) {
+                c.a = m.alpha;  // no alpha in hex
             }
+            *m.target = c;
+            ++applied;
         }
     }
 

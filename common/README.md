@@ -22,7 +22,8 @@ wiring stay in each consumer — only the *data and units* below are shared.
 | `core/Process.hpp` / `.cpp` | qypr's I3 spawn primitive | `posix_spawn`, absolute paths, `SIGDEF`, pidfd reaping; `env_add`/`devnull_stdio` options for hook commands; the single contract also covers captured runs (`runCapture`), `commandExists`, and loop-less daemon launch (`spawnDaemon`) |
 | `core/Types.hpp` | qypr's UI value types | `Color`, `Rect`, easing, `Animated`; header-only |
 | `core/SolarCalc.hpp` / `.cpp` | sunrise/sunset (NOAA) | pure date math for the solar auto-palette; `nullopt` on polar day/night |
-| `render/Painter.hpp` / `.cpp` | qypr's cairo/pango helpers | `fillGlass` takes an explicit `solid` flag so the unit stays theme-free |
+| `render/Painter.hpp` / `.cpp` | qypr's cairo/pango helpers | `fillGlass` takes an explicit `solid` flag so the unit stays theme-free; `roundedRectPath` is the shared four-arc walk (waylaunch's renderer builds on it) |
+| `render/MatugenTokens.hpp` / `.cpp` | shared Material You token lookup | first-present-non-empty pick both theme parsers use; candidate lists stay per-consumer |
 | `render/BackdropBlur.hpp` / `.cpp` | waylaunch's screencopy blur, ported | downsample + separable box blur; fixed a latent null-surface crash found by `blur_test` |
 | `render/IconResolver.*` | merged superset | theme chain + spec metadata ordering, sized SVG rasterization, URIs/heuristics, bounded miss cache |
 | `system/DesktopIndex.*` | qypr's index + waylaunch's `searchKey` | extra metadata fields, `setSearchPaths` override, `desktopPath` |
