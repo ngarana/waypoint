@@ -64,7 +64,8 @@ int App::run() {
     // covers a missing/denied GeoClue on top.
     Config config;
     if (config.load()) { std::fprintf(stderr, "qypr-lock: config %s\n", config.path().c_str()); }
-    theme::loadTheme(config);
+    palette_ = theme::AutoPalette::fromConfig(config, theme::localHourNow());
+    theme::loadTheme(config, palette_);
 
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-lock: no Wayland display or no ext-session-lock support\n");
@@ -102,18 +103,18 @@ int App::run() {
     // a long lock re-themes the screen; absent/denied GeoClue never fires.
     geoClue_.setOnChange([this, &config] {
         refreshSolarTimes();
-        if (theme::paletteAutoTick()) {
-            theme::loadTheme(config);
+        if (palette_.tick(theme::localHourNow())) {
+            theme::loadTheme(config, palette_);
             invalidate();
         }
     });
     geoClue_.start();
     refreshSolarTimes();
-    if (theme::palette::mode == "auto") {
+    if (palette_.mode == "auto") {
         loop_.addTimer(60'000, /*repeat=*/true, [this, &config] {
             refreshSolarTimes();
-            if (theme::paletteAutoTick()) {
-                theme::loadTheme(config);
+            if (palette_.tick(theme::localHourNow())) {
+                theme::loadTheme(config, palette_);
                 invalidate();
             }
         });
@@ -239,22 +240,22 @@ void App::setIdleTimeout(int seconds) {
 }
 
 void App::refreshSolarTimes() {
-    if (theme::palette::location != "auto") {
-        theme::clearSolarTimes();
+    if (palette_.location != "auto") {
+        palette_.clearSolarTimes();
         return;
     }
     const auto& fix = geoClue_.fix();
     if (!fix) {
-        theme::clearSolarTimes();
+        palette_.clearSolarTimes();
         return;
     }
     const auto times =
         solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
     if (!times) {
-        theme::clearSolarTimes();  // polar day/night: fixed hours carry the mode
+        palette_.clearSolarTimes();  // polar day/night: fixed hours carry the mode
         return;
     }
-    theme::setSolarTimes(times->sunriseMin, times->sunsetMin);
+    palette_.setSolarTimes(times->sunriseMin, times->sunsetMin);
 }
 
 void App::invalidate() {

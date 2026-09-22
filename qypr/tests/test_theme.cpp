@@ -4,10 +4,19 @@
 
 #include "core/SolarCalc.hpp"
 
+// Apply a config with a deterministic noon resolution; returns the
+// owned day/night value. Tests never touch palette globals or the
+// wall clock, so they are order-independent.
+qypr::theme::AutoPalette applyTheme(qypr::Config& cfg) {
+    qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(cfg, 12);
+    qypr::theme::loadTheme(cfg, pal);
+    return pal;
+}
+
 TEST(ThemeLoadThemeDefaults) {
     qypr::Config c;
     c.load("/nonexistent");
-    qypr::theme::loadTheme(c);
+    applyTheme(c);
     EXPECT_EQ(qypr::theme::font::family, std::string("Inter"));
     EXPECT_EQ(qypr::theme::font::iconFamily, std::string("CaskaydiaCove Nerd Font"));
     EXPECT_EQ(qypr::theme::font::size, 16);
@@ -33,7 +42,7 @@ TEST(ThemeFollowsSystemPalette) {
     }
     qypr::Config c;
     c.load(path);
-    qypr::theme::loadTheme(c);
+    applyTheme(c);
 
     // `macos` is accepted but resolves to the generic glass rendering path.
     EXPECT_EQ(qypr::theme::style::mode, std::string("glass"));
@@ -58,7 +67,7 @@ TEST(ThemeFollowsSystemPalette) {
     }
     qypr::Config c2;
     c2.load(path);
-    qypr::theme::loadTheme(c2);
+    applyTheme(c2);
     EXPECT_TRUE(qypr::theme::icons::mode == qypr::theme::icons::Mode::Symbolic);
     EXPECT_NEAR(qypr::theme::statusbar::barTint.r, 0x44 / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::statusbar::barTint.g, 0x55 / 255.0, 0.01);
@@ -87,7 +96,7 @@ TEST(ThemeMatugenCssPalette) {
                                              palette + "\n");
     qypr::Config c;
     c.load(conf);
-    qypr::theme::loadTheme(c);
+    applyTheme(c);
 
     EXPECT_NEAR(qypr::theme::color::primary.r, 0xaa / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::primary.g, 0xbb / 255.0, 0.01);
@@ -112,7 +121,7 @@ TEST(ThemeMatugenCssPalette) {
                                               "primary = #010203\n");
     qypr::Config c2;
     c2.load(conf2);
-    qypr::theme::loadTheme(c2);
+    applyTheme(c2);
     EXPECT_NEAR(qypr::theme::color::primary.r, 0x01 / 255.0, 0.01);
     // ...while palette-driven keys still apply.
     EXPECT_NEAR(qypr::theme::color::text.r, 0xdd / 255.0, 0.01);
@@ -136,7 +145,7 @@ TEST(ThemeMatugenJsonAndDefineColor) {
                                              json + "\n");  // alias key
     qypr::Config c;
     c.load(conf);
-    qypr::theme::loadTheme(c);
+    applyTheme(c);
     EXPECT_NEAR(qypr::theme::color::primary.r, 0x11 / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::primary.b, 0x33 / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::error.g, 0x55 / 255.0, 0.01);
@@ -151,7 +160,7 @@ TEST(ThemeMatugenJsonAndDefineColor) {
                                               gtk + "\n");
     qypr::Config c2;
     c2.load(conf2);
-    qypr::theme::loadTheme(c2);
+    applyTheme(c2);
     EXPECT_NEAR(qypr::theme::color::primary.r, 0xab / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::error.r, 0x65 / 255.0, 0.01);
     std::remove(conf2.c_str());
@@ -175,8 +184,8 @@ TEST(ThemePaletteModeSelection) {
                             "\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    qypr::theme::loadTheme(cd);
-    EXPECT_EQ(qypr::theme::palette::resolved, std::string("dark"));
+    auto palDark = applyTheme(cd);
+    EXPECT_EQ(palDark.resolved, std::string("dark"));
     EXPECT_NEAR(qypr::theme::color::background.r, 0x11 / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::primary.g, 0x22 / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.6, 0.01);
@@ -190,8 +199,8 @@ TEST(ThemePaletteModeSelection) {
                             "\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    qypr::theme::loadTheme(cl);
-    EXPECT_EQ(qypr::theme::palette::resolved, std::string("light"));
+    auto palLight = applyTheme(cl);
+    EXPECT_EQ(palLight.resolved, std::string("light"));
     EXPECT_NEAR(qypr::theme::color::background.r, 0xee / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::color::primary.b, 0xaa / 255.0, 0.01);
     EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.0, 0.01);
@@ -202,7 +211,7 @@ TEST(ThemePaletteModeSelection) {
                              "palette-mode = dark\n"
                              "colors-file = " +
                              darkPal + "\n"));
-    qypr::theme::loadTheme(cd2);
+    applyTheme(cd2);
     EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.6, 0.01);
 
     // An explicit shadow-opacity wins over the light-mode softening.
@@ -212,7 +221,7 @@ TEST(ThemePaletteModeSelection) {
                             "shadow-opacity = 0.5\n"
                             "colors-file-light = " +
                             lightPal + "\n"));
-    qypr::theme::loadTheme(ce);
+    applyTheme(ce);
     EXPECT_NEAR(qypr::theme::effects::shadowOpacity, 0.5, 0.01);
 
     // light mode with no light file falls back to the dark file's palette.
@@ -221,29 +230,49 @@ TEST(ThemePaletteModeSelection) {
                             "palette-mode = light\n"
                             "colors-file = " +
                             darkPal + "\n"));
-    qypr::theme::loadTheme(cf);
+    applyTheme(cf);
     EXPECT_NEAR(qypr::theme::color::background.r, 0x11 / 255.0, 0.01);
 }
 
-// The auto palette mode resolves by local hour: light in [sunrise, sunset),
-// dark outside. Hour bounds are configurable.
+// The auto palette mode resolves by hour: light in [sunrise, sunset), dark
+// outside. Hour bounds are configurable. Fully deterministic: the value
+// takes the hour as a parameter, so no wall clock is read.
 TEST(ThemePaletteAutoResolve) {
-    using qypr::theme::resolveAutoPaletteMode;
-    EXPECT_EQ(resolveAutoPaletteMode(7, 7, 19), std::string("light"));
-    EXPECT_EQ(resolveAutoPaletteMode(12, 7, 19), std::string("light"));
-    EXPECT_EQ(resolveAutoPaletteMode(18, 7, 19), std::string("light"));
-    EXPECT_EQ(resolveAutoPaletteMode(19, 7, 19), std::string("dark"));
-    EXPECT_EQ(resolveAutoPaletteMode(3, 7, 19), std::string("dark"));
-    EXPECT_EQ(resolveAutoPaletteMode(6, 7, 19), std::string("dark"));
+    using qypr::theme::AutoPalette;
+    EXPECT_EQ(AutoPalette::resolveFor(7, 7, 19), std::string("light"));
+    EXPECT_EQ(AutoPalette::resolveFor(12, 7, 19), std::string("light"));
+    EXPECT_EQ(AutoPalette::resolveFor(18, 7, 19), std::string("light"));
+    EXPECT_EQ(AutoPalette::resolveFor(19, 7, 19), std::string("dark"));
+    EXPECT_EQ(AutoPalette::resolveFor(3, 7, 19), std::string("dark"));
+    EXPECT_EQ(AutoPalette::resolveFor(6, 7, 19), std::string("dark"));
     // Midnight-spanning window is not supported by design: sunrise < sunset.
-    EXPECT_EQ(resolveAutoPaletteMode(23, 20, 6), std::string("dark"));
+    EXPECT_EQ(AutoPalette::resolveFor(23, 20, 6), std::string("dark"));
+
+    // fromConfig parses keys and resolves against the given hour.
+    qypr::Config c;
+    c.load(writeTempConfig(
+        "[theme]\npalette-mode = auto\npalette-sunrise = 7\npalette-sunset = 19\n"));
+    AutoPalette noon = AutoPalette::fromConfig(c, 12);
+    EXPECT_EQ(noon.mode, std::string("auto"));
+    EXPECT_EQ(noon.resolved, std::string("light"));
+    AutoPalette night = AutoPalette::fromConfig(c, 22);
+    EXPECT_EQ(night.resolved, std::string("dark"));
+
+    // Ticks only flip on a real transition, and never outside auto mode.
+    EXPECT_FALSE(noon.tick(13));
+    EXPECT_EQ(noon.resolved, std::string("light"));
+    EXPECT_TRUE(noon.tick(20));
+    EXPECT_EQ(noon.resolved, std::string("dark"));
+    AutoPalette fixed = AutoPalette::fromConfig(c, 12);
+    fixed.mode = "dark";
+    EXPECT_FALSE(fixed.tick(22));
 
     // The mode key is validated; an unknown value keeps the dark default.
-    qypr::Config c;
-    c.load(writeTempConfig("[theme]\npalette-mode = sometimes\n"));
-    qypr::theme::loadTheme(c);
-    EXPECT_EQ(qypr::theme::palette::mode, std::string("dark"));
-    EXPECT_EQ(qypr::theme::palette::resolved, std::string("dark"));
+    qypr::Config bad;
+    bad.load(writeTempConfig("[theme]\npalette-mode = sometimes\n"));
+    AutoPalette palBad = AutoPalette::fromConfig(bad, 12);
+    EXPECT_EQ(palBad.mode, std::string("dark"));
+    EXPECT_EQ(palBad.resolved, std::string("dark"));
 }
 
 // `~` in colors-file expands against $HOME.
@@ -268,7 +297,7 @@ TEST(ThemeMatugenHomeExpansion) {
                                              "colors-file = ~/palette.css\n");
     qypr::Config c;
     c.load(conf);
-    qypr::theme::loadTheme(c);
+    applyTheme(c);
     EXPECT_NEAR(qypr::theme::color::primary.r, 0x24 / 255.0, 0.01);
 
     if (savedHome.empty()) {
@@ -288,53 +317,50 @@ TEST(ThemeMatugenHomeExpansion) {
 // =============================================================================
 
 // Solar goldens live with the shared unit (common/tests/solar_test.cpp) —
-// this TU covers only the bar's wiring: cache, fallback, and config.
+// this TU covers only the wiring: cache, fallback, and config. Each case
+// owns its AutoPalette value, so no global state leaks between tests.
 
 // The solar cache takes over the auto window while location == auto, and
 // the fixed hours (or location = off) restore it. Invalid windows clear.
 TEST(ThemeSolarCacheOverridesFixedHours) {
+    using qypr::theme::AutoPalette;
     qypr::Config c;
     c.load(writeTempConfig(
         "[theme]\npalette-mode = auto\npalette-sunrise = 7\npalette-sunset = 19\n"));
-    qypr::theme::loadTheme(c);
+    AutoPalette pal = AutoPalette::fromConfig(c, 12);
     // No fix cached: the fixed hours rule.
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
-    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
+    EXPECT_EQ(pal.effectiveSunriseHour(), 7);
+    EXPECT_EQ(pal.effectiveSunsetHour(), 19);
+    EXPECT_EQ(pal.resolved, std::string("light"));
     // A solar fix takes over while location == auto …
-    qypr::theme::setSolarTimes((5 * 60) + 30, (20 * 60) + 45);
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 5);
-    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 20);
-    EXPECT_EQ(qypr::theme::resolveAutoPaletteMode(6, qypr::theme::effectiveSunriseHour(),
-                                                  qypr::theme::effectiveSunsetHour()),
+    pal.setSolarTimes((5 * 60) + 30, (20 * 60) + 45);
+    EXPECT_EQ(pal.effectiveSunriseHour(), 5);
+    EXPECT_EQ(pal.effectiveSunsetHour(), 20);
+    EXPECT_EQ(AutoPalette::resolveFor(6, pal.effectiveSunriseHour(), pal.effectiveSunsetHour()),
               std::string("light"));
-    EXPECT_EQ(qypr::theme::resolveAutoPaletteMode(21, qypr::theme::effectiveSunriseHour(),
-                                                  qypr::theme::effectiveSunsetHour()),
+    EXPECT_EQ(AutoPalette::resolveFor(21, pal.effectiveSunriseHour(), pal.effectiveSunsetHour()),
               std::string("dark"));
+    EXPECT_TRUE(pal.tick(21));
+    EXPECT_EQ(pal.resolved, std::string("dark"));
     // … clearing restores the fixed hours …
-    qypr::theme::clearSolarTimes();
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
-    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
+    pal.clearSolarTimes();
+    EXPECT_EQ(pal.effectiveSunriseHour(), 7);
+    EXPECT_EQ(pal.effectiveSunsetHour(), 19);
     // … and location = off ignores even a cached fix.
     qypr::Config off;
     off.load(writeTempConfig("[theme]\npalette-mode = auto\npalette-location = off\n"));
-    qypr::theme::loadTheme(off);
-    qypr::theme::setSolarTimes(300, 1200);
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
-    EXPECT_EQ(qypr::theme::effectiveSunsetHour(), 19);
-    qypr::theme::clearSolarTimes();
+    AutoPalette palOff = AutoPalette::fromConfig(off, 12);
+    palOff.setSolarTimes(300, 1200);
+    EXPECT_EQ(palOff.effectiveSunriseHour(), 7);
+    EXPECT_EQ(palOff.effectiveSunsetHour(), 19);
     // Out-of-range windows never drive the theme.
-    qypr::theme::setSolarTimes(-1, 1200);
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
-    qypr::theme::setSolarTimes(300, 1440);
-    EXPECT_EQ(qypr::theme::effectiveSunriseHour(), 7);
+    palOff.setSolarTimes(-1, 1200);
+    EXPECT_EQ(palOff.effectiveSunriseHour(), 7);
+    palOff.setSolarTimes(300, 1440);
+    EXPECT_EQ(palOff.effectiveSunriseHour(), 7);
     // The location key is validated; an unknown value keeps the auto default.
     qypr::Config bad;
     bad.load(writeTempConfig("[theme]\npalette-location = sometimes\n"));
-    qypr::theme::loadTheme(bad);
-    EXPECT_EQ(qypr::theme::palette::location, std::string("auto"));
-    // Leave global state as the following tests expect (dark default, no fix).
-    qypr::theme::clearSolarTimes();
-    qypr::Config d;
-    d.load("/nonexistent");
-    qypr::theme::loadTheme(d);
+    AutoPalette palBad = AutoPalette::fromConfig(bad, 12);
+    EXPECT_EQ(palBad.location, std::string("auto"));
 }

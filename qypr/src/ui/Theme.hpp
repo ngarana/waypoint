@@ -98,30 +98,42 @@ inline int shadowOffset = 2;
 // for "auto" — whether the clock currently calls for light or dark colours.
 //   dark  — always [theme] colors-file
 //   light — always [theme] colors-file-light (falls back to colors-file)
-//   auto  — light between sunrise and sunset, dark outside; BarApp re-checks
-//           once a minute and re-themes on flips. The window comes from the
-//           solar position at the GeoClue fix when one is cached (see
-//           location below), else from the configured fixed hours.
-namespace palette {
-inline std::string mode = "dark";      // configured: dark | light | auto
-inline std::string resolved = "dark";  // effective mode (== mode when not auto)
-inline int sunriseHour = 7;            // fallback: light from this hour…
-inline int sunsetHour = 19;            // …until this hour (local time)
-// Where the auto window comes from:
-//   auto — solar sunrise/sunset from the GeoClue fix when cached, else the
-//          fixed palette-sunrise/sunset hours (fallback).
-//   off  — always the fixed hours (pure clock, no location lookup).
-inline std::string location = "auto";  // configured: auto | off
-// Solar cache, fed by BarApp from the GeoClue fix (setSolarTimes) and
-// cleared when the fix goes stale. Survives loadTheme() — the fix outlives
-// config reloads.
-inline bool useSolar = false;
-inline int solarSunriseMin = 0;  // minutes since local midnight
-inline int solarSunsetMin = 0;
-inline bool isLight() {
-    return resolved == "light";
-}
-}  // namespace palette
+//   auto  — light between sunrise and sunset, dark outside.
+//
+// AutoPalette is a VALUE (ARCHITECTURE_REVIEW finding 10): the bar and the
+// lock screen each own one, parsed from their config and ticked by their own
+// loop. No palette globals exist — tests construct values with explicit
+// hours, so the suite is clock- and order-independent. The solar cache
+// (setSolarTimes) is fed by the owner's GeoClue fix and survives config
+// reloads (re-parsing only replaces the configured keys).
+struct AutoPalette {
+    std::string mode = "dark";      // configured: dark | light | auto
+    std::string resolved = "dark";  // effective mode (== mode when not auto)
+    int sunriseHour = 7;            // fallback: light from this hour…
+    int sunsetHour = 19;            // …until this hour (local time)
+    std::string location = "auto";  // solar source: auto | off
+    bool useSolar = false;          // solar cache valid
+    int solarSunriseMin = 0;        // minutes since local midnight
+    int solarSunsetMin = 0;
+
+    // Parse the [theme] palette keys (warns on unknown values, keeps
+    // defaults) and resolve against hourNow.
+    static AutoPalette fromConfig(const Config& cfg, int hourNow);
+    bool isLight() const { return resolved == "light"; }
+    // Effective window bounds (hours): the solar cache when location is
+    // "auto" and cached, else the configured fixed hours.
+    int effectiveSunriseHour() const;
+    int effectiveSunsetHour() const;
+    // Pure helper: "light" when sunrise <= hour < sunset, else "dark".
+    static std::string resolveFor(int hour, int sunriseHour, int sunsetHour);
+    // Re-resolve against hour; true on flip. No-op unless mode == "auto".
+    bool tick(int hour);
+    // Cache a solar sunrise/sunset window (minutes since local midnight, as
+    // produced by solarTimesForDate). Out-of-range input clears the cache:
+    // an invalid window must never drive the theme.
+    void setSolarTimes(int sunriseMin, int sunsetMin);
+    void clearSolarTimes();
+};
 
 // Style toggle: "glass" (frosted translucent + sheen + hairline) or "solid"
 // (opaque card with the same hue, no translucency). Every fillGlass() call
@@ -223,8 +235,10 @@ inline Color panelBackground() {
 }  // namespace statusbar
 
 // Read the [theme] section of a Config and override any values present.
-// Call once at startup before creating widgets.  Missing keys keep defaults.
-void loadTheme(const Config& cfg);
+// Applies the palette's resolved mode (dark/light selection, matugen file,
+// shadow policy) onto the theme globals. Call at startup and on every
+// re-theme (config reload, solar flip) with the owner's AutoPalette.
+void loadTheme(const Config& cfg, AutoPalette& palette);
 
 // Resolve the [theme] colors-file / matugen key to a filesystem path.
 // Returns "" when the key is unset or empty. `~` is expanded against $HOME
@@ -233,20 +247,8 @@ void loadTheme(const Config& cfg);
 // light-palette keys (colors-file-light / matugen-light).
 std::string resolveColorsPath(const Config& cfg, bool lightPalette = false);
 
-// Pure helper: "light" when sunrise <= hour < sunset, else "dark". Exposed
-// for the auto-palette unit tests.
-std::string resolveAutoPaletteMode(int hour, int sunriseHour, int sunsetHour);
-
-// Cache a solar sunrise/sunset window (minutes since local midnight, as
-// produced by solarTimesForDate). Out-of-range input clears the cache: an
-// invalid window must never drive the theme.
-void setSolarTimes(int sunriseMin, int sunsetMin);
-void clearSolarTimes();
-
-// Effective auto-window bounds (hours): the solar cache when location is
-// "auto" and a fix is cached, else the configured fixed hours.
-int effectiveSunriseHour();
-int effectiveSunsetHour();
+// Current local wall-clock hour (0–23), for the auto palette mode.
+int localHourNow();
 
 // Re-evaluate the auto palette mode against the current clock. Returns true
 // when the resolved mode flipped (the caller should re-apply the theme).

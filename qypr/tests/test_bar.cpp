@@ -327,7 +327,8 @@ TEST(StatusBarThemeConstants) {
     // that overrode statusbar geometry (e.g. bar-corner-radius = 0).
     qypr::Config dummy;
     dummy.load("/nonexistent");
-    qypr::theme::loadTheme(dummy);
+    qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(dummy, 12);
+    qypr::theme::loadTheme(dummy, pal);
 
     using namespace qypr::theme::statusbar;
     EXPECT_TRUE(height > 0);
