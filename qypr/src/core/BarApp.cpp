@@ -24,7 +24,6 @@ namespace qypr {
 Config BarApp::loadConfig() {
     Config c;
     if (c.load()) { std::fprintf(stderr, "qypr-bar: config %s\n", c.path().c_str()); }
-    theme::loadTheme(c);
     return c;
 }
 
@@ -73,6 +72,9 @@ std::optional<IndicatorRegistry::ModuleSelection> BarApp::readModules(const Conf
 BarApp::BarApp() = default;
 
 int BarApp::run() {
+    // The bar owns its day/night state: apply the palette before anything
+    // draws (previously done inside loadConfig).
+    theme::loadTheme(config_, palette_);
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-bar: no Wayland display or no wlr-layer-shell support\n");
         return 1;
@@ -130,13 +132,12 @@ int BarApp::run() {
 
     // Auto palette: refresh the solar window (midnight rollover, late
     // GeoClue fix) and re-check the clock once a minute; re-theme on a
-    // light/dark flip (paletteAutoTick returns true only when the resolved
-    // mode changed).
-    if (theme::palette::mode == "auto") {
+    // light/dark flip (tick returns true only when the resolved mode changed).
+    if (palette_.mode == "auto") {
         loop_.addTimer(60'000, /*repeat=*/true, [this] {
             refreshSolarTimes();
-            if (theme::paletteAutoTick()) {
-                theme::loadTheme(config_);
+            if (palette_.tick(theme::localHourNow())) {
+                theme::loadTheme(config_, palette_);
                 invalidate();
             }
         });
@@ -167,8 +168,8 @@ void BarApp::startBackends() {
     // fires — the fixed hours carry the mode.
     geoClue_.setOnChange([this] {
         refreshSolarTimes();
-        if (theme::paletteAutoTick()) {
-            theme::loadTheme(config_);
+        if (palette_.tick(theme::localHourNow())) {
+            theme::loadTheme(config_, palette_);
             invalidate();
         }
     });
@@ -212,6 +213,7 @@ std::string stripExt(const std::string& path) {
 }  // namespace
 
 int BarApp::preview(const std::string& path, int width, int height) {
+    theme::loadTheme(config_, palette_);
     // Start backends for real indicator state.
     battery_.start();
     brightness_.start();
@@ -318,7 +320,7 @@ void BarApp::watchPalette() {
     };
 
     arm(paletteWatcher_, theme::resolveColorsPath(config_, /*lightPalette=*/false));
-    if (theme::palette::mode != "dark") {
+    if (palette_.mode != "dark") {
         arm(paletteLightWatcher_, theme::resolveColorsPath(config_, /*lightPalette=*/true));
     }
 }
@@ -332,16 +334,14 @@ void BarApp::reloadConfig() {
     std::fprintf(stderr, "qypr-bar: config changed, reloading\n");
     config_ = std::move(c);
 
-    // Reload theme (colours, fonts, spacing, style).
-    theme::loadTheme(config_);
-
-    // The location mode may have flipped (auto↔off): refresh the solar cache
-    // against the new mode, then re-resolve if the window moved under us.
+    // Reload theme (colours, fonts, spacing, style): re-parse the mode
+    // keys (they may have flipped), refresh the solar cache against the new
+    // mode, re-resolve, and apply once.
+    palette_ = theme::AutoPalette::fromConfig(config_, theme::localHourNow());
     refreshSolarTimes();
-    if (theme::paletteAutoTick()) { theme::loadTheme(config_); }
+    palette_.tick(theme::localHourNow());
+    theme::loadTheme(config_, palette_);
 
-    // Re-point the palette watcher: the colors-file path may have changed, and
-    // its directory may now exist where it didn't at startup.
     watchPalette();
 
     // Reload bar geometry (height, margin, position).
@@ -362,22 +362,22 @@ void BarApp::reloadConfig() {
 }
 
 void BarApp::refreshSolarTimes() {
-    if (theme::palette::location != "auto") {
-        theme::clearSolarTimes();
+    if (palette_.location != "auto") {
+        palette_.clearSolarTimes();
         return;
     }
     const auto& fix = geoClue_.fix();
     if (!fix) {
-        theme::clearSolarTimes();
+        palette_.clearSolarTimes();
         return;
     }
     const auto times =
         solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
     if (!times) {
-        theme::clearSolarTimes();  // polar day/night: fixed hours carry the mode
+        palette_.clearSolarTimes();  // polar day/night: fixed hours carry the mode
         return;
     }
-    theme::setSolarTimes(times->sunriseMin, times->sunsetMin);
+    palette_.setSolarTimes(times->sunriseMin, times->sunsetMin);
 }
 
 void BarApp::syncOverlay() {

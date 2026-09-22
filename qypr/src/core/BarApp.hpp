@@ -40,6 +40,7 @@
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
 #include "system/WorkspaceBackend.hpp"
+#include "ui/Theme.hpp"
 #include "ui/statusbar/StatusBar.hpp"
 #include "wayland/BarDisplay.hpp"
 
@@ -106,6 +107,9 @@ private:
     Config config_{loadConfig()};
     BarGeometry geom_{readGeometry(config_)};
     std::optional<IndicatorRegistry::ModuleSelection> modules_{readModules(config_)};
+    // Owned day/night state (ARCHITECTURE_REVIEW finding 10): parsed from the
+    // config, ticked by the loop, fed by the GeoClue fix. No palette globals.
+    theme::AutoPalette palette_{theme::AutoPalette::fromConfig(config_, theme::localHourNow())};
 
     EventLoop loop_;
     BarDisplay display_{loop_, reservedFor(geom_), geom_.bottom};

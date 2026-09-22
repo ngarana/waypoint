@@ -159,7 +159,8 @@ TEST(ThemeLoadThemeOverrides) {
                                              "bar-height = 42.0\n");
     qypr::Config c;
     c.load(path);
-    qypr::theme::loadTheme(c);
+    qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(c, 12);
+    qypr::theme::loadTheme(c, pal);
     EXPECT_EQ(qypr::theme::font::family, std::string("JetBrains Mono"));
     EXPECT_EQ(qypr::theme::font::size, 20);
     EXPECT_NEAR(qypr::theme::color::primary.r, 1.0, 0.01);

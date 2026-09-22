@@ -22,6 +22,7 @@
 #include "system/WifiBackend.hpp"
 #include "ui/AudioController.hpp"
 #include "ui/Shell.hpp"
+#include "ui/Theme.hpp"
 #include "video/VideoPlayer.hpp"
 #include "wayland/LockSession.hpp"
 #include "wayland/WaylandDisplay.hpp"
@@ -85,6 +86,10 @@ private:
                              .bluetooth = &bluetooth_,
                              .sni = &sni_,
                              .dnd = &dnd_};
+
+    // Owned day/night state (same contract as the bar): parsed from the
+    // config in run(), ticked by the loop, fed by the GeoClue fix.
+    theme::AutoPalette palette_;
 
     Shell shell_;
 };
