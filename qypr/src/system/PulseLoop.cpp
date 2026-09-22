@@ -20,32 +20,32 @@
 #include "core/EventLoop.hpp"
 
 struct pa_io_event {
-    qypr::EventLoop* loop;
-    pa_mainloop_api* api;
-    int fd;
-    pa_io_event_cb_t cb;
-    void* userdata;
+    qypr::EventLoop* loop = nullptr;
+    pa_mainloop_api* api = nullptr;
+    int fd = -1;
+    pa_io_event_cb_t cb = nullptr;
+    void* userdata = nullptr;
     pa_io_event_destroy_cb_t destroyCb = nullptr;
 };
 
 struct pa_time_event {
-    qypr::EventLoop* loop;
-    pa_mainloop_api* api;
+    qypr::EventLoop* loop = nullptr;
+    pa_mainloop_api* api = nullptr;
     int timerFd = -1;  // -1 while unarmed
     struct timeval tv{};
-    pa_time_event_cb_t cb;
-    void* userdata;
+    pa_time_event_cb_t cb = nullptr;
+    void* userdata = nullptr;
     pa_time_event_destroy_cb_t destroyCb = nullptr;
 };
 
 struct pa_defer_event {
-    qypr::EventLoop* loop;
-    pa_mainloop_api* api;
+    qypr::EventLoop* loop = nullptr;
+    pa_mainloop_api* api = nullptr;
     bool enabled = true;
     bool scheduled = false;
     bool dead = false;
-    pa_defer_event_cb_t cb;
-    void* userdata;
+    pa_defer_event_cb_t cb = nullptr;
+    void* userdata = nullptr;
     pa_defer_event_destroy_cb_t destroyCb = nullptr;
 };
 
@@ -70,7 +70,7 @@ pa_io_event_flags_t fromEpoll(uint32_t e) {
 }
 
 int64_t delayMsUntil(const struct timeval* tv) {
-    struct timeval now;
+    struct timeval now{};
     gettimeofday(&now, nullptr);
     int64_t ms = (static_cast<int64_t>(tv->tv_sec) - now.tv_sec) * 1000 +
                  (static_cast<int64_t>(tv->tv_usec) - now.tv_usec) / 1000;
@@ -194,7 +194,7 @@ void apiQuit(pa_mainloop_api*, int retval) {
 
 }  // namespace
 
-PulseLoop::PulseLoop(EventLoop& loop) : loop_(loop) {
+PulseLoop::PulseLoop(EventLoop& loop) : loop_(loop), api_{} {
     api_.userdata = this;
     api_.io_new = ioNew;
     api_.io_enable = ioEnable;
