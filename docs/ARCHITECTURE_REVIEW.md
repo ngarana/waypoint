@@ -360,7 +360,7 @@ All of the drift recorded at review time is now fixed, and a gate keeps it
 from returning:
 
 - The root README describes `Process` (not `Spawn`) and reports the current
-  suite counts (163 qypr tests, 28 waylaunch suites, 8 shared suites).
+  suite counts (167 qypr tests, 28 waylaunch suites, 8 shared suites).
 - qypr documentation no longer references files that moved into `common`.
 - The removed `waylaunch/tests/CMakeLists.txt` and its `search_manager.cpp`
   reference are gone; `docs/DESIGN.md` keeps the file only in historical
@@ -378,7 +378,7 @@ Status re-checked 2026-09-23 against the same tree (code baseline `69a4948`),
 with session and system buses available:
 
 - `ctest --test-dir qypr/build`: `qypr-test` passed — the single registered
-  target wraps 163 test cases (5.6 s).
+  target wraps 167 test cases (5.6 s).
 - `ctest --test-dir waylaunch/build`: 28/28 suites passed.
 - `ctest --test-dir common/build`: 8/8 suites passed (blur, desktop, icon,
   matugen tokens, painter, process, solar, toplevel state).

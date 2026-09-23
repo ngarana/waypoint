@@ -183,8 +183,9 @@ Residual title coupling removed (`898c4fb`): tile lookup is now role-based
 declared at [`QuickSettingsPanel.hpp`](../qypr/src/ui/statusbar/QuickSettingsPanel.hpp#L69)),
 with the production caller updated
 ([`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L147) asks for
-`QSTile::Role::Dnd`). Tile creation lives in `QSTileFactory`, panel geometry
-in `QuickSettingsLayout`, input in `QuickSettingsInput`, and shared card
+`QSTile::Role::Dnd`). Tile creation lives in `QSTileFactory`, grid
+ownership/ordering/dedupe in `QuickSettingsModel`, panel geometry in
+`QuickSettingsLayout`, input in `QuickSettingsInput`, and shared card
 primitives in `TileRenderer`; no tile is matched or looked up by display
 string.
 
@@ -562,7 +563,7 @@ Every extraction should add or preserve tests at the lowest practical level:
 - lock policy: tests proving unsafe capabilities are unavailable, not merely
   invisible
 - rendering: existing qypr preview/golden tests
-- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 163
+- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 167
   tests), `ctest --test-dir waylaunch/build`, `ctest --test-dir common/build`,
   `./scripts/check-invariants.sh` (I4, Q5, B1), and
   `./scripts/check-doc-paths.sh`.
