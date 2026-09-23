@@ -114,7 +114,7 @@ void MprisController::enablePush(EventLoop& loop) {
         // is floating by design, while older ones return an RAII slot that
         // would uninstall the match the moment it is dropped — hence the
         // explicit floating_slot tag there.
-#    ifdef QYPR_SDBUS_ADD_MATCH_FLOATING
+#    if QYPR_SDBUS_ADD_MATCH_FLOATING
         conn_->addMatch("type='signal',interface='org.freedesktop.DBus.Properties',"
                         "member='PropertiesChanged',path='/org/mpris/MediaPlayer2'",
                         [this](const sdbus::Message&) { refreshAndNotify(); });
