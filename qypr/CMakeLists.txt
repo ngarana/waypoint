@@ -156,6 +156,10 @@ set(QYPR_SHARED_SOURCES
     src/mpris/MprisController.cpp
     src/notifications/NotificationActions.cpp
     src/notifications/NotificationMonitor.cpp
+    src/notifications/NotificationParser.cpp
+    src/notifications/NotificationPolicy.cpp
+    src/notifications/NotificationStore.cpp
+    src/notifications/NotificationTransport.cpp
     src/power/SystemActions.cpp
     src/system/BatteryBackend.cpp
     src/system/BluetoothAgent.cpp
@@ -364,6 +368,10 @@ add_executable(qypr-record
     src/core/Config.cpp          # NotificationMonitor resolves its XDG config dir
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     src/notifications/NotificationMonitor.cpp
+    src/notifications/NotificationParser.cpp
+    src/notifications/NotificationPolicy.cpp
+    src/notifications/NotificationStore.cpp
+    src/notifications/NotificationTransport.cpp
     ${QYPR_RECORDER_SOURCES}
     src/recorder_main.cpp
 )

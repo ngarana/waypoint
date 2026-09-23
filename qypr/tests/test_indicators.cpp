@@ -1060,11 +1060,12 @@ TEST(NotificationIndicatorCountAndDnd) {
     EXPECT_EQ(ind.tooltip(), std::string("No notifications"));
 
     // With notifications the bell carries the count and the singular/plural is
-    // correct. (notes_ is reachable via `#define private public`.)
-    mon.notes_.push_back(qypr::Notification{});
+    // correct. (testNotes() is the post-split equivalent of the old notes_
+    // reach-in via `#define private public`.)
+    mon.testNotes().push_back(qypr::Notification{});
     EXPECT_EQ(ind.label(), std::string("1"));
     EXPECT_EQ(ind.tooltip(), std::string("1 notification"));
-    mon.notes_.push_back(qypr::Notification{});
+    mon.testNotes().push_back(qypr::Notification{});
     EXPECT_EQ(ind.label(), std::string("2"));
     EXPECT_EQ(ind.tooltip(), std::string("2 notifications"));
 
@@ -1091,7 +1092,7 @@ TEST(NotificationActionsAndInteractivity) {
     note.title = "Test Title";
     note.body = "Test Body";
     note.actions = {{"default", "Open"}, {"reply", "Reply"}, {"dismiss", "Ignore"}};
-    mon.notes_.push_back(note);
+    mon.testNotes().push_back(note);
 
     auto popover = ind.createDetailedView();
     EXPECT_TRUE(popover != nullptr);
