@@ -8,6 +8,13 @@
 #   ./scripts/lint.sh --tidy-only     # only clang-tidy
 #   ./scripts/lint.sh --staged        # check files listed in $QYPR_LINT_FILES
 #                                     # (called by the pre-commit hook)
+#   ./scripts/lint.sh -j8             # tidy analysis with 8 parallel jobs
+#                                     # (default: nproc)
+#
+# Check mode enforces the strict gate: clang-tidy runs with
+# --warnings-as-errors='*' (AGENT.md rule 2), so any warning fails the run.
+# Without this the tree silently re-accumulates findings while the gate
+# stays green.
 #
 # The pre-commit hook calls:
 #   QYPR_LINT_FILES="file1.cpp file2.hpp …" ./scripts/lint.sh --staged
@@ -44,12 +51,16 @@ for arg in "$@"; do
         -j*)            JOBS="${arg#-j}" ;;
         --jobs=*)       JOBS="${arg#--jobs=}" ;;
         -h|--help)
-            sed -n '2,18p' "$0" | sed 's/^# \?//'
+            sed -n '2,22p' "$0" | sed 's/^# \?//'
             exit 0 ;;
         *)
             echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
+
+if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || [[ "$JOBS" -lt 1 ]]; then
+    echo "Invalid jobs count: $JOBS (use -jN with N >= 1)" >&2; exit 1
+fi
 
 # ---- colours ----------------------------------------------------------------
 if [[ -t 1 || -t 2 ]]; then
@@ -85,7 +96,7 @@ else
     MODE_LABEL="tree (${#ALL_FILES[@]} file(s))"
 fi
 
-echo "qypr lint  |  mode=$MODE_LABEL  |  jobs=$JOBS  |  fix=$FIX"
+echo "qypr lint  |  mode=$MODE_LABEL  |  jobs=$JOBS  |  fix=$FIX  |  strict=$((1 - FIX))"
 
 # ---- 1. clang-format --------------------------------------------------------
 if [[ "$TIDY_ONLY" -eq 0 ]]; then
@@ -195,23 +206,42 @@ if [[ "$FORMAT_ONLY" -eq 0 ]]; then
         FIX_DENY_CHECKS="-readability-identifier-naming,-modernize-use-ranges,-misc-use-internal-linkage"
         if [[ "$FIX" -eq 1 ]]; then
             TIDY_EXTRA+=(--fix "--checks=$FIX_DENY_CHECKS")
+        else
+            # Check mode enforces the strict gate: every tidy warning fails
+            # the run (AGENT.md rule 2). This is what keeps the tree from
+            # re-accumulating findings while the gate stays green.
+            TIDY_EXTRA+=(--warnings-as-errors='*')
         fi
 
-        TIDY_FAIL=0
+        # Parallel analysis, throttled to $JOBS. One clang-tidy process per
+        # translation unit; failing files and their logs are collected and
+        # reported after all jobs finish.
+        TIDY_TMP="$(mktemp -d)"
         for f in "${CPP_ONLY[@]}"; do
-            if ! clang-tidy -p "$DB" --quiet "${TIDY_EXTRA[@]}" "$f"; then
-                TIDY_FAIL=1
-            fi
+            (
+                if ! out=$(clang-tidy -p "$DB" --quiet "${TIDY_EXTRA[@]}" "$f" 2>&1); then
+                    safe="${f//\//_}"
+                    printf '%s\n' "$f" > "$TIDY_TMP/$safe.fail"
+                    printf '%s\n' "$out" > "$TIDY_TMP/$safe.log"
+                fi
+            ) &
+            while [[ $(jobs -r | wc -l) -ge $JOBS ]]; do wait -n || true; done
         done
+        wait
 
-        if [[ "$TIDY_FAIL" -eq 0 ]]; then
+        if compgen -G "$TIDY_TMP/*.fail" > /dev/null; then
+            red "✗ clang-tidy: errors in $(ls "$TIDY_TMP"/*.fail | wc -l) translation unit(s):"
+            for fail in "$TIDY_TMP"/*.fail; do printf '    %s\n' "$(cat "$fail")"; done
+            for log in "$TIDY_TMP"/*.log; do cat "$log"; done
+            if [[ "$FIX" -eq 0 ]]; then
+                yellow "  Auto-fix safe issues with:  $0 --fix"
+            fi
+            FAIL=$((FAIL + 1))
+        else
             green "✓ clang-tidy: no errors in ${#CPP_ONLY[@]} translation unit(s)"
             PASS=$((PASS + 1))
-        else
-            red "✗ clang-tidy: errors found (see output above)"
-            yellow "  Auto-fix safe issues with:  $0 --fix"
-            FAIL=$((FAIL + 1))
         fi
+        rm -rf "$TIDY_TMP"
     fi
 fi
 

@@ -45,3 +45,16 @@ jobs:
         run: ./scripts/check-invariants.sh qypr/build waylaunch/build
       - name: Doc path check (no dangling source references)
         run: ./scripts/check-doc-paths.sh
+      - name: Lint (format + strict clang-tidy gates)
+        # Anti-recurrence gate: qypr lint.sh enforces --warnings-as-errors='*'
+        # by default, and waylaunch tidy runs strict here, so findings can no
+        # longer accumulate while the suite stays green. Tidy is parallel but
+        # still the slowest step (~10 min on 4 cores); keep it last.
+        run: |
+          command -v clang-tidy >/dev/null || sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100
+          command -v clang-format >/dev/null || sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100
+          ./qypr/scripts/lint.sh
+          ./qypr/scripts/test-lint-fix.sh
+          cmake --build waylaunch/build --target format-check
+          find waylaunch/src waylaunch/tests -name '*.cpp' -not -path '*/build/*' |
+            xargs -P"$(nproc)" -I{} clang-tidy -p waylaunch/build --quiet --warnings-as-errors='*' {}
