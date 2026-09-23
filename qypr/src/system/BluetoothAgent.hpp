@@ -27,45 +27,11 @@
 
 #include <systemd/sd-bus.h>  // sd_bus_vtable must be complete for the member below
 
+#include "system/BluetoothModel.hpp"
+
 namespace qypr {
 
 class SystemBus;
-
-// A pending user decision. Mirrors the Agent1 method that raised it; the picker
-// renders one prompt card per kind.
-struct BtPairRequest {
-    enum class Kind : uint8_t {
-        None,
-        // RequestConfirmation: both ends show the same 6 digits; the user says
-        // whether they match. The common flow for phones and modern headsets.
-        Confirm,
-        // RequestAuthorization: "Just Works" pairing that still wants a yes.
-        Authorize,
-        // DisplayPasskey / DisplayPinCode: we show a code for the user to type
-        // on the *remote* device. Nothing to accept — only cancel.
-        Display,
-        // RequestPasskey (6-digit) / RequestPinCode (string): the user types
-        // the code shown on the remote device.
-        Entry,
-        // AuthorizeService: a paired-but-untrusted device wants a profile.
-        Service,
-    };
-
-    Kind kind = Kind::None;
-    std::string devicePath;
-    std::string deviceName;
-    std::string passkey;  // Confirm/Display: the formatted 6-digit code
-    std::string service;  // Service: the requested profile UUID
-    // Entry: RequestPasskey wants a number ("u"), RequestPinCode a string.
-    bool numericEntry = false;
-    // Display: how many digits the remote has typed so far, as BlueZ reports
-    // progress through repeated DisplayPasskey calls.
-    uint16_t entered = 0;
-
-    [[nodiscard]] bool active() const { return kind != Kind::None; }
-
-    bool operator==(const BtPairRequest&) const = default;
-};
 
 class BluetoothAgent {
 public:

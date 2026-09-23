@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "system/BluetoothAgent.hpp"
+#include "system/BluetoothModel.hpp"
 
 struct sd_bus_message;
 struct sd_bus_slot;
@@ -19,37 +20,6 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
-
-struct BtDevice {
-    std::string path;
-    std::string name;
-    std::string icon;
-    bool connected = false;
-    bool paired = false;
-    int battery = -1;
-
-    bool operator==(const BtDevice&) const = default;
-};
-
-struct BluetoothSnapshot {
-    bool available = false;
-    bool powered = false;
-    bool discovering = false;  // a scan is running (spinner in the picker)
-    int connectedCount = 0;
-    std::string firstDevice;
-    std::vector<BtDevice> devices;  // every known device, paired or not
-    // Transient operation state, owned by the op callbacks rather than by
-    // BlueZ's object tree: the device path of an operation in flight, and the
-    // last failure. Both drive picker feedback ("Pairing…", an error line) and
-    // are carried across refetches.
-    std::string busy;
-    std::string error;
-    // A pairing prompt BlueZ is waiting on. The picker renders it and answers
-    // through respondPairing()/respondPairingInput().
-    BtPairRequest pairing;
-
-    bool operator==(const BluetoothSnapshot&) const = default;
-};
 
 class BluetoothBackend {
 public:

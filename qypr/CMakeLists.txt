@@ -160,6 +160,7 @@ set(QYPR_SHARED_SOURCES
     src/system/BatteryBackend.cpp
     src/system/BluetoothAgent.cpp
     src/system/BluetoothBackend.cpp
+    src/system/BluetoothSnapshotReducer.cpp
     src/system/BrightnessBackend.cpp
     src/system/DbusMenuBackend.cpp
     src/system/GeoClueBackend.cpp
@@ -386,6 +387,7 @@ add_executable(qypr-test
     tests/test_auth.cpp
     tests/test_system.cpp
     tests/test_wifi.cpp
+    tests/test_bluetooth.cpp
     tests/test_wayland.cpp
     tests/test_lock.cpp
     tests/test_bar.cpp
