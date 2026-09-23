@@ -166,6 +166,7 @@ set(QYPR_SHARED_SOURCES
     src/system/IdleInhibitor.cpp
     src/system/KeyboardLayout.cpp
     src/system/NightLightBackend.cpp
+    src/system/NetworkManagerClient.cpp
     src/system/PowerProfilesBackend.cpp
     src/system/PulseLoop.cpp
     src/system/SessionMapper.cpp
@@ -179,6 +180,7 @@ set(QYPR_SHARED_SOURCES
     src/system/ToplevelBackend.cpp
     src/system/VolumeBackend.cpp
     src/system/WifiBackend.cpp
+    src/system/WifiOperations.cpp
     src/system/WifiSnapshotReducer.cpp
     src/system/WorkspaceBackend.cpp
     src/ui/indicators/ActiveWindowIndicator.cpp

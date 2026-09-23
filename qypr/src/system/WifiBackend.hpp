@@ -18,7 +18,9 @@
 #include <string>
 #include <vector>
 
+#include "system/NetworkManagerClient.hpp"
 #include "system/WifiModel.hpp"
+#include "system/WifiOperations.hpp"
 
 struct sd_bus_message;
 struct sd_bus_slot;
@@ -99,7 +101,6 @@ private:
     void finishNoWifi();
     void endFetch();
     void subscribeSignals();
-    std::string findSavedConnection(const std::string& ssid) const;
 
     // ── Network-list chain (the picker's data source) ──
     // A second serialized chain: device GetAll (AccessPoints) → per-AP GetAll
@@ -117,7 +118,33 @@ private:
     void netFetchNext();
     void netFetchNextSaved();
     void finishNetFetch();
-    void addAndActivate(const std::string& ssid, const std::string* psk);
+
+    // Port adapter: user commands need the facade's current device path, but
+    // chain state never enters the client — so the port is a thin forwarder
+    // over the client plus a device reference, owned by the facade.
+    struct FacadePort : WifiCommandPort {
+        FacadePort(NetworkManagerClient& client, const std::string& device)
+            : client(client),
+              device(device) {}
+        bool available() const override { return client.available(); }
+        std::string devicePath() const override { return device; }
+        std::vector<std::pair<std::string, std::string>> savedConnections() override {
+            return client.savedConnections();
+        }
+        void setWirelessEnabled(bool on) override { client.setWirelessEnabled(on); }
+        void requestScan(const std::string& dev) override { client.requestScan(dev); }
+        void activateConnection(const std::string& conn, const std::string& dev) override {
+            client.activateConnection(conn, dev);
+        }
+        void addAndActivate(const std::string& dev, const std::string& ssid,
+                            const std::string* psk) override {
+            client.addAndActivate(dev, ssid, psk);
+        }
+        void deleteConnection(const std::string& conn) override { client.deleteConnection(conn); }
+        void disconnectDevice(const std::string& dev) override { client.disconnectDevice(dev); }
+        NetworkManagerClient& client;
+        const std::string& device;
+    };
 
     static int onPropsChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
     static int onDeviceAdded(sd_bus_message* m, void* userdata, sd_bus_error* err);
@@ -125,6 +152,9 @@ private:
     static int onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
 
     SystemBus& bus_;
+    NetworkManagerClient client_;
+    FacadePort port_;
+    WifiOperations ops_;
     sd_bus_slot* propsSlot_ = nullptr;    // PropertiesChanged on the NM object tree
     sd_bus_slot* addedSlot_ = nullptr;    // DeviceAdded (adapter hotplug)
     sd_bus_slot* removedSlot_ = nullptr;  // DeviceRemoved

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "system/WifiOperations.hpp"
 #include "system/WifiSnapshotReducer.hpp"
 
 TEST(WifiReducerBuildsSnapshot) {
@@ -113,4 +114,132 @@ TEST(WifiReducerRadioOffClears) {
     s = qypr::withRadioState(std::move(s), true);
     EXPECT_TRUE(s.enabled);
     EXPECT_FALSE(s.connected);  // on-toggle only sets the flag
+}
+
+namespace {
+
+struct FakePort : qypr::WifiCommandPort {
+    bool up = true;
+    std::string device = "/dev/1";
+    std::vector<std::pair<std::string, std::string>> saved;
+    std::vector<std::string> calls;
+
+    [[nodiscard]] bool available() const override { return up; }
+    [[nodiscard]] std::string devicePath() const override { return device; }
+    std::vector<std::pair<std::string, std::string>> savedConnections() override {
+        calls.emplace_back("savedConnections");
+        return saved;
+    }
+    void setWirelessEnabled(bool on) override {
+        calls.emplace_back(on ? "setWirelessEnabled:on" : "setWirelessEnabled:off");
+    }
+    void requestScan(const std::string& dev) override { calls.push_back("requestScan:" + dev); }
+    void activateConnection(const std::string& conn, const std::string& dev) override {
+        calls.push_back("activate:" + conn + "@" + dev);
+    }
+    void addAndActivate(const std::string& dev, const std::string& ssid,
+                        const std::string* psk) override {
+        calls.push_back("addAndActivate:" + ssid + "@" + dev + ((psk != nullptr) ? "+psk" : ""));
+    }
+    void deleteConnection(const std::string& conn) override { calls.push_back("delete:" + conn); }
+    void disconnectDevice(const std::string& dev) override { calls.push_back("disconnect:" + dev); }
+};
+
+}  // namespace
+
+TEST(WifiOperationsJoinSavedAndOpen) {
+    FakePort port;
+    port.saved = {{"Home", "/c/1"}};
+    qypr::WifiOperations ops(port);
+    ops.setSavedCache(port.saved);
+
+    // Saved AP: Activate only, no add, no bus walk.
+    ops.connectAp(qypr::WifiAp{.ssid = "Home", .strength = 70, .saved = true});
+    EXPECT_EQ(static_cast<int>(port.calls.size()), 1);
+    EXPECT_EQ(port.calls.at(0), std::string("activate:/c/1@/dev/1"));
+
+    // Unsaved open AP: AddAndActivate with a null PSK.
+    port.calls.clear();
+    ops.connectAp(qypr::WifiAp{.ssid = "Cafe", .strength = 50});
+    EXPECT_EQ(static_cast<int>(port.calls.size()), 1);
+    EXPECT_EQ(port.calls.at(0), std::string("addAndActivate:Cafe@/dev/1"));
+
+    // Secured unsaved network goes through connectPsk with the password.
+    port.calls.clear();
+    ops.connectPsk("Work", "secret");
+    EXPECT_EQ(port.calls.at(0), std::string("addAndActivate:Work@/dev/1+psk"));
+
+    // Empty PSK, empty SSID, and active APs are no-ops.
+    port.calls.clear();
+    ops.connectPsk("Work", "");
+    ops.connectPsk("", "secret");
+    ops.connectAp(qypr::WifiAp{.ssid = "Home", .active = true});
+    EXPECT_TRUE(port.calls.empty());
+
+    // No device: no calls at all.
+    port.device.clear();
+    ops.connectAp(qypr::WifiAp{.ssid = "Cafe"});
+    ops.disconnect();
+    EXPECT_TRUE(port.calls.empty());
+}
+
+TEST(WifiOperationsForgetAndDisconnect) {
+    FakePort port;
+    port.saved = {{"Home", "/c/1"}};
+    qypr::WifiOperations ops(port);
+    ops.setSavedCache(port.saved);
+
+    // Unknown SSID: no Delete, no refresh.
+    qypr::WifiOperations::Result r = ops.forgetSsid("Ghost");
+    EXPECT_FALSE(r.refreshNetworks);
+    EXPECT_TRUE(port.calls.empty());
+
+    // Known SSID: Delete, then the backend must refresh the picker.
+    r = ops.forgetSsid("Home");
+    EXPECT_TRUE(r.refreshNetworks);
+    EXPECT_EQ(port.calls.at(0), std::string("delete:/c/1"));
+
+    // Disconnect without a device makes no call.
+    port.device.clear();
+    ops.disconnect();
+    EXPECT_EQ(static_cast<int>(port.calls.size()), 1);
+    port.device = "/dev/1";
+    ops.disconnect();
+    EXPECT_EQ(port.calls.at(1), std::string("disconnect:/dev/1"));
+}
+
+TEST(WifiOperationsColdSavedFallback) {
+    FakePort port;
+    port.saved = {{"Home", "/c/1"}};
+    qypr::WifiOperations ops(port);
+
+    // Cold cache consults the bus once.
+    EXPECT_FALSE(ops.savedCacheWarm());
+    ops.connectSsid("Home");
+    EXPECT_EQ(static_cast<int>(port.calls.size()), 2);
+    EXPECT_EQ(port.calls.at(0), std::string("savedConnections"));
+    EXPECT_EQ(port.calls.at(1), std::string("activate:/c/1@/dev/1"));
+
+    // A warm cache that lacks the SSID returns empty without a bus walk.
+    port.calls.clear();
+    ops.setSavedCache({{"Other", "/c/2"}});
+    EXPECT_TRUE(ops.savedCacheWarm());
+    ops.connectSsid("Home");
+    EXPECT_TRUE(port.calls.empty());
+}
+
+TEST(WifiOperationsRadioAndScan) {
+    FakePort port;
+    qypr::WifiOperations ops(port);
+
+    EXPECT_TRUE(ops.setEnabled(true));
+    EXPECT_EQ(port.calls.at(0), std::string("setWirelessEnabled:on"));
+    EXPECT_TRUE(ops.requestScan());
+    EXPECT_EQ(port.calls.at(1), std::string("requestScan:/dev/1"));
+
+    // No bus: nothing is sent and the caller changes nothing.
+    port.up = false;
+    EXPECT_FALSE(ops.setEnabled(false));
+    EXPECT_FALSE(ops.requestScan());
+    EXPECT_EQ(static_cast<int>(port.calls.size()), 2);
 }
