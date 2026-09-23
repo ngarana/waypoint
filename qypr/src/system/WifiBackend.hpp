@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "system/WifiModel.hpp"
+
 struct sd_bus_message;
 struct sd_bus_slot;
 #include <systemd/sd-bus.h>  // sd_bus_error is a typedef here, not a struct
@@ -25,28 +27,6 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
-
-struct WifiAp {
-    std::string ssid;
-    int strength = 0;
-    bool secured = false;
-    bool active = false;
-    bool saved = false;
-
-    bool operator==(const WifiAp&) const = default;
-};
-
-struct WifiSnapshot {
-    bool available = false;
-    bool enabled = false;
-    bool connected = false;
-    std::string ssid;
-    int strength = 0;
-    bool scanning = false;         // a scan is in flight (spinner in the UI)
-    std::vector<WifiAp> networks;  // visible APs, strongest first (picker list)
-
-    bool operator==(const WifiSnapshot&) const = default;
-};
 
 class WifiBackend {
 public:

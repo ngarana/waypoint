@@ -179,6 +179,7 @@ set(QYPR_SHARED_SOURCES
     src/system/ToplevelBackend.cpp
     src/system/VolumeBackend.cpp
     src/system/WifiBackend.cpp
+    src/system/WifiSnapshotReducer.cpp
     src/system/WorkspaceBackend.cpp
     src/ui/indicators/ActiveWindowIndicator.cpp
     src/ui/indicators/BatteryIndicator.cpp
@@ -382,6 +383,7 @@ add_executable(qypr-test
     tests/test_theme.cpp
     tests/test_auth.cpp
     tests/test_system.cpp
+    tests/test_wifi.cpp
     tests/test_wayland.cpp
     tests/test_lock.cpp
     tests/test_bar.cpp
