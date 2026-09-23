@@ -1,7 +1,7 @@
 # Architecture Review
 
 Reviewed: 2026-09-21; status re-checked 2026-09-23 against the code baseline at
-`main` `69a4948`.
+`main` `2b376f5`.
 
 This repository combines the `qypr`, `waylaunch`, and `common` projects. The
 merge has preserved useful executable boundaries, but at review time several
@@ -39,9 +39,10 @@ Most of the merge risks identified in this review have since been resolved:
 
 What remains is concentrated in a few places:
 
-1. Large coordinator classes and broad interfaces: `StatusIndicator` capability
-   bundles and `StatusBar`/`BarApp`/`App`/`Shell` seams in qypr (tracked in the
-   decomposition plan); `LauncherUI`'s inline search pipeline in waylaunch.
+1. Broad interfaces, narrowed but not closed: the `SystemBackends` aggregate
+   still carries backwards-compatible direct pointers and the registry factory
+   still takes the whole aggregate (gating tests prove the lock runtime does
+   not reach further); `LauncherUI`'s inline search pipeline in waylaunch.
 2. Wayland infrastructure is still only partially shared (connection,
    registry, seat/input, and surface lifecycle code).
 3. CMake still repeats shared-source and test configuration; there is no
@@ -177,9 +178,10 @@ dedupes/replaces by role; lookup is role-based
 ([`boundsFor(QSTile::Role)`](../qypr/src/ui/statusbar/QuickSettingsPanel.cpp#L101),
 called with `QSTile::Role::Dnd` from
 [`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L147)); the configured tile set is
-built by `QSTileFactory`, with panel geometry in `QuickSettingsLayout`, input
-in `QuickSettingsInput`, and shared card primitives in `TileRenderer`. No
-production or test path matches tiles by display title.
+built by `QSTileFactory`, with grid ownership/ordering/dedupe in
+`QuickSettingsModel` (`0aa916d`), panel geometry in `QuickSettingsLayout`,
+input in `QuickSettingsInput`, and shared card primitives in `TileRenderer`.
+No production or test path matches tiles by display title.
 
 ### 6. Duplicate desktop-entry models
 
@@ -374,7 +376,7 @@ from returning:
 
 ## Verification snapshot
 
-Status re-checked 2026-09-23 against the same tree (code baseline `69a4948`),
+Status re-checked 2026-09-23 against the same tree (code baseline `2b376f5`),
 with session and system buses available:
 
 - `ctest --test-dir qypr/build`: `qypr-test` passed — the single registered
@@ -407,8 +409,8 @@ with session and system buses available:
    the decomposition plan.
 5. ~~Consolidate desktop-entry and toplevel models.~~ Done (`f179bfc`).
 6. Split `StatusIndicator` and `LauncherUI` responsibilities. Partial:
-   capability interfaces (`fcc0dea`) and `ThemeManager` landed; the capability
-   bundles and `LauncherUI`'s search/overlay split remain.
+   capability interfaces (`fcc0dea`), capability bundles (`375682c`), and
+   `ThemeManager` landed; `LauncherUI`'s search/overlay split remains.
 7. ~~Centralize shared palette tokens and low-level rendering primitives.~~
    Done (`b3793ce`).
 8. ~~Update README and design documentation after the new boundaries are

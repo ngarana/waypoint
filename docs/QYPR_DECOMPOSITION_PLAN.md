@@ -1,6 +1,6 @@
 # qypr Decomposition Plan
 
-Reviewed: 2026-09-22 — status re-checked 2026-09-23 against `main` at `69a4948`.
+Reviewed: 2026-09-22 — status re-checked 2026-09-23 against `main` at `2b376f5`.
 
 This document tracks the qypr modules that still need decomposition beyond the
 theme migration described in [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md).
@@ -63,6 +63,20 @@ module combines several of the following:
   actions while preserving the `LockScreen` host contract and `SecureBuffer`
   password path. `LockLayoutGeometryMultipleSizes` and
   `PowerMenuRequiresExplicitConfirmation` exercise the extracted seams.
+- **Protocol adapters** (step 10): Wi-Fi, Bluetooth, and notification backends
+  split into models, snapshot reducers, protocol clients, and operations
+  behind fake-testable ports (`adcbb51`, `2126403`, `5e169b7`, `85a34de`,
+  `23bb85a`; facades keep lifecycle, chains, and publication). Tests:
+  `WifiReducer*`, `WifiOperations*`, `BluetoothReducer*`,
+  `BluetoothOperations*`, `NotificationStore*`, `NotificationPolicy*`,
+  `NotificationHintsFold`, `NotificationAccentForUrgency`,
+  `NotificationTransportNoBus`.
+- **Quick-settings model** (step 6 residue): `QuickSettingsModel` owns grid
+  tile ownership, insertion order, the Wi-Fi/volume dedupe rule, role lookup,
+  and theme cascade (`0aa916d`); the panel keeps singles, theme ownership,
+  drawing, and input/layout delegation. Tests: `QuickSettingsModelOrdering`,
+  `QuickSettingsModelDedupe`, `QuickSettingsModelFindByRole`,
+  `QuickSettingsModelThemeCascade`.
 - Earlier review findings closed alongside those: one shared process API
   (`a3443ba`), unified desktop-entry and toplevel models (`f179bfc`), and the
   stale nested waylaunch test graph removed (`60c60a9`).
@@ -99,7 +113,7 @@ shared aggregate contains those pointers.
 | Priority | Module | Status | Main remaining problem | Next seam |
 |---|---|---|---|---|
 | P0 | StatusBar | Done | Extracted host, layout, input, tooltip controller, and popover manager | — (complete) |
-| P0 | Quick settings | Done | Role lookup, tile factory, layout, input, and renderer extracted | — (complete) |
+| P0 | Quick settings | Done | Role lookup, tile factory, model, layout, input, and renderer extracted | — (complete) |
 | P0 | StatusIndicator | Done | Capability bundles and bundle-based factories on both hosts | — (complete) |
 | P1 | Theme (residual) | Done | Palette source/readers extracted from `Theme.cpp`; widget-level cascade test added | — (complete) |
 | P1 | BarApp / App / Shell | Done | Runtime controllers extracted (`BarRuntime`, `LockRuntime`, `ConfigRuntime`, etc.) | — (complete) |
