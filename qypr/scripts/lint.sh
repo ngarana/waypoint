@@ -113,7 +113,7 @@ if [[ "$TIDY_ONLY" -eq 0 ]]; then
             clang-format -i "$f"
         else
             if ! clang-format --dry-run --Werror "$f" 2>/dev/null; then
-                FORMAT_FAIL+=("${f#"$ROOT/"}")
+                FORMAT_FAIL+=("$f")
             fi
         fi
     done
@@ -126,7 +126,13 @@ if [[ "$TIDY_ONLY" -eq 0 ]]; then
         PASS=$((PASS + 1))
     else
         red "✗ clang-format: ${#FORMAT_FAIL[@]} file(s) need reformatting:"
-        for f in "${FORMAT_FAIL[@]}"; do printf '    %s\n' "$f"; done
+        for f in "${FORMAT_FAIL[@]}"; do printf '    %s\n' "${f#"$ROOT/"}"; done
+        # Show what the pinned toolchain wants (first 40 diff lines per
+        # file) — indispensable when local and CI formatters disagree.
+        for f in "${FORMAT_FAIL[@]}"; do
+            printf '%s\n' "--- diff ${f#"$ROOT/"} ---"
+            diff -u "$f" <(clang-format "$f") | head -n 40 || true
+        done
         yellow "  Fix with:  $0 --fix"
         FAIL=$((FAIL + 1))
     fi
@@ -179,8 +185,21 @@ if [[ "$FORMAT_ONLY" -eq 0 ]]; then
     done
 
     if [[ ${#CPP_ONLY[@]} -eq 0 ]]; then
-        yellow "  ⚠ no .cpp files to analyse (all skipped or none staged)"
-        PASS=$((PASS + 1))
+        # Distinguish "no translation units in scope" (headers-only change:
+        # nothing to analyse) from "every TU skipped: stale compile DB".
+        # The latter must fail loudly — passing with zero coverage is how
+        # findings re-accumulate behind a green gate.
+        hadCpp=0
+        for f in "${ALL_FILES[@]}"; do
+            [[ "$f" == *.cpp ]] && { hadCpp=1; break; }
+        done
+        if [[ "$hadCpp" -eq 1 ]]; then
+            red "✗ clang-tidy: every .cpp file skipped (not in compile DB — rebuild first)"
+            FAIL=$((FAIL + 1))
+        else
+            yellow "  ⚠ no .cpp files to analyse (headers-only change)"
+            PASS=$((PASS + 1))
+        fi
     else
         TIDY_EXTRA=()
         # --fix only (never --fix-errors): clang-tidy must refuse to rewrite a

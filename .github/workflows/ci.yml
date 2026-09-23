@@ -28,7 +28,7 @@ jobs:
             nlohmann-json3-dev
       - name: Configure (Ninja — Makefiles race the shared protocol codegen)
         run: |
-          cmake -S qypr -B qypr/build -G Ninja
+          cmake -S qypr -B qypr/build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           cmake -S waylaunch -B waylaunch/build -G Ninja -DBUILD_TESTING=ON
           cmake -S common -B common/build -G Ninja
       - name: Build
@@ -50,9 +50,15 @@ jobs:
         # by default, and waylaunch tidy runs strict here, so findings can no
         # longer accumulate while the suite stays green. Tidy is parallel but
         # still the slowest step (~10 min on 4 cores); keep it last.
+        #
+        # Toolchain pinning is unconditional (not `command -v ||`): a distro
+        # clang-format/clang-tidy shadowing the pinned 22 on PATH formats and
+        # lints differently, which is exactly the drift this gate guards.
         run: |
-          command -v clang-tidy >/dev/null || sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100
-          command -v clang-format >/dev/null || sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100
+          clang-tidy --version
+          clang-format --version
           ./qypr/scripts/lint.sh
           ./qypr/scripts/test-lint-fix.sh
           cmake --build waylaunch/build --target format-check
