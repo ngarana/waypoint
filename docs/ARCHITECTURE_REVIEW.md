@@ -1,7 +1,7 @@
 # Architecture Review
 
-Reviewed: 2026-09-21; status re-checked 2026-09-22 against the code baseline at
-`main` `9954082`.
+Reviewed: 2026-09-21; status re-checked 2026-09-23 against the code baseline at
+`main` `69a4948`.
 
 This repository combines the `qypr`, `waylaunch`, and `common` projects. The
 merge has preserved useful executable boundaries, but at review time several
@@ -51,7 +51,7 @@ What remains is concentrated in a few places:
 
 ### 1. Fragile qypr target source boundaries
 
-**Severity:** High  
+**Severity:** High
 **Principles:** KISS, DRY, separation of concerns
 
 [`qypr/CMakeLists.txt`](../qypr/CMakeLists.txt#L131) used to gather almost
@@ -72,7 +72,7 @@ sets, and `scripts/check-invariants.sh` adds the B1 gate that fails when
 
 ### 2. Stale parallel waylaunch test/build graph
 
-**Severity:** High  
+**Severity:** High
 **Principles:** KISS, DRY, reliability
 
 The active tests are defined in the top-level
@@ -92,7 +92,7 @@ block. `ctest --test-dir waylaunch/build` runs 28 suites.
 
 ### 3. Competing process abstractions
 
-**Severity:** High  
+**Severity:** High
 **Principles:** DRY, DIP, consistency
 
 The shared [`qypr::Process`](../common/core/Process.hpp#L1) API and
@@ -128,7 +128,7 @@ signature, and the loop-less policy is the separate, documented `launch()`.
 
 ### 4. Duplicate toplevel-management models
 
-**Severity:** High  
+**Severity:** High
 **Principles:** DRY, domain-model consistency
 
 qypr has its own toplevel backend in
@@ -155,7 +155,7 @@ boundary this recommendation explicitly allows.
 
 ### 5. Split ownership of quick-settings tiles
 
-**Severity:** High  
+**Severity:** High
 **Principles:** DRY, SRP, KISS
 
 [`StatusBar.cpp`](../qypr/src/ui/statusbar/StatusBar.cpp#L42) creates tiles in
@@ -170,18 +170,20 @@ and the quick-settings panel.
 owner/factory to each tile. Use explicit replacement or composition rather
 than title-based deduplication.
 
-**Status:** Resolved for tile identity (`b0657f6`). Tiles carry a
-`QSTile::Role` ([`QSTile.hpp`](../qypr/src/ui/statusbar/QSTile.hpp#L31)) and
-the panel dedupes/replaces by role. Two residual pieces are tracked in the
-decomposition plan: `findTileBounds()` still looks tiles up by display title
-(the production caller is the preview path,
-[`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L260)), and a single factory/owner
-for the configured tile set (`QSTileFactory`/`QuickSettingsModel`) does not
-exist yet.
+**Status:** Resolved for tile identity (`b0657f6`) and for the residuals
+(`898c4fb`). Tiles carry a `QSTile::Role`
+([`QSTile.hpp`](../qypr/src/ui/statusbar/QSTile.hpp#L31)) and the panel
+dedupes/replaces by role; lookup is role-based
+([`boundsFor(QSTile::Role)`](../qypr/src/ui/statusbar/QuickSettingsPanel.cpp#L101),
+called with `QSTile::Role::Dnd` from
+[`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L147)); the configured tile set is
+built by `QSTileFactory`, with panel geometry in `QuickSettingsLayout`, input
+in `QuickSettingsInput`, and shared card primitives in `TileRenderer`. No
+production or test path matches tiles by display title.
 
 ### 6. Duplicate desktop-entry models
 
-**Severity:** High  
+**Severity:** High
 **Principles:** DRY, avoiding unnecessary translation layers
 
 [`common/system/DesktopIndex.hpp`](../common/system/DesktopIndex.hpp)
@@ -201,7 +203,7 @@ local model and the field-copying conversion are gone.
 
 ### 7. Overly broad `StatusIndicator` interface
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** ISP, SRP
 
 [`StatusIndicator.hpp`](../qypr/src/ui/statusbar/StatusIndicator.hpp#L88)
@@ -215,18 +217,21 @@ no-op methods for the rest.
 `InputHandler`. Alternatively, compose these capabilities instead of using a
 single large base class.
 
-**Status:** Partial (`fcc0dea`). The compose-the-capabilities alternative
+**Status:** Partial (`fcc0dea`, `375682c`). The compose-the-capabilities alternative
 landed: [`IndicatorCapabilities.hpp`](../qypr/src/ui/statusbar/IndicatorCapabilities.hpp#L25)
 defines `ICompactView`, `ITileProvider`, `IDetailProvider`,
 `IIndicatorLifecycle`, `IIndicatorInput`, and `IIndicatorPolicy`, and
-`StatusIndicator` composes all six. What remains is ownership of the services
-themselves: the `SystemBackends` aggregate and the registry factory signature
-are unchanged, so every factory can still reach every capability. Bundle
-extraction is tracked in the decomposition plan.
+`StatusIndicator` composes all six; the capability bundles
+(`Connectivity/Media/Session/Notification/SafeLockServices` with `hasSession`
+gating) landed on `SystemBackends` afterwards. What remains is ownership of
+the services themselves: direct backend pointers stay on the aggregate for
+backwards compatibility and the registry factory signature
+(`const SystemBackends&`) is unchanged, so every factory can still reach
+every capability. Bundle extraction is tracked in the decomposition plan.
 
 ### 8. `LauncherUI` has too many responsibilities
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** SRP, DIP
 
 [`launcher_ui.h`](../waylaunch/include/waylaunch/launcher_ui.h#L58) and its
@@ -252,7 +257,7 @@ overlay-host extraction remain open.
 
 ### 9. Rendering and value types are duplicated
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** DRY, consistency
 
 `common` provides `Color`, `Rect`, animation, and `Painter` through
@@ -278,7 +283,7 @@ objected to is gone.
 
 ### 10. Theme and palette state can drift
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** DRY, DIP, testability
 
 qypr had mutable theme globals and its own matugen handling in
@@ -310,7 +315,7 @@ owns only defaults plus typed overrides.
 
 ### 11. Wayland infrastructure is only partially shared
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** DRY, appropriate abstraction boundaries
 
 Both projects use shared SHM support, but layer-shell, seat, input, output,
@@ -330,7 +335,7 @@ of the decomposition plan.
 
 ### 12. CMake configuration is repetitive
 
-**Severity:** Medium  
+**Severity:** Medium
 **Principles:** DRY
 
 Both build systems repeat include paths, compiler flags, link libraries, and
@@ -355,7 +360,7 @@ All of the drift recorded at review time is now fixed, and a gate keeps it
 from returning:
 
 - The root README describes `Process` (not `Spawn`) and reports the current
-  suite counts (135 qypr tests, 28 waylaunch suites, 8 shared suites).
+  suite counts (137 qypr tests, 28 waylaunch suites, 8 shared suites).
 - qypr documentation no longer references files that moved into `common`.
 - The removed `waylaunch/tests/CMakeLists.txt` and its `search_manager.cpp`
   reference are gone; `docs/DESIGN.md` keeps the file only in historical
@@ -369,17 +374,21 @@ from returning:
 
 ## Verification snapshot
 
-Status re-checked 2026-09-22 against the same tree (code baseline `9954082`),
+Status re-checked 2026-09-23 against the same tree (code baseline `69a4948`),
 with session and system buses available:
 
 - `ctest --test-dir qypr/build`: `qypr-test` passed — the single registered
-  target wraps 135 test cases (5.6 s).
+  target wraps 137 test cases (5.6 s).
 - `ctest --test-dir waylaunch/build`: 28/28 suites passed.
 - `ctest --test-dir common/build`: 8/8 suites passed (blur, desktop, icon,
   matugen tokens, painter, process, solar, toplevel state).
 - Structural gates: `./scripts/check-invariants.sh qypr/build waylaunch/build`
   prints `PASS I4`, `PASS Q5`, `PASS B1`; `./scripts/check-doc-paths.sh`
   holds.
+- Lint gates (new since the last re-check): `qypr/scripts/lint.sh` enforces
+  `clang-tidy --warnings-as-errors='*'` over all 116 translation units plus
+  `clang-format`, and CI runs it together with the waylaunch format check
+  and a parallel strict tidy sweep — all green.
 - The review-time bus-less observation for
   [`WifiPopoverToggleSwitchAndScanning`](../qypr/tests/test_indicators.cpp#L221)
   remains correctly diagnosed as environment-dependent, not a code regression:

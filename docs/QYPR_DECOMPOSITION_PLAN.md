@@ -1,6 +1,6 @@
 # qypr Decomposition Plan
 
-Reviewed: 2026-09-22 — status re-checked against `main` at `9954082`.
+Reviewed: 2026-09-22 — status re-checked 2026-09-23 against `main` at `69a4948`.
 
 This document tracks the qypr modules that still need decomposition beyond the
 theme migration described in [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md).
@@ -26,11 +26,11 @@ module combines several of the following:
 ## What has landed
 
 - **Theme as an injected value** (`01da531`, `2e88b39`, `e57963f`): the design
-  lives in [`theme::State`](../qypr/src/ui/Theme.hpp#L48) values; hosts own one
+  lives in [`theme::State`](../qypr/src/ui/Theme.hpp#L113) values; hosts own one
   and widgets read it through `ThemeAware::setTheme()/theme()`
-  ([`Theme.hpp`](../qypr/src/ui/Theme.hpp#L263)). The mutable
+  ([`Theme.hpp`](../qypr/src/ui/Theme.hpp#L269)). The mutable
   `theme::color/font/spacing/...` namespaces, `toGlobals()`, and `loadTheme()`
-  are deleted; [`loadThemeState()`](../qypr/src/ui/Theme.cpp#L47) is a pure
+  are deleted; [`loadThemeState()`](../qypr/src/ui/Theme.cpp#L45) is a pure
   state builder. `AutoPalette` is an owned day/night value, ticked by each host
   and fed by its own GeoClue fix.
 - **Stable quick-settings tile identity** (`b0657f6`): `QSTile::Role`
@@ -109,7 +109,7 @@ shared aggregate contains those pointers.
 | P1 | NotificationMonitor | Open | Transport, parsing, privacy policy, storage, and backlog correlation share one class | `NotificationTransport`, `NotificationParser`, `NotificationStore` |
 | P2 | SNI stack | Open | Protocol mode, item registry, icons, and UI behavior split across mismatched layers | `SniProtocol`, `SniItemStore`, `TrayView` |
 | P2 | Wayland display stack | Open | Bar and lock hosts duplicate connection/registry concerns while owning surface policy | shared connection/registry layer, separate surface hosts |
-| P2 | StateCache | Open | Serialization, persistence, debouncing, and backend sampling share one class | `StateCacheCodec`, `StateCacheStore`, coordinator |
+| P2 | StateCache | Done | Split landed (`b474077`); `StateCache` keeps the publication facade | — (complete) |
 
 ## P0: decompose `StatusBar` (Done)
 
@@ -178,12 +178,15 @@ repeated drawing and slider interaction logic for Wi-Fi, volume, brightness,
 media, toggles, headers, and power across the eight tile types declared in
 [`QSTile.hpp`](../qypr/src/ui/statusbar/QSTile.hpp#L16) (329 lines).
 
-Residual title coupling to remove:
-[`findTileBounds(title)`](../qypr/src/ui/statusbar/QuickSettingsPanel.hpp#L69)
-still matches display strings, and its production caller is the preview path in
-[`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L260) asking for
-`"Do Not Disturb"` (tests call it too). It should become a role-based lookup
-(`boundsFor(QSTile::Role)`), with callers and tests updated.
+Residual title coupling removed (`898c4fb`): tile lookup is now role-based
+([`boundsFor(QSTile::Role)`](../qypr/src/ui/statusbar/QuickSettingsPanel.cpp#L101),
+declared at [`QuickSettingsPanel.hpp`](../qypr/src/ui/statusbar/QuickSettingsPanel.hpp#L69)),
+with the production caller updated
+([`BarApp.cpp`](../qypr/src/core/BarApp.cpp#L147) asks for
+`QSTile::Role::Dnd`). Tile creation lives in `QSTileFactory`, panel geometry
+in `QuickSettingsLayout`, input in `QuickSettingsInput`, and shared card
+primitives in `TileRenderer`; no tile is matched or looked up by display
+string.
 
 ### Proposed components
 
@@ -214,16 +217,17 @@ defines `ICompactView`, `ITileProvider`, `IDetailProvider`,
 [`StatusIndicator`](../qypr/src/ui/statusbar/StatusIndicator.hpp#L88) composes
 all six, and tests consume the narrow types instead of the whole applet.
 
-What remains: the [`SystemBackends`](../qypr/src/ui/statusbar/StatusIndicator.hpp#L45)
-pointer bag still hands every service to every indicator, so unsupported
-behavior appears as harmless default no-ops, and
+What remains: the capability *bundles* landed (`375682c`) —
+[`SystemBackends`](../qypr/src/ui/statusbar/StatusIndicator.hpp#L22) now
+carries `ConnectivityServices`, `MediaServices`, `SessionServices`,
+`NotificationServices`, and `SafeLockServices` with `hasSession` gating.
+Two residues: direct backend pointers remain on the aggregate for backwards
+compatibility (the lock host still builds the full aggregate with
+`hasSession = false` and mostly null session pointers,
+[`App.hpp`](../qypr/src/core/App.hpp#L82)), and
 [`IndicatorRegistry::Factory`](../qypr/src/ui/statusbar/IndicatorRegistry.hpp#L19)
-still takes the whole aggregate. The lock host builds a bag of mostly null
-session pointers ([`App.hpp`](../qypr/src/core/App.hpp#L84)); the bar fills
-nearly every field ([`BarApp.hpp`](../qypr/src/core/BarApp.hpp#L158)). The
-registry factory should request the bundle it needs, and the lock host should
-construct only safe bundles rather than the full unlocked-session aggregate
-with most fields null.
+still takes the whole aggregate, so a factory *can* still reach a capability
+it did not explicitly request (gating tests prove the lock runtime does not).
 
 ### Proposed bundles
 
@@ -462,22 +466,21 @@ resolution, layout reporting, and key repeat. It is a candidate for a follow-up
 split into `KeyboardInput`, `PointerInput`, and `KeyRepeat` after the
 connection seam is stable.
 
-## P2: split state-cache persistence (Open)
+## P2: split state-cache persistence (Done)
 
-[`StateCache`](../qypr/src/system/StateCache.hpp#L42) (195+93 lines) loads an
-INI file, deserializes five backend snapshots, seeds live backends, observes
-changes, serializes current state, debounces writes, creates directories, and
-performs atomic replacement (`serialize()` is already public for tests).
+[`StateCache`](../qypr/src/system/StateCache.hpp#L20) (now a 65-line
+publication facade) was split (`b474077`): typed snapshot ↔ text conversion
+lives in `StateCacheCodec`, path/directory/atomic-rename logic in
+`StateCacheStore`, and event-loop debounce plus backend sampling in
+`StateCacheCoordinator`. Covered by `StateCacheSeedFillsPlaceholderThenDefersToLiveData`,
+`StateCacheRoundTripsThroughAFile`, `StateCacheToleratesMissingAndCorruptFiles`,
+and `StateCacheSkipsRedundantWrites`. The atomic write behavior stays in
+`StateCacheStore` and must not be duplicated by individual backends.
 
-Suggested seams:
-
-- `StateCacheCodec`: typed snapshot ↔ text conversion.
-- `StateCacheStore`: path, directory, temporary-file, and atomic-rename logic.
-- `StateCacheCoordinator`: event-loop debounce and backend sampling.
-
-The current atomic write behavior should remain in `StateCacheStore`; it is a
-correct reliability boundary and should not be duplicated by individual
-backends.
+The original shape, kept here as the review record: `StateCache` loaded an
+INI file, deserialized five backend snapshots, seeded live backends, observed
+changes, serialized current state, debounced writes, created directories, and
+performed atomic replacement in one class.
 
 ## Modules not currently needing decomposition
 
@@ -518,7 +521,7 @@ Avoid extracting code merely to reduce line count in these areas:
 10. Decompose Wi-Fi, Bluetooth, and notification protocol adapters.
 11. Separate SNI protocol state from tray presentation.
 12. Extract shared Wayland connection primitives.
-13. Isolate state-cache codec and persistence.
+13. ~~Isolate state-cache codec and persistence~~ — done (`b474077`).
 
 Each step should leave the executable boundary unchanged and should be
 validated before the next one begins.
