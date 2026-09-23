@@ -1,6 +1,8 @@
 # Protocol Adapter Plan (QYPR_DECOMPOSITION_PLAN step 10)
 
-Status: plan, not yet implemented. Baseline: `main` at `f980f1c`, qypr suite 135/135.
+Status: implemented (`adcbb51`, `2126403`, `5e169b7`, `85a34de`, `23bb85a`;
+baseline suite 137/137, now 163/163). The sections below remain the design
+record; deviations made during implementation are listed under *As built*.
 
 This document is the implementation plan for step 10 of
 [`QYPR_DECOMPOSITION_PLAN.md`](QYPR_DECOMPOSITION_PLAN.md): splitting the
@@ -519,6 +521,27 @@ actual `ctest` total after each commit.
    are included through the backend headers that already expose their types, so
    `StateCacheCodec`, `WifiIndicator`, `BluetoothIndicator`, `QSTileFactory`, and the
    tests compile without change.
+
+## As built (deviations from the plan above)
+
+- Verification followed the repo gates (`AGENT.md` §3.1: warning-free build,
+  all three `ctest` suites, invariants, format + strict tidy on touched
+  files), not the Verification section below it (no Qt, no `ctest -L`
+  labels, C++20, `lint.sh` workflow here).
+- `NotifyEvent` also carries `postedAt` and a cookie-validity flag (the
+  pending table only registers successful cookie reads, as before), and the
+  desktop-entry hint stays inside `NotifyHints`; the store takes the theme
+  (not a precomputed accent) since card ids are assigned inside `add()`.
+  `hasPending()` preserves the parse early-out.
+- `BluezCommandPort` methods report whether the call was sent (the enqueue-
+  failure paths distinguish "could not be sent" from reply failures, as
+  before), plus `setTrusted`; fetch serialization calls the client directly,
+  so the port carries no `getManagedObjects`.
+- Both facades adapt the port to their device/adapter path (`FacadePort` in
+  each backend TU); device and adapter state never enters the clients.
+- Indicator reach-in tests (`mon.notes_`) moved to an explicit `testNotes`
+  seam rather than touching store internals through the private hack.
+- Counts: 137 → 141 → 145 → 150 → 154 → 163 across the five commits.
 
 ## Out of scope (follow-ups)
 

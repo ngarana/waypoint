@@ -104,9 +104,9 @@ shared aggregate contains those pointers.
 | P1 | Theme (residual) | Done | Palette source/readers extracted from `Theme.cpp`; widget-level cascade test added | — (complete) |
 | P1 | BarApp / App / Shell | Done | Runtime controllers extracted (`BarRuntime`, `LockRuntime`, `ConfigRuntime`, etc.) | — (complete) |
 | P1 | LockScreen | Done | Authentication, reveal state, idle timers, power actions, layout, and drawing are separated behind lock-only seams | — (complete) |
-| P1 | WifiBackend | Open | D-Bus chains, discovery, state reduction, and connect operations share one class | `NetworkManagerClient`, `WifiSnapshotReducer`, `WifiOperations` |
-| P1 | BluetoothBackend | Open | BlueZ parsing, discovery, pairing, and operation state share one class | `BluezClient`, `BluetoothSnapshotReducer`, `BluetoothOperations` |
-| P1 | NotificationMonitor | Open | Transport, parsing, privacy policy, storage, and backlog correlation share one class | `NotificationTransport`, `NotificationParser`, `NotificationStore` |
+| P1 | WifiBackend | Done | Split landed: model, snapshot reducer, NM client, operations (`adcbb51`, `2126403`) | — (complete) |
+| P1 | BluetoothBackend | Done | Split landed: model, snapshot reducer, BlueZ client, operations (`5e169b7`, `85a34de`) | — (complete) |
+| P1 | NotificationMonitor | Done | Split landed: policy, parser, store, transport (`23bb85a`) | — (complete) |
 | P2 | SNI stack | Open | Protocol mode, item registry, icons, and UI behavior split across mismatched layers | `SniProtocol`, `SniItemStore`, `TrayView` |
 | P2 | Wayland display stack | Open | Bar and lock hosts duplicate connection/registry concerns while owning surface policy | shared connection/registry layer, separate surface hosts |
 | P2 | StateCache | Done | Split landed (`b474077`); `StateCache` keeps the publication facade | — (complete) |
@@ -345,7 +345,32 @@ What landed:
 - `LockScreen` remains the Shell-facing composition host, and all new sources
   stay in `QYPR_LOCK_ONLY_SOURCES`.
 
-## P1: split D-Bus backends into protocol, model, and operations (Open)
+## P1: split D-Bus backends into protocol, model, and operations (Done)
+
+Landed as [`PROTOCOL_ADAPTER_PLAN.md`](PROTOCOL_ADAPTER_PLAN.md) steps 1–5
+(`adcbb51`, `2126403`, `5e169b7`, `85a34de`, `23bb85a`):
+
+- Wi-Fi: `WifiModel` (types verbatim), `WifiSnapshotReducer` (publish/radio/
+  merge/sort shaping), `NetworkManagerClient` (constants, walkers, async
+  issuers, fire-and-forget commands), `WifiOperations` (commands behind
+  `WifiCommandPort` with a fake-port suite). The facade keeps lifecycle,
+  both chains, seed staging, and publication.
+- Bluetooth: `BluetoothModel` (`BtPairRequest` moved here from
+  `BluetoothAgent.hpp`), `BluetoothSnapshotReducer` (managed-objects
+  reduction, transient carry, optimistic power, op lifecycle, name lookup),
+  `BluezClient` (walkers, decode, async issuers, op calls with reply
+  thunks), `BluetoothOperations` (deferred power, Pair→Trust→Connect,
+  discovery lifetime behind `BluezCommandPort`). The facade keeps
+  lifecycle, fetch serialization, agent wiring, and publication.
+- Notifications: `NotificationPolicy` (sensitive-app list, hint fold),
+  `NotificationParser` (Notify/Closed/Return → typed events),
+  `NotificationStore` (cards, keys, pending correlation, caps, accents),
+  `NotificationTransport` (BecomeMonitor connection, fd, drain). The
+  monitor stays the composition host; indicator reach-in tests use the
+  explicit `testNotes` seam.
+
+The per-backend detail below is the review-time record of what was tangled;
+the seams above are what replaced it.
 
 ### Wi-Fi
 
@@ -518,7 +543,8 @@ Avoid extracting code merely to reduce line count in these areas:
    on both hosts~~ — done.
 8. ~~Move bar and lock startup/reload/theme logic into runtime controllers~~ — done.
 9. ~~Split `LockScreen` state/input/layout/rendering while preserving lock policy~~ — done.
-10. Decompose Wi-Fi, Bluetooth, and notification protocol adapters.
+10. ~~Decompose Wi-Fi, Bluetooth, and notification protocol adapters~~ — done
+    (`adcbb51`, `2126403`, `5e169b7`, `85a34de`, `23bb85a`; 137 → 163 tests).
 11. Separate SNI protocol state from tray presentation.
 12. Extract shared Wayland connection primitives.
 13. ~~Isolate state-cache codec and persistence~~ — done (`b474077`).
@@ -536,7 +562,7 @@ Every extraction should add or preserve tests at the lowest practical level:
 - lock policy: tests proving unsafe capabilities are unavailable, not merely
   invisible
 - rendering: existing qypr preview/golden tests
-- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 137
+- integration: `ctest --test-dir qypr/build` (the `qypr-test` target, 163
   tests), `ctest --test-dir waylaunch/build`, `ctest --test-dir common/build`,
   `./scripts/check-invariants.sh` (I4, Q5, B1), and
   `./scripts/check-doc-paths.sh`.
