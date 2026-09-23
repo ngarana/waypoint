@@ -110,11 +110,11 @@ void MprisController::enablePush(EventLoop& loop) {
         // One match for every MPRIS player's property changes — cheaper and
         // simpler than a proxy per player that must be torn down and rebuilt as
         // the active player changes. Both spellings below install *floating*
-        // matches owned by the connection: v2's two-argument form is floating
-        // by design, while v1's two-argument form returns an RAII slot that
+        // matches owned by the connection: newer releases' two-argument form
+        // is floating by design, while older ones return an RAII slot that
         // would uninstall the match the moment it is dropped — hence the
         // explicit floating_slot tag there.
-#    ifdef QYPR_SDBUS_HAS_SERVICE_NAME
+#    ifdef QYPR_SDBUS_ADD_MATCH_FLOATING
         conn_->addMatch("type='signal',interface='org.freedesktop.DBus.Properties',"
                         "member='PropertiesChanged',path='/org/mpris/MediaPlayer2'",
                         [this](const sdbus::Message&) { refreshAndNotify(); });

@@ -110,15 +110,25 @@ configure_file(
     "${CMAKE_BINARY_DIR}/generated/Version.hpp"
     @ONLY)
 
-# sdbus-c++ v1 vs v2 API: v2 introduced the ServiceName/ObjectPath strong
-# types and renamed processPendingRequest() to processPendingEvent(). CI
-# images ship v1, developer machines v2 — detect, don't assume.
+# sdbus-c++ API differences are detected by feature checks, not version
+# guesses: ServiceName/ObjectPath strong types and the
+# processPendingRequest() rename travel together, while the floating
+# two-argument addMatch() does not (sdbus-c++ 1.4 has ServiceName but its
+# two-argument addMatch still returns an RAII slot).
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_LIBRARIES PkgConfig::SDBUS)
 check_cxx_source_compiles(
     "#include <sdbus-c++/sdbus-c++.h>
      int main() { sdbus::ServiceName s{\"x\"}; (void)s; return 0; }"
     QYPR_SDBUS_HAS_SERVICE_NAME)
+check_cxx_source_compiles(
+    "#include <sdbus-c++/sdbus-c++.h>
+     #include <type_traits>
+     #include <utility>
+     static_assert(std::is_void_v<decltype(std::declval<sdbus::IConnection&>().addMatch(
+         std::string{}, sdbus::message_handler{}))>);
+     int main() { return 0; }"
+    QYPR_SDBUS_ADD_MATCH_FLOATING)
 unset(CMAKE_REQUIRED_LIBRARIES)
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/core/SdbusApi.hpp.in"
