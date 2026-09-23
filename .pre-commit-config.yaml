@@ -1,0 +1,58 @@
+# Root pre-commit config for the waypoint monorepo.
+#
+# Install with:  pre-commit install   (hook lives at .git/hooks/pre-commit)
+# Verify with:   pre-commit run --all-files   (tidy hooks are serial/slow;
+#                per-file runs are the norm during work)
+#
+# Why this file exists instead of reusing the component configs directly:
+# pre-commit matches `files:` against git-root-relative paths. The
+# waylaunch config's ^(src|...) patterns only match in the standalone repo;
+# here sources live under waylaunch/, qypr/ — so that config installed here
+# would silently check zero files. The entries below keep the same gates
+# with root-relative paths. qypr has no hook config of its own; its staged
+# checks run through qypr/scripts/lint.sh --staged via pre-commit-staged.sh.
+# common/ ships no lint configs, so it has no hooks here.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # waylaunch C++ gates: same configs CI enforces (.clang-format,
+  # .clang-tidy). Requires waylaunch/build (compile_commands.json plus the
+  # wayland-scanner-generated headers configure alone does not emit).
+  - repo: local
+    hooks:
+      - id: waylaunch-format
+        name: waylaunch clang-format check
+        language: system
+        entry: clang-format --dry-run --Werror
+        files: ^waylaunch/(src|include|tests)/.*\.(cpp|h)$
+        exclude: .*/build/.*
+        pass_filenames: true
+      - id: waylaunch-tidy
+        name: waylaunch clang-tidy check
+        language: system
+        entry: clang-tidy -p waylaunch/build --warnings-as-errors=*
+        files: ^waylaunch/(src|include|tests)/.*\.cpp$
+        exclude: .*/build/.*
+        pass_filenames: true
+        require_serial: true
+
+  # qypr gates (format + tidy) on staged files only, via the component
+  # script. Requires qypr/build/compile_commands.json (see lint.sh header).
+  - repo: local
+    hooks:
+      - id: qypr-lint-staged
+        name: qypr lint (staged)
+        language: system
+        entry: qypr/scripts/pre-commit-staged.sh
+        files: ^qypr/(src|tests)/.*\.(cpp|hpp)$
+        exclude: .*/(build|wayland-generated)/.*
+        pass_filenames: true
+        require_serial: true
