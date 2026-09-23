@@ -66,6 +66,11 @@ BluetoothSnapshot withOpEnded(BluetoothSnapshot s, const std::string& error) {
     return s;
 }
 
+BluetoothSnapshot withOpIdle(BluetoothSnapshot s) {
+    s.busy.clear();
+    return s;
+}
+
 BluetoothSnapshot withPairingRequest(BluetoothSnapshot s, const BtPairRequest& r) {
     s.pairing = r;
     return s;

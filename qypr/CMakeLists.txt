@@ -160,7 +160,9 @@ set(QYPR_SHARED_SOURCES
     src/system/BatteryBackend.cpp
     src/system/BluetoothAgent.cpp
     src/system/BluetoothBackend.cpp
+    src/system/BluetoothOperations.cpp
     src/system/BluetoothSnapshotReducer.cpp
+    src/system/BluezClient.cpp
     src/system/BrightnessBackend.cpp
     src/system/DbusMenuBackend.cpp
     src/system/GeoClueBackend.cpp

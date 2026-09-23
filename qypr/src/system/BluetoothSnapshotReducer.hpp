@@ -34,6 +34,9 @@ BluetoothSnapshot withPowered(BluetoothSnapshot s, bool on);
 // the row and record the failure text.
 BluetoothSnapshot withOpBusy(BluetoothSnapshot s, const std::string& path);
 BluetoothSnapshot withOpEnded(BluetoothSnapshot s, const std::string& error);
+// Send-failure rows: the call never left, so clear the busy row but keep the
+// previous error text and request no refetch.
+BluetoothSnapshot withOpIdle(BluetoothSnapshot s);
 
 // Agent prompt arrival: the pairing request joins the snapshot like any
 // other change.

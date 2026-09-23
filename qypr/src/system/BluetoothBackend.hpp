@@ -12,6 +12,8 @@
 
 #include "system/BluetoothAgent.hpp"
 #include "system/BluetoothModel.hpp"
+#include "system/BluetoothOperations.hpp"
+#include "system/BluezClient.hpp"
 
 struct sd_bus_message;
 struct sd_bus_slot;
@@ -93,8 +95,6 @@ public:
 
 private:
     static int onGetManagedObjects(sd_bus_message* reply, void* userdata, sd_bus_error* err);
-    // False on a malformed reply; *out is then meaningless (see the definition).
-    bool parseManagedObjects(sd_bus_message* m, BluetoothSnapshot* out);
     // Sole publication seam: skips the repaint when nothing actually changed.
     void publish(BluetoothSnapshot&& next);
     // Publish a definitive "no adapter" and drop any deferred power toggle.
@@ -102,34 +102,43 @@ private:
     void refetch();
     void endFetch();
     void subscribeSignals();
-    void sendSetPowered(bool on);
-    static int onSetPowerReply(sd_bus_message* reply, void* userdata, sd_bus_error* err);
 
-    // Fire-and-forget adapter call (discovery start/stop): logs and re-fetches
-    // on failure, never touches the busy/error pair.
-    void callAdapter(const char* member);
-    // Issue StartDiscovery if the picker still wants one and the adapter is in
-    // a state to accept it. Re-run after every fetch, because a scan requested
-    // while the radio was off can only start once BlueZ reports it powered.
-    void tryStartDiscovery();
-    static int onAdapterOpReply(sd_bus_message* reply, void* userdata, sd_bus_error* err);
-    // Device operation with picker feedback: marks opPath_ busy, and the reply
-    // either clears it or records the failure.
-    // Matches sd_bus_message_handler_t without pulling sd-bus.h into the header.
-    using ReplyHandler = int (*)(sd_bus_message*, void*, sd_bus_error*);
-    void callDevice(const std::string& path, const char* iface, const char* member, ReplyHandler cb,
-                    uint64_t timeoutUs);
-    static int onDeviceOpReply(sd_bus_message* reply, void* userdata, sd_bus_error* err);
-    static int onPairReply(sd_bus_message* reply, void* userdata, sd_bus_error* err);
-    void setTrusted(const std::string& path);
-    void beginOp(const std::string& path);
-    void endOp(const char* what, sd_bus_message* reply);
+    // Port adapter: user commands need the facade's current adapter path, but
+    // fetch and lifecycle state never enters the client — so the port is a
+    // thin forwarder over the client plus an adapter reference, owned by the
+    // facade.
+    struct FacadePort : BluezCommandPort {
+        FacadePort(BluezClient& client, const std::string& adapter)
+            : client(client),
+              adapter(adapter) {}
+        bool available() const override { return client.available(); }
+        std::string adapterPath() const override { return adapter; }
+        bool setPowered(bool on, Reply onReply) override {
+            return client.setAdapterPowered(adapter, on, std::move(onReply));
+        }
+        bool callDevice(const std::string& path, const char* member, uint64_t timeoutUs,
+                        Reply onReply) override {
+            return client.callDevice(path, member, timeoutUs, std::move(onReply));
+        }
+        void callAdapter(const char* member, Reply onReply) override {
+            client.callAdapter(adapter, member, std::move(onReply));
+        }
+        bool removeDevice(const std::string& path, Reply onReply) override {
+            return client.removeDevice(adapter, path, std::move(onReply));
+        }
+        void setTrusted(const std::string& path) override { client.setTrusted(path); }
+        BluezClient& client;
+        const std::string& adapter;
+    };
 
     static int onPropsChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
     static int onInterfacesChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
     static int onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
 
     SystemBus& bus_;
+    BluezClient client_;
+    FacadePort port_;
+    BluetoothOperations ops_;
     sd_bus_slot* propsSlot_ = nullptr;
     sd_bus_slot* ifacesSlot_ = nullptr;
     sd_bus_slot* ownerSlot_ = nullptr;  // BlueZ service (re)appearance
@@ -140,19 +149,6 @@ private:
     bool fetchInFlight_ = false;
     bool pendingFetch_ = false;
     bool subscribed_ = false;
-    // A toggle requested while the adapter path was still unknown: applied once
-    // a successful fetch (or BlueZ (re)appearance) has produced an adapter.
-    bool pendingPowerSet_ = false;
-    bool pendingPowerOn_ = false;
-    // Device path of the operation in flight. One at a time: the picker marks
-    // exactly one row busy, and Pair's continuation needs to know which device
-    // to trust and connect once BlueZ answers.
-    std::string opPath_;
-    // The picker asked for a scan and has not closed yet. Held across the
-    // power-off → power-on edge; cleared when BlueZ refuses to start one, so a
-    // failing adapter cannot spin StartDiscovery forever.
-    bool wantDiscovery_ = false;
-    bool discoveryCallInFlight_ = false;
     BluetoothSnapshot snap_;
     std::function<void()> onChange_;
     // Every result path calls this instead of onChange_ directly, so ready()
