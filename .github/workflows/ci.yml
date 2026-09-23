@@ -51,12 +51,16 @@ jobs:
         # longer accumulate while the suite stays green. Tidy is parallel but
         # still the slowest step (~10 min on 4 cores); keep it last.
         #
-        # Toolchain pinning is unconditional (not `command -v ||`): a distro
-        # clang-format/clang-tidy shadowing the pinned 22 on PATH formats and
-        # lints differently, which is exactly the drift this gate guards.
+        # Toolchain pinning is unconditional and forced (--set, manual mode):
+        # a distro clang shadowing the pinned 22 on PATH formats and lints
+        # differently (observed: Ubuntu clang 18 vs pinned 22), which is
+        # exactly the drift this gate guards. --install alone loses to the
+        # distro alternative's higher priority in auto mode.
         run: |
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100
+          sudo update-alternatives --set clang-tidy /usr/bin/clang-tidy-22
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100
+          sudo update-alternatives --set clang-format /usr/bin/clang-format-22
           clang-tidy --version
           clang-format --version
           ./qypr/scripts/lint.sh
