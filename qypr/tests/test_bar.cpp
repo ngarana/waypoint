@@ -392,7 +392,7 @@ TEST(QuickSettingsPanelRoleDedup) {
 
     int bt = 0;
     int br = 0;
-    for (const auto& t : panel.tiles_) {
+    for (const auto& t : panel.model_.tiles()) {
         if (t->role() == qypr::QSTile::Role::Bluetooth) { ++bt; }
         if (t->role() == qypr::QSTile::Role::Brightness) { ++br; }
     }
@@ -559,7 +559,7 @@ TEST(ThemePropagatesToStatusBarChildren) {
     // The QS panel and every tile it owns (grid + header/power/…) follow.
     EXPECT_EQ(bar.quickSettings().theme().font.family, std::string("PropagatedFont"));
     int tiles = 0;
-    for (auto& tile : bar.quickSettings().tiles_) {
+    for (auto& tile : bar.quickSettings().model_.tiles()) {
         EXPECT_EQ(tile->theme().font.family, std::string("PropagatedFont"));
         ++tiles;
     }
@@ -576,7 +576,7 @@ TEST(ThemePropagatesToStatusBarChildren) {
          {&bar.indicators_.left(), &bar.indicators_.center(), &bar.indicators_.right()}) {
         for (auto& ind : *list) { EXPECT_EQ(ind->theme().font.family, std::string("SecondFont")); }
     }
-    for (auto& tile : bar.quickSettings().tiles_) {
+    for (auto& tile : bar.quickSettings().model_.tiles()) {
         EXPECT_EQ(tile->theme().font.family, std::string("SecondFont"));
     }
 }

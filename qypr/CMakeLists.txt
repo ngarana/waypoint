@@ -222,6 +222,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/statusbar/QSTileFactory.cpp
     src/ui/statusbar/QuickSettingsInput.cpp
     src/ui/statusbar/QuickSettingsLayout.cpp
+    src/ui/statusbar/QuickSettingsModel.cpp
     src/ui/statusbar/QuickSettingsPanel.cpp
     src/ui/statusbar/StatusBar.cpp
     src/ui/statusbar/StatusBarInput.cpp
@@ -403,6 +404,7 @@ add_executable(qypr-test
     tests/test_bar.cpp
     tests/test_indicators.cpp
     tests/test_notifications.cpp
+    tests/test_qs.cpp
     tests/test_desktop.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}

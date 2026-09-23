@@ -3,6 +3,7 @@
 
 #include "ui/statusbar/DetailedPopover.hpp"
 #include "ui/statusbar/QSTile.hpp"
+#include "ui/statusbar/QuickSettingsModel.hpp"
 #include "system/WifiBackend.hpp"  // WifiSnapshot (updateWifi)
 #include <vector>
 #include <memory>
@@ -33,7 +34,7 @@ public:
     void updateWifi(const WifiSnapshot& s);
 
     void addTile(std::unique_ptr<QSTile> tile);
-    void clearTiles() { tiles_.clear(); }
+    void clearTiles() { model_.clearTiles(); }
 
     // ThemeAware: bind the owner's live copy and cascade to every owned
     // tile (grid + header/power/wifi/volume/media), so a re-theme repaints
@@ -74,8 +75,9 @@ public:
 private:
     void layoutTiles();
 
-    // Indicator-created tiles (toggle, slider, info) placed in the grid
-    std::vector<std::unique_ptr<QSTile>> tiles_;
+    // Grid tile ownership, ordering, and dedupe policy. The fixed singles
+    // below stay panel-owned.
+    QuickSettingsModel model_;
 
     // Internal panel tiles (owned, placed by the panel itself)
     std::unique_ptr<QSHeaderTile> header_;

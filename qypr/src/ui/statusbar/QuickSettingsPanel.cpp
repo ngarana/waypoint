@@ -20,21 +20,17 @@ namespace qypr {
 void QuickSettingsPanel::buildTiles(EventLoop& loop, const SystemBackends& backends,
                                     const std::function<void()>& onOpenWifi) {
     onOpenWifi_ = onOpenWifi;
-    auto built = QSTileFactory::createTiles(loop, backends, theme(), tiles_, onOpenWifi);
+    auto built = QSTileFactory::createTiles(loop, backends, theme(), model_.tiles(), onOpenWifi);
     header_ = std::move(built.header);
     power_ = std::move(built.power);
     wifiCombo_ = std::move(built.wifiCombo);
     volume_ = std::move(built.volume);
     media_ = std::move(built.media);
 
-    // Remove any indicator-created WiFi or volume tiles from grid
-    std::erase_if(tiles_, [](const std::unique_ptr<QSTile>& t) {
-        if (t == nullptr) { return false; }
-        return t->role() == QSTile::Role::Wifi || t->type() == QSTile::Type::Volume ||
-               t->role() == QSTile::Role::Volume;
-    });
+    // Indicator-created Wi-Fi/volume tiles are owned by the panel as singles.
+    model_.removePanelOwnedDuplicates();
 
-    for (auto& fallback : built.fallbackTiles) { tiles_.push_back(std::move(fallback)); }
+    for (auto& fallback : built.fallbackTiles) { model_.addTile(std::move(fallback)); }
 
     setTheme(theme());
 }
@@ -50,14 +46,12 @@ void QuickSettingsPanel::updateWifi(const WifiSnapshot& s) {
 
 void QuickSettingsPanel::addTile(std::unique_ptr<QSTile> tile) {
     if (tile) { tile->setTheme(theme()); }
-    tiles_.push_back(std::move(tile));
+    model_.addTile(std::move(tile));
 }
 
 void QuickSettingsPanel::setTheme(const theme::State& state) {
     theme::ThemeAware::setTheme(state);
-    for (const auto& tile : tiles_) {
-        if (tile) { tile->setTheme(state); }
-    }
+    model_.setTheme(state);
     if (header_) { header_->setTheme(state); }
     if (power_) { power_->setTheme(state); }
     if (wifiCombo_) { wifiCombo_->setTheme(state); }
@@ -79,7 +73,8 @@ double QuickSettingsPanel::contentHeight() const {
         .gridRowH = gridRowH(),
     };
     return QuickSettingsLayout::computeContentHeight(m, header_ != nullptr, wifiCombo_ != nullptr,
-                                                     tiles_, volume_ != nullptr, media_ != nullptr);
+                                                     model_.tiles(), volume_ != nullptr,
+                                                     media_ != nullptr);
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────
@@ -92,8 +87,9 @@ void QuickSettingsPanel::layoutTiles() {
         .gap = gap(),
         .gridRowH = gridRowH(),
     };
-    auto res = QuickSettingsLayout::layout(popBounds, m, header_.get(), power_.get(),
-                                           wifiCombo_.get(), tiles_, volume_.get(), media_.get());
+    auto res =
+        QuickSettingsLayout::layout(popBounds, m, header_.get(), power_.get(), wifiCombo_.get(),
+                                    model_.tiles(), volume_.get(), media_.get());
     closeBounds_ = res.closeBounds;
     powerBounds_ = res.powerBounds;
 }
@@ -101,9 +97,7 @@ void QuickSettingsPanel::layoutTiles() {
 Rect QuickSettingsPanel::boundsFor(QSTile::Role role) const {
     if (wifiCombo_ && wifiCombo_->role() == role) { return wifiCombo_->bounds; }
     if (volume_ && volume_->role() == role) { return volume_->bounds; }
-    for (const auto& t : tiles_) {
-        if (t && t->role() == role) { return t->bounds; }
-    }
+    if (const QSTile* tile = model_.findByRole(role)) { return tile->bounds; }
     return {.x = 0, .y = 0, .w = 0, .h = 0};
 }
 
@@ -143,7 +137,7 @@ void QuickSettingsPanel::draw(Painter& p, int64_t now) {
     drawOrSkip(header_);
     drawOrSkip(power_);
     drawOrSkip(wifiCombo_);
-    for (auto& t : tiles_) { drawOrSkip(t); }
+    for (auto& t : model_.tiles()) { drawOrSkip(t); }
     drawOrSkip(volume_);
     drawOrSkip(media_);
 }
@@ -173,7 +167,7 @@ bool QuickSettingsPanel::handleClick(double x, double y) {
         .wifiCombo = wifiCombo_.get(),
         .volume = volume_.get(),
         .media = media_.get(),
-        .tiles = tiles_,
+        .tiles = model_.tiles(),
         .activeDragTile = activeDragTile_,
         .curX = curX_,
         .curY = curY_,
@@ -192,7 +186,7 @@ bool QuickSettingsPanel::handleSecondaryClick(double x, double y) {
         .wifiCombo = wifiCombo_.get(),
         .volume = volume_.get(),
         .media = media_.get(),
-        .tiles = tiles_,
+        .tiles = model_.tiles(),
         .activeDragTile = activeDragTile_,
         .curX = curX_,
         .curY = curY_,
@@ -211,7 +205,7 @@ bool QuickSettingsPanel::handleDrag(double x, double y) {
         .wifiCombo = wifiCombo_.get(),
         .volume = volume_.get(),
         .media = media_.get(),
-        .tiles = tiles_,
+        .tiles = model_.tiles(),
         .activeDragTile = activeDragTile_,
         .curX = curX_,
         .curY = curY_,
@@ -230,7 +224,7 @@ bool QuickSettingsPanel::handleScroll(double dx, double dy) {
         .wifiCombo = wifiCombo_.get(),
         .volume = volume_.get(),
         .media = media_.get(),
-        .tiles = tiles_,
+        .tiles = model_.tiles(),
         .activeDragTile = activeDragTile_,
         .curX = curX_,
         .curY = curY_,
@@ -249,7 +243,7 @@ bool QuickSettingsPanel::handleKey(uint32_t keysym) {
         .wifiCombo = wifiCombo_.get(),
         .volume = volume_.get(),
         .media = media_.get(),
-        .tiles = tiles_,
+        .tiles = model_.tiles(),
         .activeDragTile = activeDragTile_,
         .curX = curX_,
         .curY = curY_,
