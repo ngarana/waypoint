@@ -26,7 +26,7 @@ std::array<double, 3> temperatureToRgb(uint32_t kelvin) {
     double t = static_cast<double>(kelvin) / 100.0;
 
     // Red
-    double r;
+    double r = NAN;
     if (t <= 66.0) {
         r = 1.0;
     } else {
@@ -36,7 +36,7 @@ std::array<double, 3> temperatureToRgb(uint32_t kelvin) {
     }
 
     // Green
-    double g;
+    double g = NAN;
     if (t <= 66.0) {
         g = 99.4708025861 * std::log(t) - 161.1195681661;
     } else {
@@ -46,7 +46,7 @@ std::array<double, 3> temperatureToRgb(uint32_t kelvin) {
     g = std::clamp(g / 255.0, 0.0, 1.0);
 
     // Blue
-    double b;
+    double b = NAN;
     if (t >= 66.0) {
         b = 1.0;
     } else if (t <= 19.0) {
@@ -91,9 +91,9 @@ void fillRampForTemperature(uint16_t* dst, uint32_t size, uint32_t kelvin) {
     const double r = std::clamp(rgb[0] / std::max(daylight[0], 1e-9), 0.0, 1.0);
     const double g = std::clamp(rgb[1] / std::max(daylight[1], 1e-9), 0.0, 1.0);
     const double b = std::clamp(rgb[2] / std::max(daylight[2], 1e-9), 0.0, 1.0);
-    fillChannelRamp(dst + 0 * size, size, r);
-    fillChannelRamp(dst + 1 * size, size, g);
-    fillChannelRamp(dst + 2 * size, size, b);
+    fillChannelRamp(dst, size, r);
+    fillChannelRamp(dst + static_cast<size_t>(size), size, g);
+    fillChannelRamp(dst + static_cast<size_t>(2) * size, size, b);
 }
 
 // Create an anonymous memfd the compositor can read via set_gamma(fd).
@@ -140,7 +140,7 @@ void NightLightBackend::init(zwlr_gamma_control_manager_v1* mgr, wl_display* dis
 void NightLightBackend::setOutputs(const std::vector<wl_output*>& outputs) {
     // Tear down any controls whose wl_output has disappeared from the list.
     for (auto& p : outputs_) {
-        auto it = std::find(outputs.begin(), outputs.end(), p.output);
+        auto it = std::ranges::find(outputs, p.output);
         if (it == outputs.end()) teardownOutput(p);
     }
     // Build PerOutput entries for new outputs.
@@ -155,7 +155,7 @@ void NightLightBackend::setOutputs(const std::vector<wl_output*>& outputs) {
             }
         }
         if (existing) {
-            next.push_back(std::move(*existing));
+            next.push_back(*existing);
         } else {
             next.push_back(PerOutput{.output = o});
         }
@@ -167,10 +167,8 @@ void NightLightBackend::setOutputs(const std::vector<wl_output*>& outputs) {
 }
 
 bool NightLightBackend::active() const {
-    for (const auto& p : outputs_) {
-        if (p.control && p.rampSize > 0 && !p.failed) return true;
-    }
-    return false;
+    return std::ranges::any_of(
+        outputs_, [](const auto& p) { return p.control && p.rampSize > 0 && !p.failed; });
 }
 
 void NightLightBackend::setEnabled(bool on) {
@@ -221,7 +219,7 @@ void NightLightBackend::setSliderValue(double v) {
     }
 
     // Map slider 0.0 → 6500 K (off), 1.0 → 2700 K (warmest).
-    uint32_t k = static_cast<uint32_t>(kMaxTemperature - v * (kMaxTemperature - kMinTemperature));
+    auto k = static_cast<uint32_t>(kMaxTemperature - v * (kMaxTemperature - kMinTemperature));
     setTemperature(k);
     if (!enabled_) setEnabled(true);
 }
@@ -243,15 +241,15 @@ void NightLightBackend::applyRamp(PerOutput& p) {
     if (!p.control || p.rampSize == 0 || p.failed) return;
 
     const size_t elemBytes = sizeof(uint16_t);
-    const size_t totalBytes = 3 * p.rampSize * elemBytes;
-    const size_t totalWords = 3 * p.rampSize;
+    const size_t totalBytes = static_cast<size_t>(3) * p.rampSize * elemBytes;
+    const size_t totalWords = static_cast<size_t>(3) * p.rampSize;
 
-    auto buf = std::make_unique<uint16_t[]>(totalWords);
-    fillRampForTemperature(buf.get(), p.rampSize, temperature_);
+    std::vector<uint16_t> buf(totalWords);
+    fillRampForTemperature(buf.data(), p.rampSize, temperature_);
 
     int fd = createGammaFd("qypr-nightlight", totalBytes);
     if (fd < 0) return;
-    if (!writeViaMmap(fd, buf.get(), totalBytes)) return;
+    if (!writeViaMmap(fd, buf.data(), totalBytes)) return;
 
     zwlr_gamma_control_v1_set_gamma(p.control, fd);
     close(fd);

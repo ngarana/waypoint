@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <string>
 
@@ -37,10 +38,10 @@ std::string getUserName() {
 }
 
 std::string getHostName() {
-    char buf[256]{};
-    if (gethostname(buf, sizeof(buf)) == 0) {
-        buf[sizeof(buf) - 1] = '\0';
-        return std::string(buf);
+    std::array<char, 256> buf{};
+    if (gethostname(buf.data(), buf.size()) == 0) {
+        buf.back() = '\0';
+        return {buf.data()};
     }
     return "localhost";
 }

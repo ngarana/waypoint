@@ -18,11 +18,11 @@ namespace {
 // --- zwlr_foreign_toplevel_handle_v1 listener trampolines ---
 void tlTitle(void* data, zwlr_foreign_toplevel_handle_v1* /*unused*/, const char* title) {
     auto* h = static_cast<TlHandle*>(data);
-    h->backend->onHandleTitle(h, title);
+    qypr::ToplevelBackend::onHandleTitle(h, title);
 }
 void tlAppId(void* data, zwlr_foreign_toplevel_handle_v1* /*unused*/, const char* appId) {
     auto* h = static_cast<TlHandle*>(data);
-    h->backend->onHandleAppId(h, appId);
+    qypr::ToplevelBackend::onHandleAppId(h, appId);
 }
 void tlOutputEnter(void* /*unused*/, zwlr_foreign_toplevel_handle_v1* /*unused*/,
                    wl_output* /*unused*/) {}
@@ -30,8 +30,8 @@ void tlOutputLeave(void* /*unused*/, zwlr_foreign_toplevel_handle_v1* /*unused*/
                    wl_output* /*unused*/) {}
 void tlState(void* data, zwlr_foreign_toplevel_handle_v1* /*unused*/, wl_array* states) {
     auto* h = static_cast<TlHandle*>(data);
-    h->backend->onHandleState(h, static_cast<const uint32_t*>(states->data),
-                              states->size / sizeof(uint32_t));
+    qypr::ToplevelBackend::onHandleState(h, static_cast<const uint32_t*>(states->data),
+                                         states->size / sizeof(uint32_t));
 }
 void tlDone(void* data, zwlr_foreign_toplevel_handle_v1* /*unused*/) {
     auto* h = static_cast<TlHandle*>(data);

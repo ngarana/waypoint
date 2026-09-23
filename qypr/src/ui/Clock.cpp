@@ -1,5 +1,6 @@
 #include "ui/Clock.hpp"
 
+#include <array>
 #include <ctime>
 
 #include "ui/Theme.hpp"
@@ -20,9 +21,9 @@ std::string formatNow(const char* fmt) {
     std::time_t t = std::time(nullptr);
     std::tm tm{};
     localtime_r(&t, &tm);
-    char buf[128];
-    std::strftime(buf, sizeof(buf), fmt, &tm);
-    return buf;
+    std::array<char, 128> buf{};
+    std::strftime(buf.data(), buf.size(), fmt, &tm);
+    return {buf.data()};
 }
 }  // namespace
 

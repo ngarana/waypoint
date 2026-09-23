@@ -1,6 +1,8 @@
 #include "ui/AudioController.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
 
 #include "mpris/MprisController.hpp"
@@ -31,11 +33,11 @@ std::string formatArtistAlbum(const std::string& artist, const std::string& albu
 }
 
 std::string formatTime(double seconds) {
-    if (seconds < 0) seconds = 0;
+    seconds = std::max<double>(seconds, 0);
     int total = static_cast<int>(seconds);
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%d:%02d", total / 60, total % 60);
-    return buf;
+    std::array<char, 16> buf{};
+    std::snprintf(buf.data(), buf.size(), "%d:%02d", total / 60, total % 60);
+    return buf.data();
 }
 }  // namespace
 
@@ -54,8 +56,9 @@ AudioController::AudioController(MprisController& mpris) : mpris_(mpris) {
         mpris_.next();
     };
     // Deterministic pre-bind state (compiled defaults); the owner re-binds
-    // the live copy via setTheme().
-    setTheme(theme::kDefaultState);
+    // the live copy via setTheme(). Qualified to document that the ctor
+    // intentionally binds this class's own override.
+    AudioController::setTheme(theme::kDefaultState);
 }
 
 void AudioController::setTheme(const theme::State& state) {
@@ -168,7 +171,7 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     const double bd = theme().audio.buttonSize;
     const double totalW = 3 * bd + 2 * sp;
     double bx = centerX - totalW / 2.0;
-    ActionButton* buttons[3] = {&prev_, &playPause_, &next_};
+    std::array<ActionButton*, 3> buttons = {&prev_, &playPause_, &next_};
     for (auto* b : buttons) {
         b->bounds = {bx, y, bd, bd};
         b->draw(p, now);
@@ -180,7 +183,8 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
     if (showVolume) {
         TextStyle lbl = smallMuted(theme());
         Size volLbl = p.measureText("Vol", lbl);
-        std::string pct = std::to_string(static_cast<int>(mpris_.volume() * 100 + 0.5)) + "%";
+        std::string pct =
+            std::to_string(static_cast<int>(std::lround(mpris_.volume() * 100))) + "%";
         Size pctSz = p.measureText(pct, lbl);
         double sliderMax = cw - volLbl.w - pctSz.w - 2 * theme().spacing.small;
         double sliderW = std::min(static_cast<double>(theme().audio.volumeSliderWidth), sliderMax);

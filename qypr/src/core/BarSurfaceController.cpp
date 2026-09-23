@@ -13,7 +13,7 @@ BarSurfaceController::BarSurfaceController(IBarSurfaceHost& host, EventLoop& loo
 
 void BarSurfaceController::setIdleHeight(int height) {
     idleHeight_ = height;
-    if (overlayHeight_ < idleHeight_) { overlayHeight_ = idleHeight_; }
+    overlayHeight_ = std::max(overlayHeight_, idleHeight_);
 }
 
 bool BarSurfaceController::syncOverlay(int statusBarOverlayHeight) {

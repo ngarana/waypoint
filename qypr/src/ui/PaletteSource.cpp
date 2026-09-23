@@ -47,7 +47,7 @@ std::string readPaletteFile(const std::string& path) {
         std::fprintf(stderr, "qypr: theme: colours file not readable: %s\n", path.c_str());
         return "";
     }
-    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return {(std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()};
 }
 
 }  // namespace qypr::theme

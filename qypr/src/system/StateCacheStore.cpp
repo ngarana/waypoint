@@ -26,10 +26,7 @@ bool StateCacheStore::ensureDir(const std::string& path) {
     // Strip the filename to get the directory.
     auto slash = dir.rfind('/');
     if (slash != std::string::npos && slash > 0) { dir = dir.substr(0, slash); }
-    if (::mkdir(dir.c_str(), 0700) != 0) {
-        if (errno == EEXIST) { return true; }
-        return false;
-    }
+    if (::mkdir(dir.c_str(), 0700) != 0) { return errno == EEXIST; }
     return true;
 }
 
@@ -37,10 +34,12 @@ bool StateCacheStore::writeAtomic(const std::string& path, const std::string& bo
     if (!ensureDir(path)) { return false; }
 
     const std::string tmp = path + ".tmp";
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
     std::FILE* f = std::fopen(tmp.c_str(), "we");
     if (f == nullptr) { return false; }
     const size_t written = std::fwrite(body.data(), 1, body.size(), f);
     const bool ok = written == body.size() && std::fflush(f) == 0;
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
     std::fclose(f);
     if (!ok) {
         ::unlink(tmp.c_str());

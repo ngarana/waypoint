@@ -2,6 +2,8 @@
 #include "ui/indicators/AppTile.hpp"
 #include "ui/indicators/TaskbarIndicator.hpp"
 
+#include <utility>
+
 #include "render/Painter.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "ui/Theme.hpp"
@@ -32,14 +34,14 @@ std::string TaskbarIndicator::tooltip() const {
 double TaskbarIndicator::measureWidth(Painter&) {
     const size_t n = snap_.windows.size();
     if (n == 0) return 0;
-    return n * kBtnW + (n - 1) * kGap + 2 * kSidePad;
+    return static_cast<double>(n) * kBtnW + static_cast<double>(n - 1) * kGap + 2 * kSidePad;
 }
 
 int TaskbarIndicator::hitTest(double x) const {
     const double localX = x - (bounds.x + kSidePad);
     if (localX < 0) return -1;
     const int idx = static_cast<int>(localX / (kBtnW + kGap));
-    if (idx < 0 || idx >= static_cast<int>(snap_.windows.size())) return -1;
+    if (idx < 0 || std::cmp_greater_equal(idx, snap_.windows.size())) return -1;
     // Reject the gap between buttons so a click there is a no-op, not a misfire.
     if (localX - idx * (kBtnW + kGap) > kBtnW) return -1;
     return idx;

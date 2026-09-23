@@ -21,7 +21,7 @@ public:
     void start(std::function<void()> onGeoClueFix = nullptr);
 
     // Synchronous start for preview mode.
-    void startPreview();
+    void startPreview() const;
 
 private:
     EventLoop& loop_;

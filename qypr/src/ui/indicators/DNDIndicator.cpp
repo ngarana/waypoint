@@ -32,7 +32,7 @@ bool DNDIndicator::onClick(double, double) {
 }
 
 std::unique_ptr<QSTile> DNDIndicator::createTile() {
-    auto dnd = dnd_;
+    auto* dnd = dnd_;
     return std::make_unique<QSToggleTile>(
         "Do Not Disturb", "󰽥", [dnd]() { return dnd && dnd->enabled(); },
         [dnd]() {

@@ -6,6 +6,8 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
+#include <array>
+
 #include "core/EventLoop.hpp"
 
 namespace qypr {
@@ -69,17 +71,17 @@ void ConfigWatcher::stop() {
 
 void ConfigWatcher::drain() {
     // Read and discard all pending events; we only care about the names.
-    alignas(struct inotify_event) char buf[4096];
+    alignas(struct inotify_event) std::array<char, 4096> buf{};
     bool matched = false;
 
     for (;;) {
-        const ssize_t n = ::read(inotifyFd_, buf, sizeof(buf));
+        const ssize_t n = ::read(inotifyFd_, buf.data(), buf.size());
         if (n <= 0) { break; }
 
         for (ssize_t off = 0; off < n;) {
-            const auto* ev = reinterpret_cast<const struct inotify_event*>(buf + off);
+            const auto* ev = reinterpret_cast<const struct inotify_event*>(buf.data() + off);
             if (ev->len > 0 && name_ == ev->name) { matched = true; }
-            off += sizeof(struct inotify_event) + ev->len;
+            off += static_cast<ssize_t>(sizeof(struct inotify_event) + ev->len);
         }
     }
 

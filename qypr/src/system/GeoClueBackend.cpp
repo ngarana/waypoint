@@ -54,6 +54,7 @@ bool GeoClueBackend::start() {
             return false;
         }
         const char* path = nullptr;
+        // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
         sd_bus_message_read_basic(reply, 'o', &path);
         if (path != nullptr) { clientPath_ = path; }
         sd_bus_message_unref(reply);
@@ -127,6 +128,7 @@ bool GeoClueBackend::refreshFix() {
             return false;
         }
         const char* path = nullptr;
+        // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
         sd_bus_message_read_basic(reply, 'o', &path);
         if (path != nullptr) { locationPath = path; }
         sd_bus_message_unref(reply);

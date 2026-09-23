@@ -108,14 +108,14 @@ void BarDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name, cons
 
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
         self->compositor_ = static_cast<wl_compositor*>(
-            wl_registry_bind(registry, name, &wl_compositor_interface, std::min(version, 4u)));
+            wl_registry_bind(registry, name, &wl_compositor_interface, std::min(version, 4U)));
         self->env_.compositor = self->compositor_;
     } else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
         self->shm_ = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
         self->env_.shm = self->shm_;
     } else if (std::strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         self->layerShell_ = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(
-            registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+            registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4U)));
     } else if (std::strcmp(interface, zwp_idle_inhibit_manager_v1_interface.name) == 0) {
         self->idleMgr_ = static_cast<zwp_idle_inhibit_manager_v1*>(
             wl_registry_bind(registry, name, &zwp_idle_inhibit_manager_v1_interface, 1));
@@ -124,7 +124,7 @@ void BarDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name, cons
             wl_registry_bind(registry, name, &zwlr_gamma_control_manager_v1_interface, 1));
     } else if (std::strcmp(interface, wl_seat_interface.name) == 0) {
         auto* seat = static_cast<wl_seat*>(
-            wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 7u)));
+            wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 7U)));
         self->seat_ = std::make_unique<Seat>(seat, self->loop_, &self->env_);
         self->seat_->setSink(self->sink_);
         self->seat_->setSurfaceSizer([self](wl_surface* s, int& w, int& h) {
@@ -136,7 +136,7 @@ void BarDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name, cons
         });
     } else if (std::strcmp(interface, wl_output_interface.name) == 0) {
         auto* output = static_cast<wl_output*>(
-            wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
+            wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4U)));
         auto win = std::make_unique<BarWindow>(output, name, &self->env_, self->reservedHeight_,
                                                self->bottom_);
         if (self->connected_ && self->layerShell_) win->createLayerSurface(self->layerShell_);

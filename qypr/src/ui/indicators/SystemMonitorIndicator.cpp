@@ -32,8 +32,9 @@ std::string pctText(double v) {
 }  // namespace
 
 SystemMonitorIndicator::SystemMonitorIndicator(const SystemBackends& backends)
-    : StatusIndicator("system-monitor", Zone::Right, 150) {
-    hasConfig_ = backends.config != nullptr;
+    : StatusIndicator("system-monitor", Zone::Right, 150),
+      hasConfig_(backends.config != nullptr) {
+
     // Opt-in only: no config (qypr-lock, config-less bar) → never shown, even
     // though the registry constructs it for the compiled-default bar.
     visible = hasConfig_;

@@ -4,9 +4,10 @@
 
 namespace qypr {
 
-Cursor::Cursor(wl_compositor* compositor, wl_shm* shm, int size) {
+Cursor::Cursor(wl_compositor* compositor, wl_shm* shm, int size)
+    : theme_(wl_cursor_theme_load(nullptr, size, shm)) {
     // nullptr theme name -> honour XCURSOR_THEME / the compositor default.
-    theme_ = wl_cursor_theme_load(nullptr, size, shm);
+
     if (!theme_) return;
 
     cursor_ = wl_cursor_theme_get_cursor(theme_, "left_ptr");
@@ -21,7 +22,8 @@ Cursor::Cursor(wl_compositor* compositor, wl_shm* shm, int size) {
     hotspotX_ = static_cast<int32_t>(image->hotspot_x);
     hotspotY_ = static_cast<int32_t>(image->hotspot_y);
     wl_surface_attach(surface_, buffer, 0, 0);
-    wl_surface_damage(surface_, 0, 0, image->width, image->height);
+    wl_surface_damage(surface_, 0, 0, static_cast<int32_t>(image->width),
+                      static_cast<int32_t>(image->height));
     wl_surface_commit(surface_);
 }
 

@@ -80,7 +80,7 @@ void ConfigRuntime::stopWatching() {
     watchedPath_.clear();
 }
 
-void ConfigRuntime::reload(ReloadCallback onReload, const std::string& filename) {
+void ConfigRuntime::reload(const ReloadCallback& onReload, const std::string& filename) {
     Config c = loadConfig(filename);
     auto geom = readGeometry(c);
     auto mods = readModules(c);

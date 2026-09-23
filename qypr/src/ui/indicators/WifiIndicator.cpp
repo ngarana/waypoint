@@ -326,9 +326,8 @@ public:
             case XKB_KEY_BackSpace:
                 if (!psk_.empty()) {
                     size_t i = psk_.size();
-                    do {
-                        --i;
-                    } while (i > 0 && (static_cast<unsigned char>(psk_[i]) & 0xC0) == 0x80);
+                    --i;
+                    while (i > 0 && (static_cast<unsigned char>(psk_[i]) & 0xC0) == 0x80) { --i; }
                     psk_.erase(i);
                 }
                 return true;
@@ -342,6 +341,8 @@ public:
                 authSsid_.clear();
                 psk_.clear();
                 return true;
+            default:
+                break;
         }
         return false;
     }

@@ -3,6 +3,8 @@
 
 #include <sys/epoll.h>
 #include <unistd.h>
+
+#include <array>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -15,6 +17,12 @@
 #include <security/pam_appl.h>
 
 #define WAYLAND_EXPORT __attribute__((visibility("default")))
+
+// NOLINTBEGIN(readability-identifier-naming, cppcoreguidelines-use-enum-class)
+// Every symbol below mirrors a C library ABI (PAM, libmpv, Wayland, xkbcommon,
+// sd-bus) or a mock_* control in matching snake_case; renaming would break the
+// mirror and the link-time interposition. C enum mirrors stay unscoped so the
+// mock constants compare equal to the real headers' values.
 
 // -----------------------------------------------------------------------------
 // Programmable PAM mock state
@@ -31,8 +39,13 @@
 // -----------------------------------------------------------------------------
 namespace {
 struct pam_conv g_pam_conv{};
-char g_pam_user[256] = {0};
-char g_pam_expected_password[256] = "correct";
+std::array<char, 256> g_pam_user{};
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization) // strcpy is noexcept
+std::array<char, 256> g_pam_expected_password = [] {
+    std::array<char, 256> buf{};
+    std::strcpy(buf.data(), "correct");
+    return buf;
+}();
 int g_pam_forced_rc = -1;  // when >= 0, pam_authenticate returns this verbatim
 }  // namespace
 
@@ -41,25 +54,25 @@ extern "C" {
 // Test controls (declared in the test translation unit).
 WAYLAND_EXPORT void mock_pam_reset() {
     g_pam_user[0] = '\0';
-    std::strcpy(g_pam_expected_password, "correct");
+    std::strcpy(g_pam_expected_password.data(), "correct");
     g_pam_forced_rc = -1;
 }
 WAYLAND_EXPORT void mock_pam_set_expected_password(const char* p) {
-    std::strncpy(g_pam_expected_password, p ? p : "", sizeof(g_pam_expected_password) - 1);
-    g_pam_expected_password[sizeof(g_pam_expected_password) - 1] = '\0';
+    std::strncpy(g_pam_expected_password.data(), p ? p : "", g_pam_expected_password.size() - 1);
+    g_pam_expected_password[g_pam_expected_password.size() - 1] = '\0';
 }
 WAYLAND_EXPORT void mock_pam_force_rc(int rc) {
     g_pam_forced_rc = rc;
 }
 WAYLAND_EXPORT const char* mock_pam_last_user() {
-    return g_pam_user;
+    return g_pam_user.data();
 }
 
 WAYLAND_EXPORT int pam_start(const char* service_name, const char* user,
                              const struct pam_conv* pam_conversation, pam_handle_t** pamh) {
     if (user) {
-        std::strncpy(g_pam_user, user, sizeof(g_pam_user) - 1);
-        g_pam_user[sizeof(g_pam_user) - 1] = '\0';
+        std::strncpy(g_pam_user.data(), user, g_pam_user.size() - 1);
+        g_pam_user[g_pam_user.size() - 1] = '\0';
     } else {
         g_pam_user[0] = '\0';
     }
@@ -81,17 +94,21 @@ WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
     const struct pam_message* msgs[2] = {&info, &prompt};
     struct pam_response* resp = nullptr;
     int rc = g_pam_conv.conv(2, msgs, &resp, g_pam_conv.appdata_ptr);
+    // Mock owns the PAM response memory across the conversation callback.
+    // NOLINTBEGIN(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
     if (rc != PAM_SUCCESS) {
         if (resp) free(resp);
         return PAM_AUTH_ERR;
     }
     // The password reply sits at the prompt's index (1); the info reply is null.
-    bool ok = resp && resp[1].resp && std::strcmp(resp[1].resp, g_pam_expected_password) == 0;
+    bool ok =
+        resp && resp[1].resp && std::strcmp(resp[1].resp, g_pam_expected_password.data()) == 0;
     if (resp) {
         free(resp[0].resp);  // ownership passes to the PAM layer (us)
         free(resp[1].resp);
         free(resp);
     }
+    // NOLINTEND(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
     return ok ? PAM_SUCCESS : PAM_AUTH_ERR;
 }
 
@@ -110,10 +127,10 @@ WAYLAND_EXPORT int pam_end(pam_handle_t* pamh, int pam_status) {
 // -----------------------------------------------------------------------------
 // mpv Mocks
 // -----------------------------------------------------------------------------
-typedef struct mpv_handle mpv_handle;
-typedef struct mpv_render_context mpv_render_context;
+using mpv_handle = struct mpv_handle;
+using mpv_render_context = struct mpv_render_context;
 
-typedef enum {
+using mpv_format = enum {
     MPV_FORMAT_NONE = 0,
     MPV_FORMAT_STRING = 1,
     MPV_FORMAT_OSD_STRING = 2,
@@ -124,9 +141,9 @@ typedef enum {
     MPV_FORMAT_NODE_ARRAY = 7,
     MPV_FORMAT_NODE_MAP = 8,
     MPV_FORMAT_BYTE_ARRAY = 9
-} mpv_format;
+};
 
-typedef enum {
+using mpv_event_id = enum {
     MPV_EVENT_NONE = 0,
     MPV_EVENT_SHUTDOWN = 1,
     MPV_EVENT_LOG_MESSAGE = 2,
@@ -146,7 +163,7 @@ typedef enum {
     MPV_EVENT_PROPERTY_CHANGE = 22,
     MPV_EVENT_QUEUE_OVERFLOW = 24,
     MPV_EVENT_HOOK = 25
-} mpv_event_id;
+};
 
 struct mpv_event {
     mpv_event_id event_id;
@@ -155,10 +172,10 @@ struct mpv_event {
     void* data;
 };
 
-typedef struct mpv_render_param {
+using mpv_render_param = struct mpv_render_param {
     int type;
     void* data;
-} mpv_render_param;
+};
 
 WAYLAND_EXPORT mpv_handle* mpv_create() {
     return (mpv_handle*)0x2222;
@@ -225,11 +242,14 @@ struct wl_cursor_theme;
 struct wl_cursor;
 struct wl_buffer;
 
-static void (**g_registry_listener)(void) = nullptr;
-static void* g_registry_data = nullptr;
+namespace {
+// Listener slots recorded by wl_proxy_add_listener for the Seat test.
+void (**g_registry_listener)(void) = nullptr;
+void* g_registry_data = nullptr;
 
-static void (**g_seat_listener)(void) = nullptr;
-static void* g_seat_data = nullptr;
+void (**g_seat_listener)(void) = nullptr;
+void* g_seat_data = nullptr;
+}  // namespace
 
 WAYLAND_EXPORT struct wl_display* wl_display_connect(const char* name) {
     return (struct wl_display*)0x4444;
@@ -263,9 +283,9 @@ WAYLAND_EXPORT int wl_display_roundtrip(struct wl_display* display) {
 
     // First roundtrip triggers globals on registry listener
     if (roundtrip_count == 1 && g_registry_listener && g_registry_data) {
-        typedef void (*global_cb_t)(void* data, void* registry, uint32_t name,
-                                    const char* interface, uint32_t version);
-        global_cb_t global_cb = (global_cb_t)g_registry_listener[0];
+        using global_cb_t = void (*)(void* data, void* registry, uint32_t name,
+                                     const char* interface, uint32_t version);
+        auto global_cb = (global_cb_t)g_registry_listener[0];
         if (global_cb) {
             global_cb(g_registry_data, (void*)0x5550, 1, "wl_compositor", 4);
             global_cb(g_registry_data, (void*)0x5551, 2, "wl_shm", 1);
@@ -276,8 +296,8 @@ WAYLAND_EXPORT int wl_display_roundtrip(struct wl_display* display) {
     }
     // Second roundtrip triggers seat capabilities (keyboard=1, pointer=2) on seat listener
     else if (roundtrip_count == 2 && g_seat_listener && g_seat_data) {
-        typedef void (*caps_cb_t)(void* data, void* seat, uint32_t caps);
-        caps_cb_t caps_cb = (caps_cb_t)g_seat_listener[0];
+        using caps_cb_t = void (*)(void* data, void* seat, uint32_t caps);
+        auto caps_cb = (caps_cb_t)g_seat_listener[0];
         if (caps_cb) {
             caps_cb(g_seat_data, (void*)0x5553, 3);  // both keyboard + pointer
         }
@@ -337,11 +357,13 @@ struct xkb_state;
 // repeat) match the historical hardcoded stubs, so tests that don't touch
 // these see identical behaviour; the Seat test sets them to drive the real
 // key-translation branches (special keys, text delivery, key repeat).
-static uint32_t g_xkb_sym = 0;
-static char g_xkb_utf8[64] = {0};
-static int g_xkb_repeats = 0;
+namespace {
+uint32_t g_xkb_sym = 0;
+std::array<char, 64> g_xkb_utf8{};
+int g_xkb_repeats = 0;
 // Layout set the Seat reports from (default: a single "English (US)").
-static uint32_t g_xkb_num_layouts = 1;
+uint32_t g_xkb_num_layouts = 1;
+}  // namespace
 
 WAYLAND_EXPORT void mock_xkb_reset() {
     g_xkb_sym = 0;
@@ -356,8 +378,8 @@ WAYLAND_EXPORT void mock_xkb_set_sym(uint32_t s) {
     g_xkb_sym = s;
 }
 WAYLAND_EXPORT void mock_xkb_set_utf8(const char* s) {
-    std::strncpy(g_xkb_utf8, s ? s : "", sizeof(g_xkb_utf8) - 1);
-    g_xkb_utf8[sizeof(g_xkb_utf8) - 1] = '\0';
+    std::strncpy(g_xkb_utf8.data(), s ? s : "", g_xkb_utf8.size() - 1);
+    g_xkb_utf8[g_xkb_utf8.size() - 1] = '\0';
 }
 WAYLAND_EXPORT void mock_xkb_set_repeats(int r) {
     g_xkb_repeats = r;
@@ -387,10 +409,10 @@ WAYLAND_EXPORT uint32_t xkb_state_key_get_one_sym(struct xkb_state* state, uint3
 
 WAYLAND_EXPORT int xkb_state_key_get_utf8(struct xkb_state* state, uint32_t key, char* buffer,
                                           size_t size) {
-    size_t n = std::strlen(g_xkb_utf8);
+    size_t n = std::strlen(g_xkb_utf8.data());
     if (buffer && size > 0) {
         if (n >= size) n = size - 1;
-        std::memcpy(buffer, g_xkb_utf8, n);
+        std::memcpy(buffer, g_xkb_utf8.data(), n);
         buffer[n] = '\0';
     }
     return static_cast<int>(n);
@@ -438,13 +460,13 @@ struct sd_bus_error {
     const char* message;
     int _need_free;
 };
-typedef struct {
+using sd_bus_vtable = struct {
     const char* element;
     int type;
     int (*handler)();
     size_t offset;
     unsigned long flags;
-} sd_bus_vtable;
+};
 
 WAYLAND_EXPORT bool g_mock_sdbus_fail = false;
 
@@ -642,3 +664,5 @@ WAYLAND_EXPORT int sd_bus_call_method_async(struct sd_bus* bus, struct sd_bus_sl
 }
 
 }  // extern "C"
+
+// NOLINTEND(readability-identifier-naming, cppcoreguidelines-use-enum-class)

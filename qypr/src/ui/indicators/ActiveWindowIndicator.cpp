@@ -11,10 +11,18 @@ namespace {
 // Cap the displayed length so a long title cannot dominate the bar. Counts
 // UTF-8 codepoints (not bytes) so multibyte titles are never cut mid-character.
 std::string truncateUtf8(const std::string& s, size_t maxCps) {
-    size_t cps = 0, i = 0;
+    size_t cps = 0;
+    size_t i = 0;
     while (i < s.size()) {
-        unsigned char c = static_cast<unsigned char>(s[i]);
-        size_t len = (c < 0x80) ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : 4;
+        auto c = static_cast<unsigned char>(s[i]);
+        size_t len = 4;
+        if (c < 0x80) {
+            len = 1;
+        } else if ((c >> 5) == 0x6) {
+            len = 2;
+        } else if ((c >> 4) == 0xE) {
+            len = 3;
+        }
         if (cps + 1 > maxCps) return s.substr(0, i) + "…";
         i += len;
         ++cps;

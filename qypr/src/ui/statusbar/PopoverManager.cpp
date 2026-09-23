@@ -127,7 +127,7 @@ void PopoverManager::draw(Painter& p, int64_t now) {
         }
     }
 
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur) {
         double prog = cur->openProgress_.value(now);
         p.pushGroup();
@@ -151,53 +151,52 @@ double PopoverManager::maxContentHeight() const {
 bool PopoverManager::animating(int64_t now) const {
     if (transitioning_ && transitioning_->openProgress_.active(now)) { return true; }
     if (borrowedClosing_ && borrowedClosing_->openProgress_.active(now)) { return true; }
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
-    if (cur && cur->openProgress_.active(now)) { return true; }
-    return false;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
+    return cur && cur->openProgress_.active(now);
 }
 
 bool PopoverManager::handleClick(double x, double y) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur && cur->contains(x, y)) { return cur->handleClick(x, y); }
     return false;
 }
 
 bool PopoverManager::handleSecondaryClick(double x, double y) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur && cur->contains(x, y)) { return cur->handleSecondaryClick(x, y); }
     return false;
 }
 
 bool PopoverManager::handleDrag(double x, double y) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur && cur->contains(x, y)) { return cur->handleDrag(x, y); }
     return false;
 }
 
 bool PopoverManager::handleMotion(double x, double y) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     return cur ? cur->handleMotion(x, y) : false;
 }
 
 bool PopoverManager::handleScroll(double dx, double dy) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur) { return cur->handleScroll(dx, dy); }
     return false;
 }
 
 bool PopoverManager::handleKey(uint32_t keysym) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur) { return cur->handleKey(keysym); }
     return false;
 }
 
 bool PopoverManager::handleText(const std::string& utf8) {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     return cur ? cur->handleText(utf8) : false;
 }
 
 bool PopoverManager::activeWantsKeyboard() const {
-    DetailedPopover* cur = active_.get() ? active_.get() : borrowed_;
+    DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     return cur && cur->wantsKeyboard();
 }
 

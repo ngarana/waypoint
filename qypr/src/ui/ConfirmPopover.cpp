@@ -2,6 +2,7 @@
 
 #include "ui/ConfirmPopover.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -15,17 +16,21 @@ namespace qypr {
 
 // Card rect: right edge sits at anchoredX_, vertically centred on anchoredY_.
 // We clamp so it never goes above the top of the screen.
-static Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h) {
+namespace {
+
+Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h) {
     constexpr double kCardW = ConfirmPopover::kCardW;
     constexpr double kCardH = ConfirmPopover::kCardH;
     constexpr double kGap = 10.0;  // gap between card right edge and pill left edge
     double x = anchoredX - kCardW - kGap;
     double y = anchoredY - kCardH / 2.0;
     // Keep card on screen vertically.
-    if (y < 8.0) y = 8.0;
+    y = std::max(y, 8.0);
     if (y + kCardH > h - 8.0) y = h - 8.0 - kCardH;
     return {x, y, kCardW, kCardH};
 }
+
+}  // namespace
 
 Rect ConfirmPopover::cancelBtnRect(const Rect& card) const {
     const double btnW = (card.w - kPad * 2.0 - 8.0) / 2.0;
@@ -191,10 +196,13 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
 
     auto drawBtn = [&](const Rect& r, bool hovered, double scale, const std::string& label,
                        bool isPrimary) {
-        const double sx = r.cx(), sy = r.cy();
+        const double sx = r.cx();
+        const double sy = r.cy();
         Rect sr{sx - r.w * scale / 2.0, sy - r.h * scale / 2.0, r.w * scale, r.h * scale};
 
-        Color bg, border, fg;
+        Color bg;
+        Color border;
+        Color fg;
         if (isPrimary) {
             bg = hovered ? Color::fromHex("#cc89b4fa") : Color::fromHex("#7089b4fa");
             border = theme().colors.primary.withAlpha(0.6);

@@ -50,7 +50,7 @@ sd_bus_slot* SystemBus::addMatch(const char* rule, sd_bus_message_handler_t hand
 }
 
 void SystemBus::drain() {
-    int r;
+    int r = 0;
     while ((r = sd_bus_process(bus_, nullptr)) > 0) {}
     if (r < 0) {
         std::fprintf(stderr, "qypr: system bus error (%d); disconnecting\n", r);

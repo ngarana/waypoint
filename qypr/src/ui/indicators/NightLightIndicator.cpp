@@ -93,13 +93,13 @@ std::unique_ptr<QSTile> NightLightIndicator::createTile() {
 std::unique_ptr<DetailedPopover> NightLightIndicator::createDetailedView() {
     if (!backend_) return nullptr;
 
-    auto backend = backend_;
+    auto* backend = backend_;
     auto tile = std::make_unique<QSSliderTile>(
         kMoonGlyph, [backend]() { return backend ? backend->sliderValue() : 0.0; },
         [backend](double value) {
             if (backend) backend->setSliderValue(value);
         },
-        [backend]() { return std::string(kMoonGlyph); }, nullptr, nullptr, "Night Light");
+        []() { return std::string(kMoonGlyph); }, nullptr, nullptr, "Night Light");
     return std::make_unique<SliderPopover>(std::move(tile));
 }
 

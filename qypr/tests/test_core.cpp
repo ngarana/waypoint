@@ -462,6 +462,7 @@ TEST(ConfigRuntimeGeometryAndModules) {
 
     auto mods = qypr::ConfigRuntime::readModules(c);
     EXPECT_TRUE(mods.has_value());
+    if (!mods.has_value()) return;  // remaining checks dereference mods
     EXPECT_EQ(static_cast<int>(mods->left.size()), 2);
     EXPECT_EQ(mods->left.at(0), std::string("clock"));
     EXPECT_EQ(mods->left.at(1), std::string("launcher"));

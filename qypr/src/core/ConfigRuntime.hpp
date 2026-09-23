@@ -37,7 +37,7 @@ public:
     void stopWatching();
 
     // Trigger an immediate manual reload with the specified path.
-    void reload(ReloadCallback onReload, const std::string& path = "");
+    void reload(const ReloadCallback& onReload, const std::string& filename = "");
 
 private:
     EventLoop& loop_;

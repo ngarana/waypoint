@@ -55,15 +55,15 @@ QSLayoutResult QuickSettingsLayout::layout(const Rect& popBounds, const QSLayout
     const double colW = (contentW - (2 * m.gap)) / kGridCols;
 
     // 1. Header (left side) & Power button (right side)
-    constexpr double powerW = 52.0;
-    const double headerW = contentW - powerW - m.gap;
+    constexpr double kPowerW = 52.0;
+    const double headerW = contentW - kPowerW - m.gap;
     if (header != nullptr) {
         header->bounds = {.x = popBounds.x + m.pad, .y = y, .w = headerW, .h = kHeaderH};
     }
 
     if (power != nullptr) {
-        const double px = popBounds.x + popBounds.w - m.pad - powerW;
-        res.powerBounds = {.x = px, .y = y, .w = powerW, .h = kHeaderH};
+        const double px = popBounds.x + popBounds.w - m.pad - kPowerW;
+        res.powerBounds = {.x = px, .y = y, .w = kPowerW, .h = kHeaderH};
         power->bounds = res.powerBounds;
     }
 

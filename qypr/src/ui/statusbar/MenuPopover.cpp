@@ -1,6 +1,8 @@
 // MenuPopover.cpp - Generic dbusmenu renderer implementation.
 #include "ui/statusbar/MenuPopover.hpp"
 
+#include <algorithm>
+
 #include "render/Painter.hpp"
 #include "system/DbusMenuBackend.hpp"
 #include "ui/Theme.hpp"
@@ -120,8 +122,8 @@ void MenuPopover::draw(Painter& p, int64_t now) {
 }
 
 bool MenuPopover::handleClick(double x, double y) {
-    for (const auto& h : hits_) {
-        if (!h.r.contains(x, y)) continue;
+    return std::ranges::any_of(hits_, [&](const auto& h) {
+        if (!h.r.contains(x, y)) { return false; }
         switch (h.kind) {
             case Hit::Back:
                 if (stack_.size() > 1) stack_.pop_back();
@@ -134,8 +136,8 @@ bool MenuPopover::handleClick(double x, double y) {
                 closeRequested_ = true;
                 return true;
         }
-    }
-    return false;
+        return true;
+    });
 }
 
 bool MenuPopover::handleDrag(double x, double y) {

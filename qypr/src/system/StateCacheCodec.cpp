@@ -1,6 +1,7 @@
 // StateCacheCodec.cpp - Typed snapshot ↔ text conversion.
 #include "system/StateCacheCodec.hpp"
 
+#include <array>
 #include <cstdio>
 #include <string>
 
@@ -76,9 +77,9 @@ std::string StateCacheCodec::serialize(const SystemBackends& backends) const {
         const auto& s = backends.volume->snapshot();
         section("volume");
         putBool("available", s.available);
-        char buf[32];
-        std::snprintf(buf, sizeof buf, "%.2f", s.level);
-        out += "level = " + std::string(buf) + "\n";
+        std::array<char, 32> buf{};
+        std::snprintf(buf.data(), buf.size(), "%.2f", s.level);
+        out += "level = " + std::string(buf.data()) + "\n";
         putBool("muted", s.muted);
         putStr("sink", s.sinkName);
     }

@@ -2,6 +2,7 @@
 #include "ui/statusbar/StatusBarLayout.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 
 namespace qypr {
@@ -114,7 +115,7 @@ LayoutResult computeStatusBarLayout(const LayoutRequest& req) {
 
     int contentW = 0;
     if (contentRight > contentLeft) {
-        contentW = static_cast<int>(contentRight - contentLeft + (2 * req.pad) + 0.5);
+        contentW = static_cast<int>(std::lround(contentRight - contentLeft + (2 * req.pad)));
     }
     contentW = std::min(contentW, req.screenW);
 

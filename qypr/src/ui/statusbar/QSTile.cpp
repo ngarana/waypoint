@@ -58,7 +58,10 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
             c1 = theme().colors.blue;
             c2 = theme().colors.mauve;
         } else if (title_.find("Night") != std::string::npos ||
-                   title_.find("Dark") != std::string::npos) {
+                   title_.find("Dark") != std::string::npos ||
+                   title_.find("Disturb") != std::string::npos ||
+                   title_.find("DND") != std::string::npos) {
+            // Amber tiles: night light and Do-Not-Disturb share the palette.
             c1 = theme().colors.warning;
             c2 = theme().colors.peach;
         } else if (title_.find("Keep") != std::string::npos ||
@@ -69,10 +72,6 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
         } else if (title_.find("Screenshot") != std::string::npos) {
             c1 = theme().colors.peach;
             c2 = theme().colors.maroon;
-        } else if (title_.find("Disturb") != std::string::npos ||
-                   title_.find("DND") != std::string::npos) {
-            c1 = theme().colors.warning;
-            c2 = theme().colors.peach;
         }
 
         cairo_pattern_t* pat = cairo_pattern_create_linear(badgeCx - badgeR, badgeCy - badgeR,
@@ -134,6 +133,8 @@ bool QSSliderTile::handleKey(uint32_t keysym) {
         case XKB_KEY_Down:
         case XKB_KEY_Left:
             return stepValue(false);
+        default:
+            break;
     }
     return false;
 }
@@ -203,8 +204,12 @@ void QSInfoTile::draw(Painter& p, int64_t now) {
 
     double pad = 12.0;
 
-    Color icCol = progress > 0.5 ? theme().colors.success
-                                 : (progress > 0.2 ? theme().colors.warning : theme().colors.error);
+    Color icCol = theme().colors.error;
+    if (progress > 0.5) {
+        icCol = theme().colors.success;
+    } else if (progress > 0.2) {
+        icCol = theme().colors.warning;
+    }
     TextStyle iconStyle{theme().font.iconFamily, 16.0, PANGO_WEIGHT_NORMAL, icCol};
     const std::string ic = currentIcon();
     Size iconSz = p.measureText(ic, iconStyle);
@@ -324,7 +329,7 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
     }
 
     // Pick wifi glyph based on actual signal strength
-    const char* wifiGlyph;
+    const char* wifiGlyph = nullptr;
     if (!enabled_) {
         wifiGlyph = "󰤮";  // wifi-off
     } else if (!connected_) {
@@ -429,6 +434,8 @@ bool QSVolumeTile::handleKey(uint32_t keysym) {
         case XKB_KEY_Down:
         case XKB_KEY_Left:
             return stepValue(false);
+        default:
+            break;
     }
     return false;
 }

@@ -63,7 +63,7 @@ BluetoothAgent::~BluetoothAgent() {
 
 // ─── Vtable ─────────────────────────────────────────────────────────────────
 
-const sd_bus_vtable BluetoothAgent::kVtable[] = {
+const std::array<sd_bus_vtable, 11> BluetoothAgent::kVtable = {{
     SD_BUS_VTABLE_START(0),
     SD_BUS_METHOD("Release", "", "", &BluetoothAgent::onRelease, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("RequestPinCode", "o", "s", &BluetoothAgent::onRequestPinCode,
@@ -82,14 +82,14 @@ const sd_bus_vtable BluetoothAgent::kVtable[] = {
                   SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Cancel", "", "", &BluetoothAgent::onCancel, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_VTABLE_END,
-};
+}};
 
 void BluetoothAgent::start() {
     if (!bus_.available()) { return; }
 
     if (!exported_) {
         const int r = sd_bus_add_object_vtable(bus_.get(), &vtableSlot_, kAgentPath, kAgentIface,
-                                               kVtable, this);
+                                               kVtable.data(), this);
         if (r < 0) {
             std::fprintf(stderr, "qypr: failed to export Bluetooth agent: %d\n", -r);
             return;

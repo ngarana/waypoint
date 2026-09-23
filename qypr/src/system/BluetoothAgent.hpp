@@ -23,6 +23,8 @@
 #include <functional>
 #include <string>
 
+#include <array>
+
 #include <systemd/sd-bus.h>  // sd_bus_vtable must be complete for the member below
 
 namespace qypr {
@@ -115,7 +117,7 @@ private:
 
     // Member rather than file-scope so its initializer can name the private
     // handlers above.
-    static const sd_bus_vtable kVtable[];
+    static const std::array<sd_bus_vtable, 11> kVtable;
 
     // Park `m` as the pending call and raise `req` to the UI. Returns the value
     // the vtable handler must return (1 = "I will reply later"), or a negative

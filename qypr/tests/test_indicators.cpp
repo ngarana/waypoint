@@ -996,8 +996,8 @@ TEST(LockRuntimeLacksSessionBundleAndSessionIndicators) {
             : qypr::StatusIndicator("test-session-applet", qypr::Zone::Left, 10) {
             (void)b;
         }
-        std::string icon() const override { return ""; }
-        std::string tooltip() const override { return ""; }
+        [[nodiscard]] std::string icon() const override { return ""; }
+        [[nodiscard]] std::string tooltip() const override { return ""; }
     };
 
     // Register a Session-bundled indicator to verify gating:

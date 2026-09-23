@@ -53,7 +53,11 @@ void PowerProfilesBackend::refresh() {
             next.active = active;
             next.available = true;
         }
+        // NOLINTBEGIN(cppcoreguidelines-owning-memory) // sd-bus C API owns handle
+        // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // sd-bus C API owns handle
         free(active);
+        // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
+        // NOLINTEND(cppcoreguidelines-owning-memory)
         sd_bus_error_free(&err);
     }
     if (!next.available) {  // daemon not present
@@ -73,13 +77,16 @@ void PowerProfilesBackend::refresh() {
             if (sd_bus_message_enter_container(reply, 'a', "a{sv}") >= 0) {
                 while (sd_bus_message_enter_container(reply, 'a', "{sv}") > 0) {
                     while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
-                        const char* key = nullptr;
-                        sd_bus_message_read_basic(reply, 's', &key);
+                        void* keyRaw = nullptr;
+                        sd_bus_message_read_basic(reply, 's', static_cast<void*>(&keyRaw));
+                        const char* key = static_cast<const char*>(keyRaw);
                         if (key && std::strcmp(key, "Profile") == 0 &&
                             sd_bus_message_enter_container(reply, 'v', "s") >= 0) {
-                            const char* name = nullptr;
-                            if (sd_bus_message_read_basic(reply, 's', &name) >= 0 && name)
-                                next.profiles.emplace_back(name);
+                            void* nameRaw = nullptr;
+                            if (sd_bus_message_read_basic(reply, 's',
+                                                          static_cast<void*>(&nameRaw)) >= 0 &&
+                                nameRaw != nullptr)
+                                next.profiles.emplace_back(static_cast<const char*>(nameRaw));
                             sd_bus_message_exit_container(reply);
                         } else {
                             sd_bus_message_skip(reply, "v");

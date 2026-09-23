@@ -8,6 +8,39 @@
 #   cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 #   ln -sf build/compile_commands.json .
 
+# Rationale for disabled checks (AGENT.md rule 3: project-wide pedantic
+# checks are disabled here with reasons, never worked around in code):
+# - cppcoreguidelines-pro-bounds-avoid-unchecked-container-access: bounds are
+#   ensured by protocol logic (wayland serials, PAM counts, mpv arrays);
+#   `.at()` exceptions on the render path would be a behaviour change.
+# - modernize-use-designated-initializers: positional init of small aggregates
+#   and C structs (Color{r,g,b}, pam_message{...}) is the codebase idiom.
+# - performance-enum-size: enum widths mirror wire/protocol types; shrinking
+#   them is ABI churn. Same disable as waylaunch/.
+# - readability-braces-around-statements: single-line guards
+#   (`if (!ok) return;`) are the codebase idiom. Same disable as waylaunch/.
+# - readability-implicit-bool-conversion: idiomatic null/flag tests on
+#   pointers and C handles (`if (cb)`, `if (flags & EPOLLIN)`).
+#   Same disable as waylaunch/.
+# - readability-math-missing-parentheses: standard arithmetic precedence
+#   (`a * b + c`) is readable; mandatory parens everywhere are noise.
+# - readability-convert-member-functions-to-static: Runtime/controller methods
+#   stay instance methods for interface uniformity after the decomposition.
+# - misc-const-correctness: suggests `const` on every test local, by-value
+#   parameter and lambda capture; const-by-value churn, no safety gain.
+# - misc-unused-parameters: C callbacks, PAM conversation functions and
+#   virtual overrides keep parameter names as documentation; same rationale
+#   as the already-disabled readability-named-parameter.
+# - hicpp-named-parameter: unnamed unused parameters are idiomatic; twin of
+#   the already-disabled readability-named-parameter.
+# - hicpp-signed-bitwise: POSIX/C bitmask APIs are int-based (epoll, inotify,
+#   PulseAudio flags); flag composition through `int` is the documented
+#   pattern, not a bug.
+# - concurrency-mt-unsafe: the bar, lock screen and recorder are
+#   single-threaded event-loop processes; getenv/localtime/time on the loop
+#   thread are safe.
+# NOTE: no `#` comments are allowed inside the Checks scalar below (YAML `>`
+# folds them into the check names and silently breaks the disables).
 Checks: >
   clang-diagnostic-*,
   -clang-diagnostic-unused-command-line-argument,
@@ -24,6 +57,7 @@ Checks: >
   -cppcoreguidelines-avoid-non-const-global-variables,
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   -cppcoreguidelines-pro-type-cstyle-cast,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-pro-type-vararg,
@@ -31,18 +65,26 @@ Checks: >
 
   modernize-*,
   -modernize-use-trailing-return-type,
+  -modernize-use-designated-initializers,
 
   performance-*,
+  -performance-enum-size,
 
   readability-*,
   -readability-function-cognitive-complexity,
   -readability-magic-numbers,
   -readability-named-parameter,
   -readability-identifier-length,
+  -readability-braces-around-statements,
+  -readability-implicit-bool-conversion,
+  -readability-math-missing-parentheses,
+  -readability-convert-member-functions-to-static,
 
   misc-*,
   -misc-non-private-member-variables-in-classes,
   -misc-include-cleaner,
+  -misc-const-correctness,
+  -misc-unused-parameters,
 
   hicpp-*,
   -hicpp-avoid-c-arrays,
@@ -50,8 +92,11 @@ Checks: >
   -hicpp-no-array-decay,
   -hicpp-use-equals-default,
   -hicpp-vararg,
+  -hicpp-named-parameter,
+  -hicpp-signed-bitwise,
 
   concurrency-*,
+  -concurrency-mt-unsafe,
 
   portability-*
 

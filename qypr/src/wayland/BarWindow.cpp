@@ -92,7 +92,7 @@ void BarWindow::setKeyboardInteractive(bool on) {
 void BarWindow::setOverlayHeight(int logicalH) {
     const int full = outputHeight_ > 0 ? outputHeight_ : kFallbackOutputHeight;
     int h = logicalH < reservedHeight_ ? reservedHeight_ : logicalH;
-    if (h > full) h = full;
+    h = std::min(h, full);
     if (!layerSurface_ || h == inputHeight_) return;
     inputHeight_ = h;
     if (configured_) render();
@@ -185,9 +185,9 @@ void BarWindow::render() {
     // Clear only the active and previously drawn regions to keep memory sparse.
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    const int clear_h = std::max(inputHeight_, buf->drawnHeight());
-    const int clear_y = bottom_ ? (height_ - clear_h) : 0;
-    cairo_rectangle(cr, 0, clear_y, width_, clear_h);
+    const int clearH = std::max(inputHeight_, buf->drawnHeight());
+    const int clearY = bottom_ ? (height_ - clearH) : 0;
+    cairo_rectangle(cr, 0, clearY, width_, clearH);
     cairo_fill(cr);
     cairo_restore(cr);
 
@@ -201,7 +201,7 @@ void BarWindow::render() {
     buf->markBusy();
 
     // Damage only the active/previously active region to save compositor resource consumption.
-    const int dmgH = clear_h;
+    const int dmgH = clearH;
     const int dmgY = bottom_ ? (height_ - dmgH) * scale_ : 0;
     wl_surface_damage_buffer(surface_, 0, dmgY, pxW, dmgH * scale_);
 

@@ -3,6 +3,7 @@
 #include "notifications/NotificationMonitor.hpp"
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <cstdio>
 #include <cstring>
@@ -32,11 +33,11 @@ constexpr uint32_t kClosedByCall = 3;     // a CloseNotification call
 // bound by its host alongside every other UI object.
 Color accentFor(const theme::State& theme, uint64_t key, uint8_t urgency) {
     if (urgency >= kUrgencyCritical) { return theme.colors.red; }
-    const Color accents[] = {
+    const std::array<Color, 8> accents = {
         theme.colors.blue, theme.colors.green, theme.colors.mauve, theme.colors.peach,
         theme.colors.teal, theme.colors.sky,   theme.colors.pink,  theme.colors.yellow,
     };
-    return accents[key % (sizeof(accents) / sizeof(accents[0]))];
+    return accents.at(key % accents.size());
 }
 
 std::vector<std::string> sensitiveApps;
@@ -73,10 +74,9 @@ bool isAppSensitive(const std::string& appName) {
     loadSensitiveApps();
     std::string app = appName;
     std::ranges::transform(app, app.begin(), ::tolower);
-    for (const auto& sensitive : sensitiveApps) {
-        if (app.find(sensitive) != std::string::npos) { return true; }
-    }
-    return false;
+    return std::ranges::any_of(sensitiveApps, [&](const auto& sensitive) {
+        return app.find(sensitive) != std::string::npos;
+    });
 }
 
 // Read a variant holding any integer/boolean type (1) or a string type (2) into out
@@ -135,6 +135,8 @@ int readVariant(sd_bus_message* m, uint64_t& numOut, std::string& strOut) {
             }
             case 't':
                 ok = sd_bus_message_read(m, "t", &numOut) >= 0;
+                break;
+            default:
                 break;
         }
         sd_bus_message_exit_container(m);

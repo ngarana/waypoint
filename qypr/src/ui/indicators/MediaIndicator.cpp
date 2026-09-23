@@ -23,10 +23,18 @@ constexpr double kPad = 12.0;
 // Cap the bar text; a long track title must not push the zones around. Counts
 // UTF-8 codepoints so multibyte titles are never cut mid-character.
 std::string truncateUtf8(const std::string& s, size_t maxCps) {
-    size_t cps = 0, i = 0;
+    size_t cps = 0;
+    size_t i = 0;
     while (i < s.size()) {
-        unsigned char c = static_cast<unsigned char>(s[i]);
-        size_t len = (c < 0x80) ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : 4;
+        auto c = static_cast<unsigned char>(s[i]);
+        size_t len = 4;
+        if (c < 0x80) {
+            len = 1;
+        } else if ((c >> 5) == 0x6) {
+            len = 2;
+        } else if ((c >> 4) == 0xE) {
+            len = 3;
+        }
         if (cps + 1 > maxCps) return s.substr(0, i) + "…";
         i += len;
         ++cps;
@@ -38,8 +46,8 @@ class MediaPopover : public DetailedPopover {
 public:
     explicit MediaPopover(MprisController* m) : mpris_(m) {}
 
-    double contentWidth() const override { return kMenuW; }
-    double contentHeight() const override { return 132.0; }
+    [[nodiscard]] double contentWidth() const override { return kMenuW; }
+    [[nodiscard]] double contentHeight() const override { return 132.0; }
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();

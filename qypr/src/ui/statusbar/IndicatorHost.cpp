@@ -6,7 +6,8 @@
 namespace qypr {
 
 void IndicatorHost::bucket(std::vector<std::unique_ptr<StatusIndicator>>&& all) {
-    for (auto& ind : all) {
+    auto owned = std::move(all);
+    for (auto& ind : owned) {
         if (ind->zone() == Zone::Left) {
             left_.push_back(std::move(ind));
         } else if (ind->zone() == Zone::Center) {

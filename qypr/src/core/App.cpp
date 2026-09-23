@@ -193,7 +193,7 @@ int App::videoTest(int seconds) {
     loop_.addTimer(1000, true, [this] {
         std::fprintf(stderr, "video-test: hasFrame=%d\n", video_.hasFrame() ? 1 : 0);
     });
-    loop_.addTimer(seconds * 1000, false, [this] { loop_.quit(); });
+    loop_.addTimer(static_cast<int64_t>(seconds) * 1000, false, [this] { loop_.quit(); });
 
     loop_.run();
     std::fprintf(stderr, "video-test: DONE hasFrame=%d\n", video_.hasFrame() ? 1 : 0);

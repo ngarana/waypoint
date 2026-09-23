@@ -49,7 +49,11 @@ SecureBuffer& SecureBuffer::operator=(SecureBuffer&& other) noexcept {
 
 void SecureBuffer::allocate(size_t capacity) noexcept {
     if (capacity == 0) return;
+    // NOLINTBEGIN(cppcoreguidelines-owning-memory) // mmap-style C allocation; freed in release()
+    // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // C allocation; freed in release()
     buf_ = static_cast<char*>(std::malloc(capacity));
+    // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
+    // NOLINTEND(cppcoreguidelines-owning-memory)
     if (buf_ == nullptr) return;  // inert but safe: appends become no-ops
     cap_ = capacity;
     size_ = 0;
@@ -76,7 +80,11 @@ void SecureBuffer::release() noexcept {
     if (buf_ == nullptr) return;
     wipe(buf_, cap_);  // the whole allocation, not just the live prefix
     if (locked_) { ::munlock(buf_, cap_); }
+    // NOLINTBEGIN(cppcoreguidelines-owning-memory) // paired with the malloc in allocate()
+    // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // paired with malloc in allocate()
     std::free(buf_);
+    // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
+    // NOLINTEND(cppcoreguidelines-owning-memory)
     buf_ = nullptr;
     cap_ = 0;
     size_ = 0;

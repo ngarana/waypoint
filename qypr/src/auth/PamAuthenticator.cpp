@@ -23,7 +23,11 @@ int conversation(int numMsg, const pam_message** msg, pam_response** resp, void*
     if (numMsg <= 0) { return PAM_CONV_ERR; }
     auto* data = static_cast<ConvData*>(appdata);
 
+    // NOLINTBEGIN(cppcoreguidelines-owning-memory) // PAM takes ownership via *resp
+    // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // PAM takes ownership via *resp
     auto* replies = static_cast<pam_response*>(calloc(numMsg, sizeof(pam_response)));
+    // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
+    // NOLINTEND(cppcoreguidelines-owning-memory)
     if (replies == nullptr) { return PAM_BUF_ERR; }
 
     for (int i = 0; i < numMsg; ++i) {
@@ -85,9 +89,12 @@ bool PamAuthenticator::authenticate(SecureBuffer&& password, Done done) {
             pam_end(pamh, rc);
             pw.clear();  // explicit, in addition to the destructor's wipe
 
-            Result const result = rc == PAM_SUCCESS    ? Result::Success
-                                  : rc == PAM_AUTH_ERR ? Result::Failure
-                                                       : Result::Error;
+            Result result = Result::Error;
+            if (rc == PAM_SUCCESS) {
+                result = Result::Success;
+            } else if (rc == PAM_AUTH_ERR) {
+                result = Result::Failure;
+            }
 
             loop_.post([done, result, message] { done(result, message); });
             busy_.store(false);

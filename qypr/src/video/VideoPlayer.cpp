@@ -2,6 +2,7 @@
 
 #include <cairo/cairo.h>
 
+#include <array>
 #include <cstdio>
 #include <ctime>
 
@@ -14,7 +15,9 @@ namespace {
 // The playlists live next to the binary's project root; entries are relative
 // to the playlist file, so we only need to locate the playlists directory.
 std::string resolvePlaylistDir() {
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
     if (FILE* f = std::fopen("playlists/day.m3u", "r")) {
+        // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
         std::fclose(f);
         return "playlists";
     }
@@ -65,11 +68,12 @@ bool VideoPlayer::init(const std::string& playlistDir) {
         return false;
     }
 
-    mpv_render_param params[] = {
+    std::array<mpv_render_param, 2> params = {{
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast) // const-incorrect mpv C API
         {MPV_RENDER_PARAM_API_TYPE, const_cast<char*>(MPV_RENDER_API_TYPE_SW)},
         mpv_render_param(),
-    };
-    if (mpv_render_context_create(&renderCtx_, mpv_, params) < 0) {
+    }};
+    if (mpv_render_context_create(&renderCtx_, mpv_, params.data()) < 0) {
         std::fprintf(stderr, "qypr-lock: mpv_render_context_create failed\n");
         mpv_destroy(mpv_);
         mpv_ = nullptr;
@@ -87,8 +91,8 @@ bool VideoPlayer::init(const std::string& playlistDir) {
 }
 
 void VideoPlayer::loadPlaylist(const std::string& path) {
-    const char* cmd[] = {"loadlist", path.c_str(), nullptr};
-    mpv_command_async(mpv_, 0, cmd);
+    std::array<const char*, 3> cmd = {"loadlist", path.c_str(), nullptr};
+    mpv_command_async(mpv_, 0, cmd.data());
 }
 
 void VideoPlayer::start() {
@@ -164,7 +168,8 @@ void VideoPlayer::processEvents() {
 
 void VideoPlayer::ensureBuffer() {
     if (!mpv_) return;
-    int64_t w = 0, h = 0;
+    int64_t w = 0;
+    int64_t h = 0;
     if (mpv_get_property(mpv_, "dwidth", MPV_FORMAT_INT64, &w) < 0) return;
     if (mpv_get_property(mpv_, "dheight", MPV_FORMAT_INT64, &h) < 0) return;
     if (w <= 0 || h <= 0) return;
@@ -181,17 +186,17 @@ void VideoPlayer::renderFrame() {
     ensureBuffer();
     if (frameW_ <= 0 || frameH_ <= 0 || pixels_.empty()) return;
 
-    int size[2] = {frameW_, frameH_};
+    std::array<int, 2> size = {frameW_, frameH_};
     size_t stride = static_cast<size_t>(frameW_) * 4;
-    char format[] = "bgr0";  // B,G,R,X bytes == cairo RGB24 on little-endian
-    mpv_render_param params[] = {
-        {MPV_RENDER_PARAM_SW_SIZE, size},
-        {MPV_RENDER_PARAM_SW_FORMAT, format},
+    std::array<char, 5> format = {"bgr0"};  // B,G,R,X bytes == cairo RGB24 on little-endian
+    std::array<mpv_render_param, 5> params = {{
+        {MPV_RENDER_PARAM_SW_SIZE, size.data()},
+        {MPV_RENDER_PARAM_SW_FORMAT, format.data()},
         {MPV_RENDER_PARAM_SW_STRIDE, &stride},
         {MPV_RENDER_PARAM_SW_POINTER, pixels_.data()},
         mpv_render_param(),
-    };
-    if (mpv_render_context_render(renderCtx_, params) == 0) {
+    }};
+    if (mpv_render_context_render(renderCtx_, params.data()) == 0) {
         haveContent_ = true;
         host_.invalidate();
     }
@@ -205,7 +210,10 @@ void VideoPlayer::draw(cairo_t* cr, int outW, int outH) {
     if (!hasFrame()) return;
 
     double oa = static_cast<double>(outW) / outH;
-    double sx, sy, sw, sh;
+    double sx = 0.0;
+    double sy = 0.0;
+    double sw = 0.0;
+    double sh = 0.0;
     if (static_cast<double>(frameW_) / frameH_ > oa) {  // source wider: crop sides
         sh = frameH_;
         sw = sh * oa;

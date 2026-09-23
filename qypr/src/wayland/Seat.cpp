@@ -6,6 +6,8 @@
 #include <cstring>
 #include <string>
 
+#include <array>
+
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
 #include "wayland/Cursor.hpp"
@@ -64,8 +66,9 @@ bool isSpecial(xkb_keysym_t sym) {
 Seat::Seat(wl_seat* seat, EventLoop& loop, const OutputEnv* env)
     : seat_(seat),
       loop_(loop),
-      env_(env) {
-    xkbContext_ = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+      env_(env),
+      xkbContext_(xkb_context_new(XKB_CONTEXT_NO_FLAGS)) {
+
     wl_seat_add_listener(seat_, &kSeatListener, this);
 }
 
@@ -168,14 +171,14 @@ void Seat::handleKey(uint32_t keycode) {
         return;
     }
 
-    char buf[64];
-    int n = xkb_state_key_get_utf8(xkbState_, keycode, buf, sizeof(buf));
+    std::array<char, 64> buf{};
+    int n = xkb_state_key_get_utf8(xkbState_, keycode, buf.data(), buf.size());
     if (n > 0 && static_cast<unsigned char>(buf[0]) >= 0x20 && buf[0] != 0x7f)
-        sink_->onTextInput(std::string(buf, n));
+        sink_->onTextInput(std::string(buf.data(), static_cast<size_t>(n)));
     // The keystroke may be a character of the password: leave nothing readable
     // in this stack frame (QL-3 in docs/LOCK_SECURITY_REVIEW.md). The sink copies
     // what it needs into a SecureBuffer.
-    explicit_bzero(buf, sizeof(buf));
+    explicit_bzero(buf.data(), buf.size());
 }
 
 void Seat::onModifiers(void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched,
@@ -258,7 +261,8 @@ void Seat::onPtrMotion(void* data, wl_pointer*, uint32_t, wl_fixed_t sx, wl_fixe
     auto* self = static_cast<Seat*>(data);
     self->ptrX_ = wl_fixed_to_double(sx);
     self->ptrY_ = wl_fixed_to_double(sy);
-    int w = 0, h = 0;
+    int w = 0;
+    int h = 0;
     if (self->sink_ && self->pointerSize(w, h)) {
         self->sink_->onPointerMotion(w, h, self->ptrX_, self->ptrY_);
     }
@@ -267,7 +271,8 @@ void Seat::onPtrMotion(void* data, wl_pointer*, uint32_t, wl_fixed_t sx, wl_fixe
 void Seat::onPtrButton(void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button,
                        uint32_t state) {
     auto* self = static_cast<Seat*>(data);
-    int w = 0, h = 0;
+    int w = 0;
+    int h = 0;
     if (!self->sink_ || !self->pointerSize(w, h)) return;
     self->sink_->onPointerButton(w, h, self->ptrX_, self->ptrY_, button,
                                  state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -275,7 +280,8 @@ void Seat::onPtrButton(void* data, wl_pointer*, uint32_t, uint32_t, uint32_t but
 
 void Seat::onPtrAxis(void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
     auto* self = static_cast<Seat*>(data);
-    int w = 0, h = 0;
+    int w = 0;
+    int h = 0;
     if (!self->sink_ || !self->pointerSize(w, h)) return;
     const double v = wl_fixed_to_double(value);
     const double dx = axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? v : 0.0;

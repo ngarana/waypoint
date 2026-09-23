@@ -18,22 +18,27 @@ constexpr const char* kPlayerIface = "org.mpris.MediaPlayer2.Player";
 constexpr const char* kAppIface = "org.mpris.MediaPlayer2";
 constexpr const char* kPrefix = "org.mpris.MediaPlayer2.";
 
-const std::vector<std::string> kPriority = {"org.mpris.MediaPlayer2.mpv",
-                                            "org.mpris.MediaPlayer2.mpd"};
-const std::vector<std::string> kPrefixes = {"org.mpris.MediaPlayer2.firefox",
-                                            "org.mpris.MediaPlayer2.chromium",
-                                            "org.mpris.MediaPlayer2.spotify"};
+const std::vector<std::string>& priorityPlayers() {
+    static const std::vector<std::string> prio = {"org.mpris.MediaPlayer2.mpv",
+                                                  "org.mpris.MediaPlayer2.mpd"};
+    return prio;
+}
+const std::vector<std::string>& priorityPrefixes() {
+    static const std::vector<std::string> prefixes = {"org.mpris.MediaPlayer2.firefox",
+                                                      "org.mpris.MediaPlayer2.chromium",
+                                                      "org.mpris.MediaPlayer2.spotify"};
+    return prefixes;
+}
 
 bool startsWith(const std::string& s, const std::string& p) {
     return s.size() >= p.size() && s.starts_with(p);
 }
 
 bool matchesPriority(const std::string& name) {
-    if (std::ranges::find(kPriority, name) != kPriority.end()) { return true; }
-    for (const auto& p : kPrefixes) {
-        if (startsWith(name, p)) { return true; }
-    }
-    return false;
+    const auto& prio = priorityPlayers();
+    if (std::ranges::find(prio, name) != prio.end()) { return true; }
+    return std::ranges::any_of(priorityPrefixes(),
+                               [&name](const std::string& p) { return startsWith(name, p); });
 }
 
 // Ceiling for the synchronous reads below.
@@ -128,6 +133,7 @@ void MprisController::enablePush(EventLoop& loop) {
 #    else
             while (conn_->processPendingRequest()) {}
 #    endif
+            // NOLINTNEXTLINE(bugprone-empty-catch) // broken bus: applet stops updating
         } catch (...) {
             // A broken session bus must not take the bar down; the media applet
             // simply stops updating.
@@ -159,6 +165,7 @@ std::vector<std::string> MprisController::listPlayers() {
         for (auto& n : names) {
             if (startsWith(n, kPrefix)) { players.push_back(n); }
         }
+        // NOLINTNEXTLINE(bugprone-empty-catch) // peer vanished; empty list signals it
     } catch (...) {}
     return players;
 }
@@ -235,12 +242,14 @@ MprisController::Snapshot MprisController::readSnapshot(const std::string& name)
             if (it == m.end()) { return ""; }
             try {
                 return it->second.get<std::string>();
+                // NOLINTNEXTLINE(bugprone-empty-catch) // wrong type; fall through to vector
             } catch (...) {}
             try {
                 auto arr = it->second.get<std::vector<std::string>>();
                 std::string out;
                 for (size_t i = 0; i < arr.size(); ++i) { out += (i ? ", " : "") + arr[i]; }
                 return out;
+                // NOLINTNEXTLINE(bugprone-empty-catch) // fall through to empty string
             } catch (...) {}
             return "";
         };
@@ -251,6 +260,7 @@ MprisController::Snapshot MprisController::readSnapshot(const std::string& name)
         if (it != m.end()) {
             try {
                 s.lengthUs = it->second.get<int64_t>();
+                // NOLINTNEXTLINE(bugprone-empty-catch) // unreadable; keep previous value
             } catch (...) {}
         }
     }
@@ -271,8 +281,8 @@ void MprisController::refresh() {
     snap_.album = "Mock Album";
     if (snap_.status.empty()) { snap_.status = "Playing"; }
     snap_.volume = 0.8;
-    snap_.positionUs = 60 * 1000000;
-    snap_.lengthUs = 180 * 1000000;
+    snap_.positionUs = 60LL * 1000000;
+    snap_.lengthUs = 180LL * 1000000;
     snap_.canControl = true;
     snap_.canGoNext = true;
     snap_.canGoPrevious = true;
@@ -302,6 +312,7 @@ void MprisController::togglePlaying() {
             ->callMethod("PlayPause")
             .onInterface(kPlayerIface)
             .dontExpectReply();
+        // NOLINTNEXTLINE(bugprone-empty-catch) // fire-and-forget; refresh() reconciles
     } catch (...) {}
     refresh();
 #endif
@@ -316,6 +327,7 @@ void MprisController::next() {
     if (!snap_.valid || !snap_.canGoNext) { return; }
     try {
         playerProxy(snap_.dbusName)->callMethod("Next").onInterface(kPlayerIface).dontExpectReply();
+        // NOLINTNEXTLINE(bugprone-empty-catch) // fire-and-forget; refresh() reconciles
     } catch (...) {}
     refresh();
 #endif
@@ -333,6 +345,7 @@ void MprisController::previous() {
             ->callMethod("Previous")
             .onInterface(kPlayerIface)
             .dontExpectReply();
+        // NOLINTNEXTLINE(bugprone-empty-catch) // fire-and-forget; refresh() reconciles
     } catch (...) {}
     refresh();
 #endif
@@ -351,6 +364,7 @@ void MprisController::setVolume(double level) {
             .onInterface(kPlayerIface)
             .toValue(clamped);
         snap_.volume = clamped;
+        // NOLINTNEXTLINE(bugprone-empty-catch) // bus write best-effort; snapshot already set
     } catch (...) {}
 #endif
 }

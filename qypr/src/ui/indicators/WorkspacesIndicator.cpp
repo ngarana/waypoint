@@ -183,13 +183,13 @@ void WorkspacesIndicator::onBackendUpdate() {
 bool WorkspacesIndicator::onClick(double x, double y) {
     (void)y;
     if (!backend_) return false;
-    for (const auto& h : hits_) {
+    return std::ranges::any_of(hits_, [&](const auto& h) {
         if (x >= h.x0 && x <= h.x1) {
             backend_->activate(h.name);
             return true;
         }
-    }
-    return false;
+        return false;
+    });
 }
 
 bool WorkspacesIndicator::animating(int64_t now) const {

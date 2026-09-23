@@ -54,6 +54,7 @@ std::string Config::makeKey(const std::string& section, const std::string& key) 
     return section + "." + key;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion) // bounded recursion over include chain
 bool Config::loadFile(const std::string& path, std::set<std::string>& imported,
                       bool processImports) {
     // Resolve the real (canonical) path for cycle detection.

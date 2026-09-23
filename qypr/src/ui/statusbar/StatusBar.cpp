@@ -4,6 +4,7 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <utility>
 
@@ -118,7 +119,7 @@ bool StatusBar::hasOpenOverlay() const {
 int StatusBar::overlayHeight() const {
     const double popH = popovers_.maxContentHeight();
     if (popH <= 0.0) { return 0; }
-    return static_cast<int>(geom_.edgeMargin + geom_.height + 6.0 + popH + 8.0 + 0.5);
+    return static_cast<int>(std::lround(geom_.edgeMargin + geom_.height + 6.0 + popH + 8.0));
 }
 
 void StatusBar::setTheme(const theme::State& state) {
@@ -251,14 +252,14 @@ bool StatusBar::animating(int64_t now) const {
     if (popovers_.animating(now)) { return true; }
     if (tooltips_.animating(now)) { return true; }
     bool zoneAnimating = false;
-    const_cast<IndicatorHost&>(indicators_).forEach([&](StatusIndicator& ind) {
+    indicators_.forEach([&](const StatusIndicator& ind) {
         if (!zoneAnimating && ind.animating(now)) { zoneAnimating = true; }
     });
     return zoneAnimating;
 }
 
 StatusIndicator* StatusBar::hitTestZone(std::vector<std::unique_ptr<StatusIndicator>>& zone,
-                                        double x, double y, bool requireInteractive) {
+                                        double x, double y, bool requireInteractive) const {
     return StatusBarInput::hitTest(zone, x, y, sessionContentVisible_, requireInteractive);
 }
 
@@ -343,6 +344,7 @@ bool StatusBar::handleTextInput(const std::string& utf8) {
 }
 
 bool StatusBar::wantsKeyboard() const {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast) // read-only query; no mutation
     auto ctx = const_cast<StatusBar*>(this)->makeInputContext();
     return input_.wantsKeyboard(ctx);
 }
@@ -370,6 +372,7 @@ void StatusBar::clearFocus() {
 }
 
 bool StatusBar::hasFocusedChild() const {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast) // read-only query; no mutation
     auto ctx = const_cast<StatusBar*>(this)->makeInputContext();
     return input_.hasFocusedChild(ctx);
 }

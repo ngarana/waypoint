@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <array>
+
 #include "core/EventLoop.hpp"
 #include "notifications/NotificationMonitor.hpp"
 
@@ -21,14 +23,14 @@ bool NotificationLog::start() {
         std::fprintf(stderr, "qypr-record: no session bus\n");
         return false;
     }
-    static const sd_bus_vtable kVtable[] = {
+    static const std::array<sd_bus_vtable, 3> kVtable = {{
         SD_BUS_VTABLE_START(0),
         SD_BUS_METHOD("List", "", notiflog::kListReturn, &NotificationLog::onList,
                       SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_VTABLE_END,
-    };
+    }};
     if (sd_bus_add_object_vtable(bus_, &vtableSlot_, notiflog::kObjectPath, notiflog::kInterface,
-                                 kVtable, this) < 0) {
+                                 kVtable.data(), this) < 0) {
         return false;
     }
     int const r = sd_bus_request_name(bus_, notiflog::kBusName, 0);

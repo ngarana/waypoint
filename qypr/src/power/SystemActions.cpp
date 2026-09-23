@@ -26,7 +26,7 @@ void SystemActions::lock() {
         return;
     }
 #ifdef TESTING
-    return;  // TESTING: spawning is a no-op
+    // TESTING: spawning is a no-op
 #else
     spawnReaped(loop_, loginctl_, {loginctl_, "lock-session"});
 #endif

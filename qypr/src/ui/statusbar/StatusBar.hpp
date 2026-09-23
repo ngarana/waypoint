@@ -131,7 +131,7 @@ private:
     // Hit-test one zone: first shown+interactive indicator whose bounds contain
     // (x,y), or nullptr. Shared by click/scroll/hover paths.
     StatusIndicator* hitTestZone(std::vector<std::unique_ptr<StatusIndicator>>& zone, double x,
-                                 double y, bool requireInteractive = false);
+                                 double y, bool requireInteractive = false) const;
 
     StatusBarInput::Context makeInputContext();
 

@@ -22,16 +22,16 @@ constexpr uint32_t kStateHidden = 4;
 void handleId(void* /*unused*/, ext_workspace_handle_v1* /*unused*/, const char* /*unused*/) {}
 void handleName(void* data, ext_workspace_handle_v1* /*unused*/, const char* name) {
     auto* h = static_cast<WsHandle*>(data);
-    h->backend->onHandleName(h, name);
+    qypr::WorkspaceBackend::onHandleName(h, name);
 }
 void handleCoordinates(void* data, ext_workspace_handle_v1* /*unused*/, wl_array* coords) {
     auto* h = static_cast<WsHandle*>(data);
-    h->backend->onHandleCoordinates(h, static_cast<const uint32_t*>(coords->data),
-                                    coords->size / sizeof(uint32_t));
+    qypr::WorkspaceBackend::onHandleCoordinates(h, static_cast<const uint32_t*>(coords->data),
+                                                coords->size / sizeof(uint32_t));
 }
 void handleState(void* data, ext_workspace_handle_v1* /*unused*/, uint32_t state) {
     auto* h = static_cast<WsHandle*>(data);
-    h->backend->onHandleState(h, state);
+    qypr::WorkspaceBackend::onHandleState(h, state);
 }
 void handleCapabilities(void* /*unused*/, ext_workspace_handle_v1* /*unused*/,
                         uint32_t /*unused*/) {}
@@ -146,9 +146,9 @@ void WorkspaceBackend::onHandleCoordinates(WsHandle* h, const uint32_t* coords, 
 }
 
 void WorkspaceBackend::onHandleState(WsHandle* h, uint32_t state) {
-    h->active = ((state & kStateActive) != 0u);
-    h->urgent = ((state & kStateUrgent) != 0u);
-    h->hidden = ((state & kStateHidden) != 0u);
+    h->active = ((state & kStateActive) != 0U);
+    h->urgent = ((state & kStateUrgent) != 0U);
+    h->hidden = ((state & kStateHidden) != 0U);
 }
 
 void WorkspaceBackend::onHandleRemoved(WsHandle* h) {

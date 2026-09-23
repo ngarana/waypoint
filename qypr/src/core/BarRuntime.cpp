@@ -21,7 +21,8 @@ BarRuntime::BarRuntime(EventLoop& loop, BarDisplay& display,
       backendLifecycle_(backendLifecycle) {}
 
 int BarRuntime::run(InputSink* sink, RenderFn renderFn, AnimatingFn animatingFn,
-                    std::function<void()> setupProtocols, std::function<void()> onFirstFrame) {
+                    const std::function<void()>& setupProtocols,
+                    const std::function<void()>& onFirstFrame) {
     if (!display_.connect()) {
         std::fprintf(stderr, "qypr-bar: no Wayland display or no wlr-layer-shell support\n");
         return 1;

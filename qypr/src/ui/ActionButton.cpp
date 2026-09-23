@@ -26,12 +26,12 @@ void ActionButton::draw(Painter& p, int64_t now) {
     const double cy = bounds.cy();
     const double r = (diameter / 2.0) * scale;
 
-    Color fill = enabled ? (hovered_ ? theme().colors.glassHover : theme().colors.glass)
-                         : Color::rgba(0.3, 0.3, 0.3, 0.4);
-    Color border = enabled ? (hovered_ ? theme().colors.primary : theme().colors.glassBorder)
-                           : theme().colors.textMuted;
-    Color iconColor = enabled ? (hovered_ ? theme().colors.primary : theme().colors.text)
-                              : theme().colors.textMuted;
+    Color fill = Color::rgba(0.3, 0.3, 0.3, 0.4);
+    if (enabled) { fill = hovered_ ? theme().colors.glassHover : theme().colors.glass; }
+    Color border = theme().colors.textMuted;
+    if (enabled) { border = hovered_ ? theme().colors.primary : theme().colors.glassBorder; }
+    Color iconColor = theme().colors.textMuted;
+    if (enabled) { iconColor = hovered_ ? theme().colors.primary : theme().colors.text; }
 
     p.fillCircle(cx, cy, r, fill);
     p.strokeCircle(cx, cy, r, border, 1);

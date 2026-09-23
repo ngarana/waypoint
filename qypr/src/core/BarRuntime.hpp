@@ -23,7 +23,7 @@ public:
     // Runs the bar: connects display, attaches render/input hooks, pumps first
     // roundtrip, starts delayed backends, and enters the event loop.
     int run(InputSink* sink, RenderFn renderFn, AnimatingFn animatingFn,
-            std::function<void()> setupProtocols, std::function<void()> onFirstFrame);
+            const std::function<void()>& setupProtocols, const std::function<void()>& onFirstFrame);
 
     void quit();
 

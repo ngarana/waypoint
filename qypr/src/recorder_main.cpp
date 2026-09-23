@@ -14,7 +14,9 @@
 #include "Version.hpp"
 
 namespace qypr {
-static int runRecorder() {
+namespace {
+// Internal to this TU; called as qypr::runRecorder() below.
+int runRecorder() {
     EventLoop loop;
     NotificationMonitor monitor(loop);
     NotificationLog log(loop, monitor);
@@ -24,10 +26,14 @@ static int runRecorder() {
     loop.run();
     return 0;
 }
+}  // namespace
 }  // namespace qypr
 
 #ifdef TESTING
-static int qyprRecordMain(int argc, char** argv) {
+namespace {
+// Linked into qypr-test only to share this TU; test_main.cpp provides main.
+// Unused there by design (it would clash), hence anonymous + maybe_unused.
+[[maybe_unused]] int qyprRecordMain(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
@@ -39,3 +45,6 @@ int main(int argc, char** argv) {
     }
     return qypr::runRecorder();
 }
+#ifdef TESTING
+}  // namespace
+#endif

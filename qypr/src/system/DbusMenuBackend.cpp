@@ -37,6 +37,7 @@ void readProp(sd_bus_message* m, const char* key, MenuNode& n) {
     if (std::strcmp(key, "label") == 0) {
         const char* s = nullptr;
         if (sd_bus_message_enter_container(m, 'v', "s") >= 0) {
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
             if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s) n.label = stripMnemonic(s);
             sd_bus_message_exit_container(m);
         } else {
@@ -54,6 +55,7 @@ void readProp(sd_bus_message* m, const char* key, MenuNode& n) {
     } else if (std::strcmp(key, "type") == 0) {
         const char* s = nullptr;
         if (sd_bus_message_enter_container(m, 'v', "s") >= 0) {
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
             if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s)
                 n.separator = std::strcmp(s, "separator") == 0;
             sd_bus_message_exit_container(m);
@@ -63,6 +65,7 @@ void readProp(sd_bus_message* m, const char* key, MenuNode& n) {
     } else if (std::strcmp(key, "toggle-type") == 0) {
         const char* s = nullptr;
         if (sd_bus_message_enter_container(m, 'v', "s") >= 0) {
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
             if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s) n.toggleType = s;
             sd_bus_message_exit_container(m);
         } else {
@@ -80,6 +83,7 @@ void readProp(sd_bus_message* m, const char* key, MenuNode& n) {
     } else if (std::strcmp(key, "children-display") == 0) {
         const char* s = nullptr;
         if (sd_bus_message_enter_container(m, 'v', "s") >= 0) {
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
             if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s)
                 n.hasSubmenu = std::strcmp(s, "submenu") == 0;
             sd_bus_message_exit_container(m);
@@ -92,6 +96,7 @@ void readProp(sd_bus_message* m, const char* key, MenuNode& n) {
 }
 
 // Parse one (ia{sv}av) item, recursing into children.
+// NOLINTNEXTLINE(misc-no-recursion) // bounded recursion over menu tree
 MenuNode parseItem(sd_bus_message* m) {
     MenuNode n;
     if (sd_bus_message_enter_container(m, 'r', "ia{sv}av") <= 0) return n;
@@ -101,6 +106,7 @@ MenuNode parseItem(sd_bus_message* m) {
     if (sd_bus_message_enter_container(m, 'a', "{sv}") >= 0) {
         while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
             const char* key = nullptr;
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus API
             if (sd_bus_message_read_basic(m, 's', &key) >= 0 && key) {
                 readProp(m, key, n);
             } else {

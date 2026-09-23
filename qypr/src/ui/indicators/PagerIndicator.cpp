@@ -286,40 +286,39 @@ void PagerIndicator::onBackendUpdate() {
 bool PagerIndicator::onClick(double x, double y) {
     (void)y;
     if (!visible) { return false; }
-    for (const Hit& h : hits_) {
-        if (x < h.x0 || x > h.x1) { continue; }
+    return std::ranges::any_of(hits_, [&](const Hit& h) {
+        if (x < h.x0 || x > h.x1) { return false; }
         if (h.win != 0) {
             if (tl_ != nullptr) { tl_->activate(h.win); }
-            return true;
+        } else if (ws_ != nullptr && !h.ws.empty()) {
+            ws_->activate(h.ws);
         }
-        if (ws_ != nullptr && !h.ws.empty()) { ws_->activate(h.ws); }
         return true;
-    }
-    return false;
+    });
 }
 
 bool PagerIndicator::onMiddleClick(double x, double y) {
     (void)y;
     if (!visible || tl_ == nullptr) { return false; }
-    for (const Hit& h : hits_) {
+    return std::ranges::any_of(hits_, [&](const Hit& h) {
         if (x >= h.x0 && x <= h.x1 && h.win != 0) {
             tl_->close(h.win);
             return true;
         }
-    }
-    return false;
+        return false;
+    });
 }
 
 bool PagerIndicator::onSecondaryClick(double x, double y) {
     (void)y;
     if (!visible || tl_ == nullptr) { return false; }
-    for (const Hit& h : hits_) {
+    return std::ranges::any_of(hits_, [&](const Hit& h) {
         if (x >= h.x0 && x <= h.x1 && h.win != 0) {
             tl_->toggleMinimize(h.win);
             return true;
         }
-    }
-    return false;
+        return false;
+    });
 }
 
 bool PagerIndicator::onScroll(double dx, double dy, double x, double y) {

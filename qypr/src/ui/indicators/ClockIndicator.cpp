@@ -22,17 +22,17 @@ std::string formatNow(const std::string& fmt) {
     std::time_t t = std::time(nullptr);
     std::tm tm{};
     localtime_r(&t, &tm);
-    char buf[256];
+    std::array<char, 256> buf{};
     // strftime returns 0 both for "empty result" and "didn't fit"; either way an
     // empty string is the honest answer for a format we cannot render.
-    const size_t n = std::strftime(buf, sizeof(buf), fmt.c_str(), &tm);
-    return n == 0 ? std::string() : std::string(buf, n);
+    const size_t n = std::strftime(buf.data(), buf.size(), fmt.c_str(), &tm);
+    return n == 0 ? std::string() : std::string(buf.data(), n);
 }
 
 std::string strf(const std::tm& tm, const char* fmt) {
-    char buf[64];
-    const size_t n = std::strftime(buf, sizeof(buf), fmt, &tm);
-    return std::string(buf, n);
+    std::array<char, 64> buf{};
+    const size_t n = std::strftime(buf.data(), buf.size(), fmt, &tm);
+    return {buf.data(), n};
 }
 
 // Current local time in an IANA zone. Saves/restores TZ around tzset() (safe on
@@ -76,10 +76,10 @@ class CalendarPopover : public DetailedPopover {
 public:
     explicit CalendarPopover(std::vector<std::string> zones) : zones_(std::move(zones)) {}
 
-    double contentWidth() const override { return kPad * 2 + kWeekColW + 7 * kCellW; }
-    double contentHeight() const override {
+    [[nodiscard]] double contentWidth() const override { return kPad * 2 + kWeekColW + 7 * kCellW; }
+    [[nodiscard]] double contentHeight() const override {
         double h = kPad * 2 + kHeaderH + kWeekdayH + kRows * kCellH;
-        if (!zones_.empty()) h += 8.0 + zones_.size() * kTzRowH + 4.0;
+        if (!zones_.empty()) h += 8.0 + static_cast<double>(zones_.size()) * kTzRowH + 4.0;
         return h;
     }
 
@@ -93,9 +93,12 @@ public:
         std::time_t t = std::time(nullptr);
         std::tm lt{};
         localtime_r(&t, &lt);
-        const int todayY = lt.tm_year + 1900, todayM = lt.tm_mon, todayD = lt.tm_mday;
+        const int todayY = lt.tm_year + 1900;
+        const int todayM = lt.tm_mon;
+        const int todayD = lt.tm_mday;
         int total = todayY * 12 + todayM + monthOffset_;
-        int dy = total / 12, dm = total % 12;
+        int dy = total / 12;
+        int dm = total % 12;
         if (dm < 0) {
             dm += 12;
             --dy;
@@ -141,7 +144,8 @@ public:
         for (int c = 0; c < 7; ++c) {
             const double cx = gridX + kWeekColW + c * kCellW + kCellW / 2.0;
             Color col = c >= 5 ? theme().colors.primary.withAlpha(0.7) : theme().colors.textSubtle;
-            p.drawText(cx, wy, wd[c], {wds.family, wds.size, wds.weight, col}, HAlign::Center);
+            p.drawText(cx, wy, wd.at(static_cast<size_t>(c)),
+                       {wds.family, wds.size, wds.weight, col}, HAlign::Center);
         }
 
         // ── Day grid ─────────────────────────────────────────────────────────
@@ -172,10 +176,14 @@ public:
                 if (isToday) {
                     p.fillCircle(cx, cyTop + kCellH / 2.0, 13.0, theme().colors.primary);
                 }
-                Color fg = isToday    ? Color::fromHex("#1e1e2e")
-                           : !inMonth ? theme().colors.textSubtle.withAlpha(0.35)
-                           : c >= 5   ? theme().colors.primary.withAlpha(0.85)
-                                      : theme().colors.text;
+                Color fg = theme().colors.text;
+                if (isToday) {
+                    fg = Color::fromHex("#1e1e2e");
+                } else if (!inMonth) {
+                    fg = theme().colors.textSubtle.withAlpha(0.35);
+                } else if (c >= 5) {
+                    fg = theme().colors.primary.withAlpha(0.85);
+                }
                 TextStyle ds{theme().font.family, 12.0,
                              isToday ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL, fg};
                 const std::string d = std::to_string(cell.tm_mday);

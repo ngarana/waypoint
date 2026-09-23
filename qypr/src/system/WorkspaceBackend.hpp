@@ -74,7 +74,7 @@ public:
 
     // --- C listener trampolines (public; not for external use) ---
     void onRegistryGlobal(wl_registry*, uint32_t name, const char* iface, uint32_t version);
-    void onManagerWorkspace(ext_workspace_handle_v1* h);
+    void onManagerWorkspace(ext_workspace_handle_v1* ws);
     void onManagerDone();
     static void onHandleName(WsHandle*, const char* name);
     static void onHandleCoordinates(WsHandle*, const uint32_t* coords, size_t n);

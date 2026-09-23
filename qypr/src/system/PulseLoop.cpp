@@ -66,6 +66,7 @@ pa_io_event_flags_t fromEpoll(uint32_t e) {
     if (e & EPOLLOUT) f |= PA_IO_EVENT_OUTPUT;
     if (e & EPOLLHUP) f |= PA_IO_EVENT_HANGUP;
     if (e & EPOLLERR) f |= PA_IO_EVENT_ERROR;
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) // PA flag composition via int
     return static_cast<pa_io_event_flags_t>(f);
 }
 
@@ -82,6 +83,7 @@ int64_t delayMsUntil(const struct timeval* tv) {
 pa_io_event* ioNew(pa_mainloop_api* a, int fd, pa_io_event_flags_t events, pa_io_event_cb_t cb,
                    void* userdata) {
     auto* loop = static_cast<PulseLoop*>(a->userdata);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
     auto* ev = new pa_io_event{&loop->loop(), a, fd, cb, userdata};
     ev->loop->addFd(fd, toEpoll(events), [ev](uint32_t epollEvents) {
         ev->cb(ev->api, ev, ev->fd, fromEpoll(epollEvents), ev->userdata);
@@ -96,6 +98,7 @@ void ioEnable(pa_io_event* ev, pa_io_event_flags_t events) {
 void ioFree(pa_io_event* ev) {
     ev->loop->removeFd(ev->fd);
     if (ev->destroyCb) ev->destroyCb(ev->api, ev, ev->userdata);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
     delete ev;
 }
 
@@ -115,6 +118,7 @@ void timeArm(pa_time_event* ev) {
 pa_time_event* timeNew(pa_mainloop_api* a, const struct timeval* tv, pa_time_event_cb_t cb,
                        void* userdata) {
     auto* loop = static_cast<PulseLoop*>(a->userdata);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
     auto* ev = new pa_time_event{&loop->loop(), a, -1, *tv, cb, userdata};
     timeArm(ev);
     return ev;
@@ -132,6 +136,7 @@ void timeRestart(pa_time_event* ev, const struct timeval* tv) {
 void timeFree(pa_time_event* ev) {
     if (ev->timerFd >= 0) ev->loop->removeTimer(ev->timerFd);
     if (ev->destroyCb) ev->destroyCb(ev->api, ev, ev->userdata);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
     delete ev;
 }
 
@@ -148,6 +153,7 @@ void deferSchedule(pa_defer_event* ev) {
         ev->scheduled = false;
         if (ev->dead) {
             if (ev->destroyCb) ev->destroyCb(ev->api, ev, ev->userdata);
+            // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
             delete ev;
             return;
         }
@@ -160,6 +166,7 @@ void deferSchedule(pa_defer_event* ev) {
 
 pa_defer_event* deferNew(pa_mainloop_api* a, pa_defer_event_cb_t cb, void* userdata) {
     auto* loop = static_cast<PulseLoop*>(a->userdata);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
     auto* ev = new pa_defer_event{&loop->loop(), a, true, false, false, cb, userdata};
     deferSchedule(ev);
     return ev;
@@ -175,6 +182,7 @@ void deferFree(pa_defer_event* ev) {
     ev->dead = true;
     if (!ev->scheduled) {
         if (ev->destroyCb) ev->destroyCb(ev->api, ev, ev->userdata);
+        // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // opaque C handle, see file top
         delete ev;
     }
     // else: the posted lambda sees dead and deletes it.

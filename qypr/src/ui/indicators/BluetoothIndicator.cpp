@@ -261,9 +261,8 @@ public:
             case XKB_KEY_BackSpace:
                 if (!entry_.empty()) {
                     size_t i = entry_.size();
-                    do {
-                        --i;
-                    } while (i > 0 && (static_cast<unsigned char>(entry_[i]) & 0xC0) == 0x80);
+                    --i;
+                    while (i > 0 && (static_cast<unsigned char>(entry_[i]) & 0xC0) == 0x80) { --i; }
                     entry_.erase(i);
                 }
                 return true;

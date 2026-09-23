@@ -10,6 +10,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +38,7 @@ bool readVariantString(sd_bus_message* m, std::string* out) {
         return false;
     }
     const char* s = nullptr;
+    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus takes void*
     if (sd_bus_message_read_basic(m, 's', &s) >= 0 && s) *out = s;
     sd_bus_message_exit_container(m);
     return true;
@@ -47,6 +50,7 @@ bool readVariantObjectPath(sd_bus_message* m, std::string* out) {
         return false;
     }
     const char* s = nullptr;
+    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus takes void*
     if (sd_bus_message_read_basic(m, 'o', &s) >= 0 && s) *out = s;
     sd_bus_message_exit_container(m);
     return true;
@@ -62,10 +66,13 @@ cairo_surface_t* pixmapToSurface(const unsigned char* argb, int w, int h) {
     unsigned char* dst = cairo_image_surface_get_data(surf);
     int stride = cairo_image_surface_get_stride(surf);
     for (int y = 0; y < h; ++y) {
-        auto* row = reinterpret_cast<uint32_t*>(dst + y * stride);
+        auto* row = reinterpret_cast<uint32_t*>(dst + static_cast<ptrdiff_t>(y) * stride);
         const unsigned char* src = argb + static_cast<size_t>(y) * w * 4;
         for (int x = 0; x < w; ++x) {
-            unsigned a = src[0], r = src[1], g = src[2], b = src[3];
+            unsigned a = src[0];
+            unsigned r = src[1];
+            unsigned g = src[2];
+            unsigned b = src[3];
             src += 4;
             r = r * a / 255;
             g = g * a / 255;
@@ -86,7 +93,8 @@ cairo_surface_t* readVariantPixmap(sd_bus_message* m) {
     int bestW = 0;
     if (sd_bus_message_enter_container(m, 'a', "(iiay)") >= 0) {
         while (sd_bus_message_enter_container(m, 'r', "iiay") > 0) {
-            int32_t w = 0, h = 0;
+            int32_t w = 0;
+            int32_t h = 0;
             sd_bus_message_read(m, "ii", &w, &h);
             const void* data = nullptr;
             size_t len = 0;
@@ -117,7 +125,7 @@ int watcherHandleRegisterHost(sd_bus_message* m, void* userdata, sd_bus_error*) 
     return static_cast<SNIBackend*>(userdata)->handleRegisterHost(m);
 }
 
-static const sd_bus_vtable kWatcherVtable[] = {
+const std::array<sd_bus_vtable, 11> kWatcherVtable = {{
     SD_BUS_VTABLE_START(0),
     SD_BUS_METHOD("RegisterStatusNotifierItem", "s", "", watcherHandleRegisterItem,
                   SD_BUS_VTABLE_UNPRIVILEGED),
@@ -132,7 +140,7 @@ static const sd_bus_vtable kWatcherVtable[] = {
     SD_BUS_SIGNAL("StatusNotifierHostRegistered", "", 0),
     SD_BUS_SIGNAL("StatusNotifierHostUnregistered", "", 0),
     SD_BUS_VTABLE_END,
-};
+}};
 
 }  // namespace
 
@@ -264,7 +272,9 @@ int SNIBackend::onItemChanged(sd_bus_message* m, void* ud, sd_bus_error*) {
 
 int SNIBackend::onWatcherOwnerChanged(sd_bus_message* m, void* ud, sd_bus_error*) {
     auto* self = static_cast<SNIBackend*>(ud);
-    const char *name = nullptr, *oldOwner = nullptr, *newOwner = nullptr;
+    const char* name = nullptr;
+    const char* oldOwner = nullptr;
+    const char* newOwner = nullptr;
     sd_bus_message_read(m, "sss", &name, &oldOwner, &newOwner);
     if (newOwner && *newOwner) self->registerHost();
     self->refresh();
@@ -313,12 +323,13 @@ void SNIBackend::switchToWatcherMode() {
 void SNIBackend::registerWatcherVtable() {
     sd_bus* bus = bus_.get();
     if (!bus) return;
-    sd_bus_add_object_vtable(bus, &watcherVtableSlot_, kWatcherPath, kWatcherIface, kWatcherVtable,
-                             this);
+    sd_bus_add_object_vtable(bus, &watcherVtableSlot_, kWatcherPath, kWatcherIface,
+                             kWatcherVtable.data(), this);
 }
 
 int SNIBackend::handleRegisterItem(sd_bus_message* m) {
     const char* service = nullptr;
+    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus takes void*
     if (sd_bus_message_read_basic(m, 's', &service) < 0 || !service) return -EINVAL;
 
     // Some items (e.g. blueman) register with a path instead of a bus name.
@@ -335,8 +346,7 @@ int SNIBackend::handleRegisterItem(sd_bus_message* m) {
         ref = service;
     }
 
-    if (std::find(registeredItems_.begin(), registeredItems_.end(), ref) ==
-        registeredItems_.end()) {
+    if (std::ranges::find(registeredItems_, ref) == registeredItems_.end()) {
         registeredItems_.push_back(ref);
         watchItemOwnership(ref);
         emitItemRegistered(ref);
@@ -355,11 +365,11 @@ int SNIBackend::handleRegisterItem(sd_bus_message* m) {
 
 int SNIBackend::handleRegisterHost(sd_bus_message* m) {
     const char* service = nullptr;
+    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus takes void*
     if (sd_bus_message_read_basic(m, 's', &service) < 0 || !service) return -EINVAL;
 
-    if (std::find(registeredHosts_.begin(), registeredHosts_.end(), service) ==
-        registeredHosts_.end()) {
-        registeredHosts_.push_back(service);
+    if (std::ranges::find(registeredHosts_, service) == registeredHosts_.end()) {
+        registeredHosts_.emplace_back(service);
     }
 
     sd_bus* bus = bus_.get();
@@ -406,12 +416,14 @@ void SNIBackend::watchItemOwnership(const std::string& service) {
 
 int SNIBackend::onItemOwnerChanged(sd_bus_message* m, void* ud, sd_bus_error*) {
     auto* self = static_cast<SNIBackend*>(ud);
-    const char *name = nullptr, *oldOwner = nullptr, *newOwner = nullptr;
+    const char* name = nullptr;
+    const char* oldOwner = nullptr;
+    const char* newOwner = nullptr;
     sd_bus_message_read(m, "sss", &name, &oldOwner, &newOwner);
 
     if (newOwner && !*newOwner && name) {
         std::string svc = name;
-        auto it = std::find(self->registeredItems_.begin(), self->registeredItems_.end(), svc);
+        auto it = std::ranges::find(self->registeredItems_, svc);
         if (it != self->registeredItems_.end()) {
             self->registeredItems_.erase(it);
             self->emitItemUnregistered(svc);
@@ -434,7 +446,8 @@ void SNIBackend::refresh() {
     if (mode_ == Mode::WatcherHost) {
         std::vector<SNIItem> next;
         for (const auto& ref : registeredItems_) {
-            std::string service, path;
+            std::string service;
+            std::string path;
             parseItemRef(ref, service, path);
             next.push_back(fetchItem(service, path));
         }
@@ -462,7 +475,8 @@ void SNIBackend::refresh() {
     if (sd_bus_message_enter_container(reply, 'a', "s") >= 0) {
         const char* ref = nullptr;
         while (sd_bus_message_read(reply, "s", &ref) > 0 && ref) {
-            std::string service, path;
+            std::string service;
+            std::string path;
             parseItemRef(ref, service, path);
             next.push_back(fetchItem(service, path));
         }

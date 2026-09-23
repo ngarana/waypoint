@@ -647,16 +647,16 @@ TEST(StatusBarInputHitTestAndGating) {
     struct TestInd : public qypr::StatusIndicator {
         TestInd(const std::string& id, bool sens, bool lockInter)
             : qypr::StatusIndicator(id, qypr::Zone::Left, 0),
-              sens_(sens),
-              lockInter_(lockInter) {}
-        std::string icon() const override { return ""; }
-        std::string tooltip() const override { return ""; }
+              sens(sens),
+              lockInter(lockInter) {}
+        [[nodiscard]] std::string icon() const override { return ""; }
+        [[nodiscard]] std::string tooltip() const override { return ""; }
         void draw(qypr::Painter&, int64_t) override {}
         double measureWidth(qypr::Painter&) override { return 30.0; }
-        bool sensitive() const override { return sens_; }
-        bool lockInteractive() const override { return lockInter_; }
-        bool sens_;
-        bool lockInter_;
+        [[nodiscard]] bool sensitive() const override { return sens; }
+        [[nodiscard]] bool lockInteractive() const override { return lockInter; }
+        bool sens;
+        bool lockInter;
     };
 
     std::vector<std::unique_ptr<qypr::StatusIndicator>> zone;
@@ -706,6 +706,7 @@ TEST(QuickSettingsLayoutComputation) {
 
     std::vector<std::unique_ptr<qypr::QSTile>> tiles;
     // 4 toggle tiles -> 2 rows (3 in first, 1 in second)
+    tiles.reserve(4);
     for (int i = 0; i < 4; ++i) {
         tiles.push_back(std::make_unique<qypr::QSToggleTile>(
             "Tile" + std::to_string(i), "", []() { return true; }, []() {}, nullptr,

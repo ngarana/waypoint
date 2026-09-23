@@ -86,7 +86,7 @@ private:
     // Re-read bar.conf and re-apply all sections without a restart.
     void reloadConfig();
     void reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
-                      const std::optional<IndicatorRegistry::ModuleSelection>& newModules);
+                      const std::optional<IndicatorRegistry::ModuleSelection>& newMods);
 
     // Rebuild the owned State from config_ + palette_ and cascade to the
     // status bar + monitor.

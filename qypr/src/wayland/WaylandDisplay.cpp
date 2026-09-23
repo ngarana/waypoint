@@ -83,7 +83,7 @@ void WaylandDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name,
 
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
         self->compositor_ = static_cast<wl_compositor*>(
-            wl_registry_bind(registry, name, &wl_compositor_interface, std::min(version, 4u)));
+            wl_registry_bind(registry, name, &wl_compositor_interface, std::min(version, 4U)));
         self->env_.compositor = self->compositor_;
     } else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
         self->shm_ = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
@@ -93,7 +93,7 @@ void WaylandDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name,
             wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1));
     } else if (std::strcmp(interface, wl_seat_interface.name) == 0) {
         auto* seat = static_cast<wl_seat*>(
-            wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 7u)));
+            wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 7U)));
         self->seat_ = std::make_unique<Seat>(seat, self->loop_, &self->env_);
         self->seat_->setSink(self->sink_);
         self->seat_->setSurfaceSizer([self](wl_surface* s, int& w, int& h) {
@@ -105,7 +105,7 @@ void WaylandDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name,
         });
     } else if (std::strcmp(interface, wl_output_interface.name) == 0) {
         auto* output = static_cast<wl_output*>(
-            wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
+            wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4U)));
         auto out = std::make_unique<Output>(output, name, &self->env_);
         if (self->activeLock_) out->createLockSurface(self->activeLock_);
         self->outputs_.push_back(std::move(out));

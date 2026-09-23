@@ -55,7 +55,7 @@ void BarBackendLifecycle::start(std::function<void()> onGeoClueFix) {
     stateCache_.track(loop_, backends_);
 }
 
-void BarBackendLifecycle::startPreview() {
+void BarBackendLifecycle::startPreview() const {
     if (backends_.battery) backends_.battery->start();
     if (backends_.brightness) backends_.brightness->start();
     if (backends_.wifi) backends_.wifi->start();

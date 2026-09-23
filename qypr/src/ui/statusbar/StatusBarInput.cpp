@@ -29,7 +29,7 @@ bool isInteractive(const StatusIndicator& ind, bool sessionContentVisible) {
 StatusIndicator* StatusBarInput::hitTest(const std::vector<std::unique_ptr<StatusIndicator>>& zone,
                                          double x, double y, bool sessionContentVisible,
                                          bool requireInteractive) {
-    for (auto& ind : zone) {
+    for (const auto& ind : zone) {
         if (!isShown(*ind, sessionContentVisible)) { continue; }
         if (requireInteractive && !isInteractive(*ind, sessionContentVisible)) { continue; }
         if (ind->bounds.contains(x, y)) { return ind.get(); }
@@ -74,10 +74,8 @@ bool StatusBarInput::handlePointerMotion(Context& ctx, double x, double y, int64
     checkHover(ctx.indicators.center());
     checkHover(ctx.indicators.right());
 
-    if (ctx.tooltips.setTarget(newTarget, now)) {
-        ctx.host.invalidate();
-    } else if (newTarget != nullptr) {
-        ctx.host.invalidate();  // keep fade ticking
+    if (ctx.tooltips.setTarget(newTarget, now) || newTarget != nullptr) {
+        ctx.host.invalidate();  // retargeted, or keep fade ticking
     }
 
     return ctx.bounds.contains(x, y) ||
@@ -219,9 +217,9 @@ bool StatusBarInput::handleKey(Context& ctx, uint32_t keysym) {
         }
         const bool isQS = (ctx.popovers.active() == &ctx.qsPanel);
         const bool handled = ctx.popovers.handleKey(keysym);
-        if ((ctx.popovers.active() != nullptr) && ctx.popovers.active()->consumeCloseRequest()) {
-            ctx.popovers.closeActive();
-        } else if (isQS && !handled) {
+        const bool consumed =
+            (ctx.popovers.active() != nullptr) && ctx.popovers.active()->consumeCloseRequest();
+        if (consumed || (isQS && !handled)) {
             ctx.popovers.closeActive();
         } else if (handled) {
             if (ctx.onResetAutoDismiss) { ctx.onResetAutoDismiss(); }
@@ -247,6 +245,8 @@ bool StatusBarInput::handleKey(Context& ctx, uint32_t keysym) {
             return cycleFocus(ctx, true);
         case XKB_KEY_Right:
             return cycleFocus(ctx, false);
+        default:
+            break;
     }
     return false;
 }

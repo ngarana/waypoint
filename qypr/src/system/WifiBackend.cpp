@@ -20,7 +20,6 @@ constexpr const char* kDeviceIface = "org.freedesktop.NetworkManager.Device";
 constexpr const char* kWirelessIface = "org.freedesktop.NetworkManager.Device.Wireless";
 constexpr const char* kApIface = "org.freedesktop.NetworkManager.AccessPoint";
 constexpr const char* kPropsIface = "org.freedesktop.DBus.Properties";
-constexpr const char* kObjectManagerIface = "org.freedesktop.DBus.ObjectManager";
 constexpr const char* kSettingsPath = "/org/freedesktop/NetworkManager/Settings";
 constexpr const char* kSettingsIface = "org.freedesktop.NetworkManager.Settings";
 constexpr const char* kSettingsConnIface = "org.freedesktop.NetworkManager.Settings.Connection";
@@ -654,7 +653,9 @@ void WifiBackend::netStepDevice(sd_bus_message* reply) {
 void WifiBackend::netStepAp(sd_bus_message* reply) {
     std::string ssid;
     uint8_t strength = 0;
-    uint32_t flags = 0, wpa = 0, rsn = 0;
+    uint32_t flags = 0;
+    uint32_t wpa = 0;
+    uint32_t rsn = 0;
     if (sd_bus_message_enter_container(reply, 'a', "{sv}") >= 0) {
         while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
             const char* key = nullptr;

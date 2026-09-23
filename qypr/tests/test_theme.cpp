@@ -9,10 +9,12 @@
 // Apply a config with a deterministic noon resolution; returns the owned
 // design value. Tests assert on the returned State — never on shared
 // globals — so they are order-independent.
+namespace {
 qypr::theme::State applyTheme(qypr::Config& cfg) {
     qypr::theme::AutoPalette pal = qypr::theme::AutoPalette::fromConfig(cfg, 12);
     return qypr::theme::loadThemeState(cfg, pal);
 }
+}  // namespace
 
 TEST(ThemeLoadThemeDefaults) {
     qypr::Config c;
