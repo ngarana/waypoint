@@ -80,7 +80,7 @@ pipeline without locking via `qypr-lock --video-test [seconds]`.
 Requires: a C++20 compiler, CMake >= 3.20, Ninja, `wayland-scanner`, and dev
 headers for `wayland-client`, `wayland-cursor`, `xkbcommon`, `cairo`,
 `pangocairo`, `sdbus-c++`, `libsystemd` (sd-bus), `libudev`, `libpulse`,
-`librsvg-2.0`, `libpam`, and `mpv` (libmpv).
+`librsvg-2.0`, `libcurl`, `libpam`, and `mpv` (libmpv).
 
 ```sh
 ./scripts/build.sh            # release build into ./build
@@ -185,17 +185,14 @@ restart needed.
   light file is unset).
 - `auto` — light between sunrise and sunset, dark outside; the bar
   re-checks every minute and re-themes instantly when the mode flips. The
-  window is solar when GeoClue2 yields a location fix (city accuracy only —
-  street-level is never requested), else the fixed `palette-sunrise`/
-  `palette-sunset` hours (default 7:00/19:00 local). Set
-  `palette-location = off` for the pure-clock behaviour (no location
-  lookup). GeoClue authorises by desktop ID: whitelist `qypr-bar` in
-  `/etc/geoclue/geoclue.conf` (`[qypr-bar]`, `allowed=true`) or the bar
-  silently keeps the fixed hours — including on polar day/night, where no
-  sunrise/sunset exists. The lock screen and every waylaunch overlay
-  (`mode = "auto"` in `waylaunch.toml`) follow the same solar window from
-  their own GeoClue clients — one suite-wide switch, no cross-process theme
-  bus (a bar crash must never take the lock or Alt+Tab with it).
+  window uses manual coordinates when configured, otherwise qypr-bar looks
+  up a coarse IP-derived location over HTTPS and caches it for about a week.
+  This sends the public IP to ipapi.co; the provider's location can be
+  imprecise. The lock and waylaunch read the private cache only and never
+  perform network lookups. If no cached/manual location is available, the
+  fixed `palette-sunrise`/`palette-sunset` hours (default 7:00/19:00 local)
+  apply. Set `palette-location = off` for pure fixed-hour behavior. Polar
+  day/night also falls back to the configured fixed hours.
 
 On light palettes the text shadow is disabled (opacity 0.6 → 0.0) so the
 dark glyphs stay crisp with no ghost shades behind them. Set an explicit

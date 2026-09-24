@@ -72,15 +72,16 @@ int BarApp::run() {
             themeRuntime_.watchPalette(config_);
             if (themeRuntime_.palette().mode == "auto") { themeRuntime_.startMinuteTimer(config_); }
             loop_.post([this] {
-                backendLifecycle_.start([this] {
-                    if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
+                solarLocation_.setOnChange([this] {
+                    if (themeRuntime_.refreshSolarTimes(solarLocation_.location())) {
                         themeRuntime_.applyTheme(config_);
                         invalidate();
                     }
                 });
-                if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
-                    themeRuntime_.applyTheme(config_);
-                }
+                const auto& palette = themeRuntime_.palette();
+                solarLocation_.configure(palette.mode == "auto" && palette.location == "auto",
+                                         palette.manualLocation);
+                backendLifecycle_.start();
             });
         });
 }
@@ -217,7 +218,10 @@ void BarApp::reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
             notifications_.setTheme(s);
         },
         [this] { display_.invalidateAll(); });
-    themeRuntime_.refreshSolarTimes(geoClue_.fix());
+    const auto& palette = themeRuntime_.palette();
+    solarLocation_.configure(palette.mode == "auto" && palette.location == "auto",
+                             palette.manualLocation);
+    themeRuntime_.refreshSolarTimes(solarLocation_.location());
     themeRuntime_.applyTheme(config_);
     themeRuntime_.watchPalette(config_);
     syncNightLightWithPalette();

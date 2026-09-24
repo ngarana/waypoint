@@ -31,8 +31,9 @@ module combines several of the following:
   ([`Theme.hpp`](../qypr/src/ui/Theme.hpp#L269)). The mutable
   `theme::color/font/spacing/...` namespaces, `toGlobals()`, and `loadTheme()`
   are deleted; [`loadThemeState()`](../qypr/src/ui/Theme.cpp#L45) is a pure
-  state builder. `AutoPalette` is an owned day/night value, ticked by each host
-  and fed by its own GeoClue fix.
+  state builder. `AutoPalette` is an owned day/night value, ticked by each host;
+  qypr-bar refreshes a private coarse-location cache, while qypr-lock and
+  waylaunch consume that cache without location-service or network access.
 - **Stable quick-settings tile identity** (`b0657f6`): `QSTile::Role`
   ([`QSTile.hpp`](../qypr/src/ui/statusbar/QSTile.hpp#L31)) replaced title
   matching for ownership; the panel dedupes and replaces by role

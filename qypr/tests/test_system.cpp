@@ -1,6 +1,53 @@
 // test_system.cpp - System stats/backends, state cache, misc hardware.
 // Split verbatim from tests/unit_tests.cpp; bodies unchanged.
+#include "core/SolarLocationCache.hpp"
+
+#include <ctime>
+#include <string>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "test_framework.hpp"
+
+TEST(SolarLocationParsingAndPrivateCache) {
+    const auto parsed = qypr::parseIpLocationResponse(" -1.286389, 36.817223\n");
+    EXPECT_TRUE(parsed.has_value());
+    if (!parsed) { return; }
+    EXPECT_NEAR(parsed->latitude, -1.286389, 0.000001);
+    EXPECT_NEAR(parsed->longitude, 36.817223, 0.000001);
+    EXPECT_FALSE(qypr::parseIpLocationResponse("91, 0").has_value());
+    EXPECT_FALSE(qypr::parseIpLocationResponse("0, 181").has_value());
+    EXPECT_FALSE(qypr::parseIpLocationResponse("1,2,3").has_value());
+    EXPECT_FALSE(qypr::parseIpLocationResponse("not-a-coordinate").has_value());
+
+    std::string dirTemplate = "/tmp/qypr-solar-cache-XXXXXX";
+    char* const dir = ::mkdtemp(dirTemplate.data());
+    EXPECT_TRUE(dir != nullptr);
+    if (dir == nullptr) { return; }
+    const std::string path = std::string(dir) + "/location";
+    const auto now = static_cast<int64_t>(std::time(nullptr));
+    const qypr::CachedSolarLocation cached{.location = *parsed, .fetchedAt = now};
+    EXPECT_TRUE(qypr::storeSolarLocationCache(cached, path));
+    struct stat fileInfo{};
+    EXPECT_EQ(::stat(path.c_str(), &fileInfo), 0);
+    EXPECT_EQ(fileInfo.st_mode & 0777, static_cast<mode_t>(0600));
+    const auto loaded = qypr::loadSolarLocationCache(path);
+    EXPECT_TRUE(loaded.has_value());
+    if (!loaded) {
+        ::unlink(path.c_str());
+        ::rmdir(dir);
+        return;
+    }
+    EXPECT_NEAR(loaded->location.latitude, parsed->latitude, 0.000001);
+    EXPECT_NEAR(loaded->location.longitude, parsed->longitude, 0.000001);
+    EXPECT_EQ(loaded->fetchedAt, now);
+    constexpr int64_t kWeekSeconds = 604800LL;
+    constexpr int64_t kEightDaysSeconds = 691200LL;
+    EXPECT_TRUE(qypr::solarLocationCacheFresh(cached, now, kWeekSeconds));
+    EXPECT_FALSE(qypr::solarLocationCacheFresh(cached, now + kEightDaysSeconds, kWeekSeconds));
+    ::unlink(path.c_str());
+    ::rmdir(dir);
+}
 
 TEST(VideoPlayer) {
     qypr::EventLoop loop;

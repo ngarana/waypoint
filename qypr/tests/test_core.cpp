@@ -509,7 +509,7 @@ TEST(ThemeRuntimeLifecycleAndSolar) {
     EXPECT_EQ(runtime.palette().mode, std::string("dark"));
 
     // Refresh solar times with a valid fix
-    qypr::GeoFix fix;
+    qypr::SolarLocation fix;
     fix.latitude = 51.5074;
     fix.longitude = -0.1278;
     EXPECT_TRUE(runtime.refreshSolarTimes(fix));

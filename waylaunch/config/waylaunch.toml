@@ -45,10 +45,10 @@ backdrop_tint  = 0.55     # darkening laid over the captured+blurred backdrop
 # ============================================================================
 [theme]
 name        = "dark"
-# mode = "dark" | "light" | "auto". auto follows the solar day/night at your
-# GeoClue fix (city accuracy only; dark fallback when location is off, denied
-# or absent — whitelist waylaunch in /etc/geoclue/geoclue.conf). Picks the
-# matugen dark/light scheme; static sources ignore the mode.
+# mode = "dark" | "light" | "auto". auto follows the solar day/night at the
+# location cached by qypr-bar (dark fallback when no location is cached).
+# waylaunch only reads the shared cache; it does no D-Bus or network lookup.
+# Picks the matugen dark/light scheme; static sources ignore the mode.
 mode        = "dark"
 custom_path = ""
 # source = "static" | "matugen". matugen follows the wallpaper: Material You

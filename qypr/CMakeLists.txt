@@ -41,6 +41,7 @@ pkg_check_modules(UDEV     REQUIRED IMPORTED_TARGET libudev)     # backlight cha
 pkg_check_modules(PULSE    REQUIRED IMPORTED_TARGET libpulse)    # volume (pipewire-pulse)
 pkg_check_modules(MPV      REQUIRED IMPORTED_TARGET mpv)
 pkg_check_modules(RSVG     REQUIRED IMPORTED_TARGET librsvg-2.0)  # SVG icon rasterization
+pkg_check_modules(CURL     REQUIRED IMPORTED_TARGET libcurl)      # bounded IP location lookup
 
 find_library(PAM_LIBRARY pam REQUIRED)
 find_path(PAM_INCLUDE_DIR security/pam_appl.h REQUIRED)
@@ -139,15 +140,11 @@ configure_file(
 # Targets
 # -----------------------------------------------------------------------------
 # Explicit per-target sources (ARCHITECTURE_REVIEW finding 1): every .cpp
-# lives in exactly one list below (shared, lock-only, or entry point), so a
+# lives in exactly one list below (shared, bar-only, lock-only, or entry point), so a
 # newly added lock-only file can never silently leak into the bar through a
 # glob again. Keep each list sorted; entry points carry their own main() and
 # are added per-target, so no executable ever links two of them.
 set(QYPR_SHARED_SOURCES
-    src/core/BarApp.cpp
-    src/core/BarBackendLifecycle.cpp
-    src/core/BarRuntime.cpp
-    src/core/BarSurfaceController.cpp
     src/core/Config.cpp
     src/core/ConfigRuntime.cpp
     src/core/ConfigWatcher.cpp
@@ -169,7 +166,6 @@ set(QYPR_SHARED_SOURCES
     src/system/BluezClient.cpp
     src/system/BrightnessBackend.cpp
     src/system/DbusMenuBackend.cpp
-    src/system/GeoClueBackend.cpp
     src/system/IdleInhibitor.cpp
     src/system/KeyboardLayout.cpp
     src/system/NightLightBackend.cpp
@@ -241,6 +237,16 @@ set(QYPR_RECORDER_SOURCES
     src/notifications/NotificationLog.cpp
 )
 
+# qypr-bar alone performs network-backed location discovery. Keep its host,
+# runtime, and HTTP provider out of qypr-lock's executable.
+set(QYPR_BAR_ONLY_SOURCES
+    src/core/BarApp.cpp
+    src/core/BarBackendLifecycle.cpp
+    src/core/BarRuntime.cpp
+    src/core/BarSurfaceController.cpp
+    src/system/NetworkSolarLocation.cpp
+)
+
 # Lock-only sources: the session-lock app and everything reachable only from it
 # (its UI, the video wallpaper, PAM). qypr-bar links none of these.
 #
@@ -289,6 +295,7 @@ set(WL_COMMON_SOURCES
     "${WL_COMMON_DIR}/core/EventLoop.cpp"
     "${WL_COMMON_DIR}/core/Process.cpp"
     "${WL_COMMON_DIR}/core/SolarCalc.cpp"
+    "${WL_COMMON_DIR}/core/SolarLocationCache.cpp"
     "${WL_COMMON_DIR}/system/DesktopIndex.cpp"
     "${WL_COMMON_DIR}/toplevel/ToplevelStates.cpp")
 # Render helpers: bar/lock/test only. qypr-record never draws (linking cairo
@@ -333,11 +340,11 @@ target_link_libraries(qypr-lock PRIVATE
     Threads::Threads)
 
 # 1b. Standalone status-bar target (qypr-bar): the unlocked-desktop bar on
-# wlr-layer-shell. Shares the *bar* object set with qypr-lock — the lock app,
-# its UI, the video wallpaper and PAM are excluded (QYPR_LOCK_ONLY_SOURCES
-# above), so neither libmpv nor libpam is on the bar's startup path.
+# wlr-layer-shell. Bar host/runtime and network location lookup are isolated in
+# QYPR_BAR_ONLY_SOURCES; lock-only security/UI code stays out of this target.
 add_executable(qypr-bar
     ${QYPR_SHARED_SOURCES}
+    ${QYPR_BAR_ONLY_SOURCES}
     ${WL_COMMON_SOURCES}
     ${WL_COMMON_RENDER_SOURCES}
     ${WL_COMMON_WAYLAND_SOURCES}
@@ -361,6 +368,7 @@ target_link_libraries(qypr-bar PRIVATE
     PkgConfig::UDEV
     PkgConfig::PULSE
     PkgConfig::RSVG
+    PkgConfig::CURL
     Threads::Threads)
 
 # 2. Standalone Recorder target (only needs systemd for sd-bus)
@@ -407,6 +415,7 @@ add_executable(qypr-test
     tests/test_desktop.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
+    ${QYPR_BAR_ONLY_SOURCES}
     ${QYPR_LOCK_ONLY_SOURCES}
     ${WL_COMMON_SOURCES}
     ${WL_COMMON_RENDER_SOURCES}

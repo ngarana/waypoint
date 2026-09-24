@@ -20,7 +20,6 @@ pkg_check_modules(LIBRSVG REQUIRED librsvg-2.0)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(ZSTD REQUIRED libzstd)   # compressed doc store (NFR5)
 pkg_check_modules(LIBMAGIC libmagic)   # optional: MIME sniffing (falls back to ext)
-pkg_check_modules(SYSTEMD REQUIRED libsystemd)   # sd-bus GeoClue client (solar theme)
 find_package(Threads REQUIRED)
 find_package(tomlplusplus 3 CONFIG REQUIRED)
 
@@ -157,6 +156,8 @@ set(SOURCES
     src/ui/launcher_ui.cpp
     ${LIBWL_COMMON}/core/EventLoop.cpp
     ${LIBWL_COMMON}/core/Process.cpp
+    ${LIBWL_COMMON}/core/SolarCalc.cpp
+    ${LIBWL_COMMON}/core/SolarLocationCache.cpp
     ${LIBWL_COMMON}/render/BackdropBlur.cpp
     ${LIBWL_COMMON}/render/IconResolver.cpp
     ${LIBWL_COMMON}/system/DesktopIndex.cpp
@@ -174,8 +175,6 @@ set(SOURCES
     src/config/matugen_theme.cpp
     src/ui/theme_manager.cpp
     src/system/solar.cpp
-    src/system/geoclue.cpp
-    ${LIBWL_COMMON}/core/SolarCalc.cpp
     ${LIBWL_COMMON}/toplevel/ToplevelStates.cpp
     ${LIBWL_COMMON}/render/MatugenTokens.cpp
     ${LIBWL_COMMON}/render/Painter.cpp
@@ -221,7 +220,6 @@ target_include_directories(waylaunch PRIVATE
     ${PANGO_INCLUDE_DIRS}
     ${FONTCONFIG_INCLUDE_DIRS}
     ${LIBRSVG_INCLUDE_DIRS}
-    ${SYSTEMD_INCLUDE_DIRS}
 )
 
 target_link_libraries(waylaunch PRIVATE
@@ -233,7 +231,6 @@ target_link_libraries(waylaunch PRIVATE
     ${PANGO_LIBRARIES}
     ${FONTCONFIG_LIBRARIES}
     ${LIBRSVG_LIBRARIES}
-    ${SYSTEMD_LIBRARIES}   # sd-bus GeoClue client (solar theme)
     rt   # for shm_open
     m    # math
 )
@@ -245,7 +242,6 @@ target_compile_options(waylaunch PRIVATE
     ${PANGO_CFLAGS}
     ${FONTCONFIG_CFLAGS}
     ${LIBRSVG_CFLAGS}
-    ${SYSTEMD_CFLAGS}
     -Wall -Wextra -Wpedantic
 )
 
@@ -429,15 +425,13 @@ if(BUILD_TESTING)
     target_compile_options(history_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME history_test COMMAND history_test)
 
-    # Solar theme mode: pure decision logic + shared NOAA math, no D-Bus.
+    # Solar theme mode: pure decision logic, shared NOAA math, and cache reader.
     add_executable(solar_mode_test tests/solar_mode_test.cpp src/system/solar.cpp
-        src/system/geoclue.cpp
-        ${LIBWL_COMMON}/core/SolarCalc.cpp)
+        ${LIBWL_COMMON}/core/SolarCalc.cpp
+        ${LIBWL_COMMON}/core/SolarLocationCache.cpp)
     target_include_directories(solar_mode_test PRIVATE ${CMAKE_SOURCE_DIR}/include
-        ${LIBWL_COMMON} ${SYSTEMD_INCLUDE_DIRS})
-    target_link_libraries(solar_mode_test PRIVATE ${SYSTEMD_LIBRARIES})
-    target_compile_options(solar_mode_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG
-        ${SYSTEMD_CFLAGS})
+        ${LIBWL_COMMON})
+    target_compile_options(solar_mode_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME solar_mode_test COMMAND solar_mode_test)
 
     # Theme ownership: matugen source + solar mode + config watch.
@@ -446,14 +440,12 @@ if(BUILD_TESTING)
         src/config/matugen_theme.cpp
         ${LIBWL_COMMON}/render/MatugenTokens.cpp
         src/system/solar.cpp
-        src/system/geoclue.cpp
-        ${LIBWL_COMMON}/core/SolarCalc.cpp)
-    target_link_libraries(theme_manager_test PRIVATE tomlplusplus::tomlplusplus
-        ${SYSTEMD_LIBRARIES})
+        ${LIBWL_COMMON}/core/SolarCalc.cpp
+        ${LIBWL_COMMON}/core/SolarLocationCache.cpp)
+    target_link_libraries(theme_manager_test PRIVATE tomlplusplus::tomlplusplus)
     target_include_directories(theme_manager_test PRIVATE ${CMAKE_SOURCE_DIR}/include
-        ${LIBWL_COMMON} ${SYSTEMD_INCLUDE_DIRS})
-    target_compile_options(theme_manager_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG
-        ${SYSTEMD_CFLAGS})
+        ${LIBWL_COMMON})
+    target_compile_options(theme_manager_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME theme_manager_test COMMAND theme_manager_test)
 
     add_executable(provider_test tests/provider_test.cpp

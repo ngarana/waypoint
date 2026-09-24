@@ -28,7 +28,7 @@
 #include "notifications/NotificationMonitor.hpp"
 #include "power/SystemActions.hpp"
 #include "system/PowerProfilesBackend.hpp"
-#include "system/GeoClueBackend.hpp"
+#include "system/NetworkSolarLocation.hpp"
 #include "system/IdleInhibitor.hpp"
 #include "system/DesktopIndex.hpp"
 #include "system/KeyboardLayout.hpp"
@@ -128,9 +128,9 @@ private:
     NotificationActions notificationActions_{sessionBus_};
     SystemActions power_{loop_};
     PowerProfilesBackend powerProfiles_{loop_, systemBus_};
-    // City-accurate fix for the solar auto-palette (bar-only; the lock app
-    // never constructs this). Absent/denied → theme keeps fixed hours.
-    GeoClueBackend geoClue_{loop_, systemBus_};
+    // IP-derived coarse location lookup is bar-only; qypr-lock consumes only
+    // the private cache and never opens a network connection.
+    NetworkSolarLocation solarLocation_{loop_};
     IdleInhibitor idleInhibitor_;  // init()'d after display_.connect()
     MprisController mpris_;
     // Application launcher index (bar-only). load()'ed in run(); the lock app
@@ -171,7 +171,7 @@ private:
     ConfigRuntime configRuntime_{loop_};
     ThemeRuntime themeRuntime_{loop_};
     BarSurfaceController surfaceController_{display_, loop_, ConfigRuntime::reservedFor(geom_)};
-    BarBackendLifecycle backendLifecycle_{loop_, backends_, stateCache_, geoClue_, *this};
+    BarBackendLifecycle backendLifecycle_{loop_, backends_, stateCache_, *this};
     BarRuntime runtime_{loop_,          display_,      surfaceController_,
                         configRuntime_, themeRuntime_, backendLifecycle_};
 };

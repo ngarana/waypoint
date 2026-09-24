@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "core/SolarCalc.hpp"
+#include "core/SolarLocationCache.hpp"
 
 namespace qypr {
 
@@ -51,17 +52,18 @@ void ThemeRuntime::watchPalette(const Config& config) {
     }
 }
 
-bool ThemeRuntime::refreshSolarTimes(const std::optional<GeoFix>& fix) {
+bool ThemeRuntime::refreshSolarTimes(const std::optional<SolarLocation>& location) {
     if (palette_.location != "auto") {
         palette_.clearSolarTimes();
         return false;
     }
-    if (!fix) {
+    const auto selected = palette_.manualLocation ? palette_.manualLocation : location;
+    if (!selected) {
         palette_.clearSolarTimes();
         return false;
     }
-    const auto times =
-        solarTimesForDate(fix->latitude, fix->longitude, localDateNow(), localTzOffsetMin());
+    const auto times = solarTimesForDate(selected->latitude, selected->longitude, localDateNow(),
+                                         localTzOffsetMin());
     if (!times) {
         palette_.clearSolarTimes();  // polar day/night: fixed hours carry the mode
         return false;
@@ -73,9 +75,21 @@ bool ThemeRuntime::refreshSolarTimes(const std::optional<GeoFix>& fix) {
 void ThemeRuntime::startMinuteTimer(const Config& config) {
     stopMinuteTimer();
     minuteTimerId_ = loop_.addTimer(60000, true, [this, &config] {
-        if (palette_.tick(theme::localHourNow())) {
+        const bool hadSolar = palette_.useSolar;
+        const int oldSunrise = palette_.solarSunriseMin;
+        const int oldSunset = palette_.solarSunsetMin;
+        if (palette_.location == "auto" && !palette_.manualLocation) {
+            const auto cached = loadSolarLocationCache();
+            refreshSolarTimes(cached ? std::optional<SolarLocation>(cached->location)
+                                     : std::nullopt);
+        }
+        const bool solarChanged = hadSolar != palette_.useSolar ||
+                                  oldSunrise != palette_.solarSunriseMin ||
+                                  oldSunset != palette_.solarSunsetMin;
+        const bool modeChanged = palette_.tick(theme::localHourNow());
+        if (modeChanged || solarChanged) {
             applyTheme(config);
-            if (onPaletteTransition_) { onPaletteTransition_(palette_.resolved); }
+            if (modeChanged && onPaletteTransition_) { onPaletteTransition_(palette_.resolved); }
             if (onInvalidate_) onInvalidate_();
         }
     });

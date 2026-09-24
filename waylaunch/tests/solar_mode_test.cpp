@@ -1,7 +1,11 @@
 #include "waylaunch/solar.h"
 
 #include <cassert>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
+#include <string>
+#include <unistd.h>
 
 using namespace waylaunch;
 
@@ -50,11 +54,49 @@ void test_window_for_today_sane() {
     std::cout << "[PASS] window for today sane\n";
 }
 
+void test_tracker_uses_shared_cache() {
+    char cacheRoot[] = "/tmp/waylaunch-solar-cache-XXXXXX";
+    char* created = ::mkdtemp(cacheRoot);
+    assert(created != nullptr);
+    const char* oldCacheHomeValue = std::getenv("XDG_CACHE_HOME");
+    const std::optional<std::string> oldCacheHome =
+        oldCacheHomeValue == nullptr ? std::nullopt : std::optional<std::string>(oldCacheHomeValue);
+    assert(::setenv("XDG_CACHE_HOME", created, 1) == 0);
+
+    const qypr::CachedSolarLocation cached{
+        .location = {.latitude = 1.286389, .longitude = 36.817223},
+        .fetchedAt = static_cast<int64_t>(std::time(nullptr)),
+    };
+    assert(qypr::storeSolarLocationCache(cached));
+
+    solar_tracker tracker;
+    tracker.warm();
+    const auto window = solar_window_for_today(cached.location.latitude, cached.location.longitude);
+    assert(window.has_value());
+    const std::time_t timestamp = std::time(nullptr);
+    std::tm local{};
+    assert(::localtime_r(&timestamp, &local) != nullptr);
+    const int minute = (local.tm_hour * 60) + local.tm_min;
+    assert(tracker.effective_mode("auto") == effective_theme_mode("auto", window, minute));
+
+    if (oldCacheHome) {
+        assert(::setenv("XDG_CACHE_HOME", oldCacheHome->c_str(), 1) == 0);
+    } else {
+        assert(::unsetenv("XDG_CACHE_HOME") == 0);
+    }
+    const std::string cacheFile = std::string(created) + "/qypr/solar-location";
+    assert(::unlink(cacheFile.c_str()) == 0);
+    assert(::rmdir((std::string(created) + "/qypr").c_str()) == 0);
+    assert(::rmdir(created) == 0);
+    std::cout << "[PASS] solar tracker reads shared cache\n";
+}
+
 int main() {
     test_static_modes_pass_through();
     test_auto_follows_window();
     test_auto_without_window_is_dark();
     test_window_for_today_sane();
+    test_tracker_uses_shared_cache();
     std::cout << "solar_mode_test: all passed\n";
     return 0;
 }

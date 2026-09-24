@@ -121,8 +121,8 @@ void test_poll_detects_effective_mode_change_for_static_theme() {
 }
 
 void test_auto_resolves_either_scheme() {
-    // No GeoClue stub here (live bus, any timezone): auto must resolve to
-    // one of the two real schemes — membership, not the sun's position.
+    // Auto must resolve to one of the two real schemes regardless of whether
+    // qypr-bar has populated the shared location cache yet.
     auto dir = fresh_dir("auto");
     std::string colors = (dir / "colors.json").string();
     write_file(dir / "colors.json", kColorsJson);

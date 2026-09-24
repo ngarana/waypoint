@@ -152,7 +152,7 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
     // change). Cached by mtime, so per-tick cost is a couple of stats.
     MatugenTheme matugen;
     // Solar day/night for [theme] mode=auto, warmed once here (daemon
-    // startup, not first toggle) so GeoClue activation never delays a show.
+    // startup, not first toggle) from the shared cache without D-Bus/network.
     solar_tracker solar;
 
     FocusGuard guard;
@@ -656,7 +656,7 @@ int dropdown_main(const std::string& slot, const std::string& config_path) {
 
     // First press appears (gap-3 fix): boot the session on start.
     reload_config(true);
-    solar.warm(); // GeoClue fix now, so the first strip paint already follows the sun
+    solar.warm(); // Read cached location so the first strip paint follows the sun.
     if (!dropdown_enabled) {
         std::cout << "waylaunch: dropdown overlay disabled ([dropdown].enabled is false)\n";
         return 0;

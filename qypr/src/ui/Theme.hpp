@@ -14,8 +14,10 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
+#include "core/SolarLocation.hpp"
 #include "core/Types.hpp"
 
 namespace qypr {
@@ -45,17 +47,17 @@ namespace theme {
 // AutoPalette is a VALUE (ARCHITECTURE_REVIEW finding 10): the bar and the
 // lock screen each own one, parsed from their config and ticked by their own
 // loop. No palette globals exist — tests construct values with explicit
-// hours, so the suite is clock- and order-independent. The solar cache
-// (setSolarTimes) is fed by the owner's GeoClue fix and survives config
-// reloads (re-parsing only replaces the configured keys).
+// hours, so the suite is clock- and order-independent. A manual location in
+// config takes precedence over the shared IP-location cache.
 struct AutoPalette {
     std::string mode = "dark";      // configured: dark | light | auto
     std::string resolved = "dark";  // effective mode (== mode when not auto)
     int sunriseHour = 7;            // fallback: light from this hour…
     int sunsetHour = 19;            // …until this hour (local time)
     std::string location = "auto";  // solar source: auto | off
-    bool useSolar = false;          // solar cache valid
-    int solarSunriseMin = 0;        // minutes since local midnight
+    std::optional<SolarLocation> manualLocation;
+    bool useSolar = false;    // solar cache valid
+    int solarSunriseMin = 0;  // minutes since local midnight
     int solarSunsetMin = 0;
 
     // Parse the [theme] palette keys (warns on unknown values, keeps

@@ -16,14 +16,7 @@ int now_minutes() {
     return (local.tm_hour * 60) + local.tm_min;
 }
 
-int day_of_year() {
-    std::time_t now = std::time(nullptr);
-    std::tm local{};
-    if (localtime_r(&now, &local) == nullptr) return -1;
-    return local.tm_yday;
-}
-
-constexpr std::chrono::hours kFixRefreshInterval{1};
+constexpr std::chrono::seconds kCachePollInterval{60};
 
 } // namespace
 
@@ -50,8 +43,8 @@ void solar_tracker::warm() {
 
 std::string solar_tracker::effective_mode(const std::string& configured) {
     if (configured != "auto") return effective_theme_mode(configured, std::nullopt, 0);
-    // Lazy start: transient overlays reach this on their first poll tick,
-    // after first paint, so GeoClue activation never delays the popup.
+    // Lazy start lets transient overlays read the shared cache after first
+    // paint; cache I/O is bounded to once per minute.
     if (!started_) { started_ = true; }
     refresh_if_needed();
     return effective_theme_mode(configured, window_, now_minutes());
@@ -60,22 +53,36 @@ std::string solar_tracker::effective_mode(const std::string& configured) {
 void solar_tracker::refresh_if_needed() {
     if (!started_) return;
     const auto now = std::chrono::steady_clock::now();
-    // One D-Bus roundtrip per hour at most: a denied/absent GeoClue must not
-    // be re-dialed every poll tick, and a held fix only needs hourly travel
-    // updates. The day rollover below still runs on every call.
-    const bool due = last_attempt_ == std::chrono::steady_clock::time_point{} ||
-                     last_attempt_ + kFixRefreshInterval < now;
-    if (due) {
-        last_attempt_ = now;
-        if (!geoclue_.fix().has_value() && !geoclue_.start()) return;
-        geoclue_.refresh();
+    if (last_cache_check_ == std::chrono::steady_clock::time_point{} ||
+        last_cache_check_ + kCachePollInterval <= now) {
+        last_cache_check_ = now;
+        const auto cached = qypr::loadSolarLocationCache();
+        const int64_t fetchedAt = cached ? cached->fetchedAt : 0;
+        const std::optional<qypr::SolarLocation> location =
+            cached ? std::optional<qypr::SolarLocation>(cached->location) : std::nullopt;
+        if (fetchedAt != cache_fetched_at_ || location != location_) {
+            cache_fetched_at_ = fetchedAt;
+            location_ = location;
+            window_year_ = -1;
+            window_yday_ = -1;
+        }
     }
-    const auto& fix = geoclue_.fix();
-    if (!fix.has_value()) return;
-    int yday = day_of_year();
-    if (window_yday_ != yday) {
-        window_ = solar_window_for_today(fix->latitude, fix->longitude);
-        window_yday_ = yday;
+
+    if (!location_) {
+        window_.reset();
+        return;
+    }
+
+    std::time_t timestamp = std::time(nullptr);
+    std::tm local{};
+    if (localtime_r(&timestamp, &local) == nullptr) return;
+    const int tzOffsetMin = qypr::localTzOffsetMin();
+    if (window_year_ != local.tm_year || window_yday_ != local.tm_yday ||
+        window_tz_offset_min_ != tzOffsetMin) {
+        window_ = solar_window_for_today(location_->latitude, location_->longitude);
+        window_year_ = local.tm_year;
+        window_yday_ = local.tm_yday;
+        window_tz_offset_min_ = tzOffsetMin;
     }
 }
 

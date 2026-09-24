@@ -16,7 +16,6 @@
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
 #include "system/DndState.hpp"
-#include "system/GeoClueBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/SystemBus.hpp"
 #include "system/VolumeBackend.hpp"
@@ -79,9 +78,6 @@ private:
     BluetoothBackend bluetooth_{loop_, systemBus_};
     VolumeBackend volume_{loop_};
     SNIBackend sni_{sessionBus_};
-    // City-accurate fix for the solar auto-palette (same source as the bar).
-    // Absent/denied → the lock keeps the fixed theme hours.
-    GeoClueBackend geoClue_{loop_, systemBus_};
     DndState dnd_;
     SystemBackends backends_{.hasSession = false,
                              .battery = &battery_,

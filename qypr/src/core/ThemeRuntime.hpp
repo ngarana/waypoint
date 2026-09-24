@@ -9,7 +9,7 @@
 #include "core/Config.hpp"
 #include "core/ConfigWatcher.hpp"
 #include "core/EventLoop.hpp"
-#include "system/GeoClueBackend.hpp"
+#include "core/SolarLocation.hpp"
 #include "ui/PaletteSource.hpp"
 #include "ui/Theme.hpp"
 
@@ -40,9 +40,9 @@ public:
     // Watch [theme] colors-file and colors-file-light for live matugen reloads.
     void watchPalette(const Config& config);
 
-    // Recompute solar sunrise/sunset times using the given location fix.
+    // Recompute solar sunrise/sunset times using the given coarse location.
     // Clears cached solar times if location is disabled or fix is invalid.
-    bool refreshSolarTimes(const std::optional<GeoFix>& fix);
+    bool refreshSolarTimes(const std::optional<SolarLocation>& location);
 
     // Re-read theme state from config with current palette mode and publish.
     void applyTheme(const Config& config);

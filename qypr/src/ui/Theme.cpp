@@ -266,6 +266,22 @@ AutoPalette AutoPalette::fromConfig(const Config& cfg, int hourNow) {
                          loc.c_str());
         }
     }
+    const bool hasLatitude = cfg.has(kS, "palette-latitude");
+    const bool hasLongitude = cfg.has(kS, "palette-longitude");
+    if (hasLatitude && hasLongitude) {
+        const SolarLocation location{.latitude = cfg.getDouble(kS, "palette-latitude", 0.0),
+                                     .longitude = cfg.getDouble(kS, "palette-longitude", 0.0)};
+        if (validSolarLocation(location)) {
+            palette.manualLocation = location;
+        } else {
+            std::fprintf(
+                stderr,
+                "qypr: theme: invalid palette coordinates; using cached/network location\n");
+        }
+    } else if (hasLatitude || hasLongitude) {
+        std::fprintf(stderr,
+                     "qypr: theme: palette-latitude and palette-longitude must be set together\n");
+    }
     overrideInt(palette.sunriseHour, cfg, kS, "palette-sunrise");
     overrideInt(palette.sunsetHour, cfg, kS, "palette-sunset");
     palette.resolved = palette.mode == "auto" ? resolveFor(hourNow, palette.effectiveSunriseHour(),

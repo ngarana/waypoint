@@ -8,7 +8,6 @@
 #include "system/BatteryBackend.hpp"
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
-#include "system/GeoClueBackend.hpp"
 #include "system/PowerProfilesBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
@@ -18,15 +17,13 @@
 namespace qypr {
 
 BarBackendLifecycle::BarBackendLifecycle(EventLoop& loop, SystemBackends& backends,
-                                         StateCache& stateCache, GeoClueBackend& geoClue,
-                                         Invalidator& invalidator)
+                                         StateCache& stateCache, Invalidator& invalidator)
     : loop_(loop),
       backends_(backends),
       stateCache_(stateCache),
-      geoClue_(geoClue),
       invalidator_(invalidator) {}
 
-void BarBackendLifecycle::start(std::function<void()> onGeoClueFix) {
+void BarBackendLifecycle::start() {
     if (backends_.battery) backends_.battery->start();
     if (backends_.brightness) backends_.brightness->start();
     if (backends_.wifi) backends_.wifi->start();
@@ -38,9 +35,6 @@ void BarBackendLifecycle::start(std::function<void()> onGeoClueFix) {
         backends_.powerProfiles->setOnChange([this] { invalidator_.invalidate(); });
         backends_.powerProfiles->start();
     }
-
-    if (onGeoClueFix) { geoClue_.setOnChange(std::move(onGeoClueFix)); }
-    geoClue_.start();
 
     if (backends_.notifications) {
         backends_.notifications->setOnChange([this] { invalidator_.invalidate(); });

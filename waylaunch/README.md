@@ -246,10 +246,9 @@ file_roots     = ["~"]
 max_file_results = 6
 
 [theme]
-# mode = "dark" | "light" | "auto". auto follows the solar day/night at your
-# GeoClue fix (city accuracy only; dark fallback — whitelist waylaunch in
-# /etc/geoclue/geoclue.conf). Same sun as the qypr bar/lock, resolved
-# independently per process.
+# mode = "dark" | "light" | "auto". auto follows the solar day/night at the
+# location cached by qypr-bar (dark fallback when no location is cached).
+# waylaunch only reads the shared cache; it does no D-Bus or network lookup.
 mode = "dark"
 [theme.colors]
 background = "#1e1e2e"

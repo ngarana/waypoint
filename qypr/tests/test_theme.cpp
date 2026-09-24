@@ -374,6 +374,20 @@ TEST(ThemeSolarCacheOverridesFixedHours) {
     bad.load(writeTempConfig("[theme]\npalette-location = sometimes\n"));
     AutoPalette palBad = AutoPalette::fromConfig(bad, 12);
     EXPECT_EQ(palBad.location, std::string("auto"));
+
+    qypr::Config manual;
+    manual.load(writeTempConfig("[theme]\npalette-location = auto\n"
+                                "palette-latitude = -1.286389\n"
+                                "palette-longitude = 36.817223\n"));
+    AutoPalette palManual = AutoPalette::fromConfig(manual, 12);
+    EXPECT_TRUE(palManual.manualLocation.has_value());
+    if (!palManual.manualLocation) { return; }
+    EXPECT_EQ(palManual.manualLocation->latitude, -1.286389);
+    EXPECT_EQ(palManual.manualLocation->longitude, 36.817223);
+
+    qypr::Config partial;
+    partial.load(writeTempConfig("[theme]\npalette-latitude = 90.1\n"));
+    EXPECT_FALSE(AutoPalette::fromConfig(partial, 12).manualLocation.has_value());
 }
 
 // Palette format decoding is unit-testable without a Config or State

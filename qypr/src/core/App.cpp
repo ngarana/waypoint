@@ -5,10 +5,11 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "core/Config.hpp"
-#include "core/SolarCalc.hpp"
+#include "core/SolarLocationCache.hpp"
 #include "ui/Notification.hpp"
 #include "ui/Theme.hpp"
 
@@ -62,8 +63,7 @@ App::App()
 int App::run() {
     // Repo-wide theme: the lock follows the same palette as the bar —
     // solar auto-switch included — instead of the compiled defaults. A
-    // missing config keeps those defaults; the solar fallback (fixed hours)
-    // covers a missing/denied GeoClue on top.
+    // missing cache/manual location keeps the configured fixed-hour fallback.
     Config config;
     if (config.load()) { std::fprintf(stderr, "qypr-lock: config %s\n", config.path().c_str()); }
 
@@ -84,16 +84,15 @@ int App::run() {
 
     lockRuntime_.startBackends(backends_, notifications_);
 
-    // Location for the solar auto-palette, same as the bar. A sunrise during
-    // a long lock re-themes the screen; absent/denied GeoClue never fires.
-    geoClue_.setOnChange([this, &config] {
-        if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) {
-            themeRuntime_.applyTheme(config);
-            invalidate();
-        }
-    });
-    geoClue_.start();
-    if (themeRuntime_.refreshSolarTimes(geoClue_.fix())) { themeRuntime_.applyTheme(config); }
+    // Lock runtime consumes only the bar's private cached coordinates. Network
+    // lookups stay in qypr-bar; if the cache updates while locked, the existing
+    // minute theme timer picks it up without waking a network request here.
+    const auto cachedLocation = loadSolarLocationCache();
+    if (themeRuntime_.refreshSolarTimes(cachedLocation
+                                            ? std::optional<SolarLocation>(cachedLocation->location)
+                                            : std::nullopt)) {
+        themeRuntime_.applyTheme(config);
+    }
     if (themeRuntime_.palette().mode == "auto") { themeRuntime_.startMinuteTimer(config); }
 
     // Start video playback (non-fatal if it fails).

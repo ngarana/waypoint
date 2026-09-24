@@ -1,6 +1,6 @@
 // SolarCalc.hpp - Sunrise/sunset from latitude/longitude (NOAA algorithm).
 //
-// Pure date math for the bar's auto palette mode: given a GeoClue fix and a
+// Pure date math for automatic palette mode: given a geographic location and a
 // civil date, yields sunrise/sunset as minutes since local midnight. No I/O,
 // no clock (callers pass "today" in), so the golden-value tests need no
 // mocking. Accuracy is ~±1 minute — plenty for a theme switch.
