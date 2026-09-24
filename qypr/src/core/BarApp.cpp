@@ -21,6 +21,9 @@ namespace qypr {
 BarApp::BarApp() = default;
 
 int BarApp::run() {
+    themeRuntime_.setOnPaletteTransition([this](const std::string& mode) {
+        if (mode == "dark") { syncNightLightWithPalette(); }
+    });
     themeRuntime_.init(
         config_,
         [this](const theme::State& s) {
@@ -45,6 +48,7 @@ int BarApp::run() {
             nightLight_.init(display_.gammaControlManager(), display_.display());
             nightLight_.setOutputs(display_.outputs());
             nightLight_.setOnChange([this] { invalidate(); });
+            syncNightLightWithPalette();
             workspace_.start(display_.display());
             toplevel_.start(display_.display());
 
@@ -54,6 +58,11 @@ int BarApp::run() {
         },
         /*onFirstFrame=*/
         [this] {
+            // Workspace/toplevel registries are dispatched by the initial
+            // Wayland roundtrip. Refresh once after that dispatch so session
+            // indicators do not depend on the compositor delivering their
+            // initial snapshot before the layer-surface configure callback.
+            statusBar_.refreshFromBackends();
             configRuntime_.startWatching(
                 config_.path(),
                 [this](const Config& newConfig, const BarGeometry& newGeom,
@@ -211,6 +220,7 @@ void BarApp::reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
     themeRuntime_.refreshSolarTimes(geoClue_.fix());
     themeRuntime_.applyTheme(config_);
     themeRuntime_.watchPalette(config_);
+    syncNightLightWithPalette();
 
     geom_ = newGeom;
     statusBar_.setGeometry(geom_);
@@ -230,6 +240,15 @@ void BarApp::reloadConfig(const Config& newConfig, const BarGeometry& newGeom,
 
 void BarApp::applyTheme() {
     themeRuntime_.applyTheme(config_);
+}
+
+void BarApp::syncNightLightWithPalette() {
+    // Only the automatic day/night mode owns this side effect. Explicitly
+    // configured dark mode is a theme choice, not consent to change gamma.
+    if (themeRuntime_.palette().mode != "auto" || themeRuntime_.palette().resolved != "dark") {
+        return;
+    }
+    if (!nightLight_.enabled()) { nightLight_.setEnabled(true); }
 }
 
 void BarApp::syncOverlay() {

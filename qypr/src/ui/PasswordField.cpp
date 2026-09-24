@@ -1,5 +1,6 @@
 #include "ui/PasswordField.hpp"
 
+#include <algorithm>
 #include <string>
 
 #include "render/Painter.hpp"
@@ -36,18 +37,20 @@ void PasswordField::draw(Painter& p, int64_t) {
 
     // Masked input or placeholder.
     double textX = iconX + iconSz.w + theme().spacing.medium;
+    const double textWidth = std::max(0.0, r.x + r.w - textX - theme().spacing.large);
     if (charCount > 0) {
         std::string dots;
+        dots.reserve(static_cast<size_t>(charCount) * 3);
         for (int i = 0; i < charCount; ++i) dots += "•";  // bullet
         TextStyle t{theme().font.family, static_cast<double>(theme().font.size),
                     PANGO_WEIGHT_NORMAL, theme().colors.text};
-        Size ts = p.measureText(dots, t);
-        p.drawText(textX, r.cy() - ts.h / 2.0, dots, t, HAlign::Left);
+        Size ts = p.measureText(dots, t, textWidth);
+        p.drawText(textX, r.cy() - ts.h / 2.0, dots, t, HAlign::Left, textWidth);
     } else {
         TextStyle ph{theme().font.family, static_cast<double>(theme().font.size),
                      PANGO_WEIGHT_NORMAL, theme().colors.textMuted};
-        Size ps = p.measureText(kPlaceholder, ph);
-        p.drawText(textX, r.cy() - ps.h / 2.0, kPlaceholder, ph, HAlign::Left);
+        Size ps = p.measureText(kPlaceholder, ph, textWidth);
+        p.drawText(textX, r.cy() - ps.h / 2.0, kPlaceholder, ph, HAlign::Left, textWidth);
     }
 }
 

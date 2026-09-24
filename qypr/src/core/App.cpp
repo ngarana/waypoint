@@ -48,6 +48,8 @@ App::App()
 
     shell_.setAudioController(&audio_);
     shell_.setVideoPlayer(&video_);
+    shell_.setNotificationDismissHandler(
+        [this](const Notification& note) { notificationActions_.close(note.daemonId); });
 
     // Live notifications are pushed into the UI as the monitor sees them.
     // No fallback data on the real lock screen — samples are preview-only.

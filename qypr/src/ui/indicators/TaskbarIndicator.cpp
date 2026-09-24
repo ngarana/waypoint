@@ -76,9 +76,9 @@ void TaskbarIndicator::draw(Painter& p, int64_t now) {
         } else {
             // Initial-letter tile.
             const Rect tile{iconX, iconY, kIconPx, kIconPx};
-            p.fillRoundedRect(tile, 5.0, apptile::fallbackColor(w.appId).withAlpha(alpha));
+            p.fillRoundedRect(tile, 5.0, apptile::fallbackColor(w.appId, theme()).withAlpha(alpha));
             TextStyle st{theme().font.family, 12.0, PANGO_WEIGHT_BOLD,
-                         Color::fromHex("#1e1e2e").withAlpha(alpha)};
+                         theme().colors.background.withAlpha(alpha)};
             const std::string ch = apptile::initialFor(w.appId);
             const Size cs = p.measureText(ch, st);
             p.drawText(iconX + (kIconPx - cs.w) / 2.0, iconY + (kIconPx - cs.h) / 2.0, ch, st);

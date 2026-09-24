@@ -40,6 +40,10 @@ public:
     // popovers, including a borrowed Quick Settings panel.
     void setBackdrop(bool enabled, double alpha);
 
+    // Propagate a live theme to every popover currently being drawn. This is
+    // needed for palette hot-reloads while an overlay is already open.
+    void setTheme(const theme::State& state);
+
     DetailedPopover* active() const { return active_.get() ? active_.get() : borrowed_; }
     bool isTransitioning() const { return transitioning_.get() != nullptr; }
 

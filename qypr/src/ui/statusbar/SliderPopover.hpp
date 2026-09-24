@@ -15,6 +15,11 @@ class SliderPopover final : public DetailedPopover {
 public:
     explicit SliderPopover(std::unique_ptr<QSTile> tile) : tile_(std::move(tile)) {}
 
+    void setTheme(const theme::State& state) override {
+        theme::ThemeAware::setTheme(state);
+        if (tile_) tile_->setTheme(state);
+    }
+
     // Compact, single-control popup: one QS-style tile plus equal padding on
     // all sides. It is intentionally much smaller than the full QS panel.
     double contentWidth() const override { return 360.0; }

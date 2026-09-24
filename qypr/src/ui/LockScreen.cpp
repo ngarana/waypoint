@@ -30,6 +30,10 @@ void LockScreen::setNotifications(std::vector<Notification> notes) {
     renderer_.notifications().update(std::move(notes));
 }
 
+void LockScreen::setNotificationDismissHandler(std::function<void(const Notification&)> handler) {
+    renderer_.setNotificationDismissHandler(std::move(handler));
+}
+
 void LockScreen::draw(cairo_t* cr, int width, int height, int scale) {
     renderer_.draw(cr, width, height, scale);
 }
@@ -42,7 +46,6 @@ bool LockScreen::isAnimating() const {
 
 void LockScreen::setTheme(const theme::State& state) {
     theme::ThemeAware::setTheme(state);
-    controller_.setTheme(state);
     renderer_.setTheme(state);
 }
 

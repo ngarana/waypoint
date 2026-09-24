@@ -168,7 +168,6 @@ void WorkspaceBackend::onManagerDone() {
 void WorkspaceBackend::rebuildAndNotify() {
     WorkspaceSnapshot next;
     next.available = snap_.available;
-
     std::vector<const WsHandle*> visible;
     for (const auto& h : handles_) {
         if (h->hidden) {

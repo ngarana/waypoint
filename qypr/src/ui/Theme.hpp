@@ -143,7 +143,7 @@ struct State {
     struct Fonts {
         int size = 16;
         int sizeLarge = 22;
-        int sizeClock = 64;
+        int sizeClock = 96;
         int sizeDate = 18;
         std::string family = "Inter";
         std::string iconFamily = "CaskaydiaCove Nerd Font";

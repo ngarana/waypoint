@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include <array>
-
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
 #include "ui/Theme.hpp"
@@ -17,6 +15,7 @@ public:
     static constexpr int kNumPowerActions = 4;
     static constexpr double kButtonDiameter = 52.0;
     static constexpr double kPillPad = 8.0;
+    static constexpr double kMaxColumnWidth = 420.0;
 
     struct Result {
         double centerX = 0.0;
@@ -25,14 +24,12 @@ public:
         Rect password;
         double statusTop = 0.0;
         double audioTop = 0.0;
-        Rect powerRow;
-        std::array<Rect, kNumPowerActions> powerButtons{};
-        Rect powerAnchor;
     };
 
     // The widget measurements are supplied by the renderer because measuring
-    // text requires a Painter. Everything after those measurements is pure
-    // geometry derived from the output size and theme.
+    // text requires a Painter. The central auth stack stays below the status
+    // bar and is clamped on short outputs; power geometry is deliberately
+    // kept in the power controller's API rather than duplicated here.
     Result compute(int width, int height, const Size& clockSize, const Size& statusSize) const;
 
     double centerColumnWidth(int width) const;

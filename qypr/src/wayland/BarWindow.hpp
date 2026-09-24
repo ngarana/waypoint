@@ -93,8 +93,12 @@ private:
 
     std::vector<std::unique_ptr<ShmBuffer>> buffers_;
 
-    int reservedHeight_ = 0;       // exclusive zone + idle strip height (logical)
-    int outputHeight_ = 0;         // full output height (logical); the fixed surface height
+    int reservedHeight_ = 0;  // exclusive zone + idle strip height (logical)
+    int outputHeight_ = 0;    // full output height (logical); the fixed surface height
+    // Start with the idle strip active. BarSurfaceController intentionally
+    // treats its initial idle height as already synchronized, so relying on a
+    // later setOverlayHeight() call leaves the first frame with zero damage
+    // and no pointer input region.
     int inputHeight_ = 0;          // input-region height from the anchored edge (logical)
     int appliedInputHeight_ = -1;  // last input-region height committed (avoid churn)
     bool bottom_ = false;          // anchored to the lower screen edge

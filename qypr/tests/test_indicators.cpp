@@ -91,6 +91,20 @@ TEST(BatteryIndicatorColorCoding) {
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 }
+TEST(BatteryPopoverAdjustsHeightToDetails) {
+    qypr::SystemBackends const backends{};
+    qypr::BatteryIndicator batt(backends);
+
+    batt.lastSnap_.state = qypr::BatterySnapshot::Unknown;
+    const auto compact = batt.createDetailedView();
+    const double compactHeight = compact->contentHeight();
+
+    batt.lastSnap_.state = qypr::BatterySnapshot::Charging;
+    batt.lastSnap_.timeToFull = 7200;
+    batt.lastSnap_.energyRate = 18.5;
+    const auto detailed = batt.createDetailedView();
+    EXPECT_TRUE(detailed->contentHeight() > compactHeight);
+}
 TEST(BatteryBackendConstruction) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
@@ -277,6 +291,25 @@ TEST(WifiPopoverToggleSwitchAndScanning) {
     EXPECT_TRUE(backend.snap_.scanning);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
+}
+TEST(WifiPopoverGrowsForLongSsid) {
+    qypr::EventLoop loop;
+    qypr::SystemBus bus(loop);
+    qypr::WifiBackend backend(bus);
+    qypr::WifiSnapshot seeded;
+    seeded.available = true;
+    seeded.enabled = true;
+    seeded.networks = {
+        {.ssid = "A-very-long-network-name-that-must-not-be-clipped", .strength = 70},
+    };
+    backend.seed(seeded);
+
+    qypr::SystemBackends backends{};
+    backends.wifi = &backend;
+    qypr::WifiIndicator wifi(backends);
+    auto view = wifi.createDetailedView();
+    EXPECT_TRUE(view != nullptr);
+    EXPECT_TRUE(view->contentWidth() > 300.0);
 }
 TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     qypr::EventLoop loop;
@@ -499,6 +532,23 @@ TEST(BluetoothIndicatorCreatesToggleTile) {
 
     // Toggling without a backend must be a no-op, not a crash
     tile->onClick(10, 10);
+}
+TEST(BluetoothPopoverGrowsForLongDeviceName) {
+    qypr::EventLoop loop;
+    qypr::SystemBus bus(loop);
+    qypr::BluetoothBackend backend(bus);
+    qypr::BluetoothSnapshot seeded;
+    seeded.available = true;
+    seeded.powered = true;
+    seeded.devices = {{.name = "A Bluetooth device name that needs more room", .paired = true}};
+    backend.seed(seeded);
+
+    qypr::SystemBackends backends{};
+    backends.bluetooth = &backend;
+    qypr::BluetoothIndicator bt(backends);
+    auto view = bt.createDetailedView();
+    EXPECT_TRUE(view != nullptr);
+    EXPECT_TRUE(view->contentWidth() > 300.0);
 }
 
 // =============================================================================
@@ -1097,6 +1147,24 @@ TEST(NotificationActionsAndInteractivity) {
     auto popover = ind.createDetailedView();
     EXPECT_TRUE(popover != nullptr);
     EXPECT_TRUE(popover->contentHeight() > 54.0);
+}
+TEST(NotificationPopoverGrowsForLongContent) {
+    qypr::EventLoop loop;
+    qypr::NotificationMonitor mon(loop);
+    qypr::SystemBackends b{};
+    b.notifications = &mon;
+    qypr::NotificationIndicator ind(b);
+
+    qypr::Notification note;
+    note.app = "LongContentApp";
+    note.title = "A notification title that needs more horizontal room";
+    note.body = "A longer notification body with enough text to exercise the content-aware width.";
+    note.actions = {{"default", "Open"}, {"reply", "Reply with a detailed response"}};
+    mon.testNotes().push_back(note);
+
+    auto popover = ind.createDetailedView();
+    EXPECT_TRUE(popover != nullptr);
+    EXPECT_TRUE(popover->contentWidth() > 320.0);
 }
 
 // -----------------------------------------------------------------------------

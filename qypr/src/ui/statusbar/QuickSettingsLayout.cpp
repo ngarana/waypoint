@@ -1,24 +1,71 @@
 // QuickSettingsLayout.cpp - Geometry layout for the Quick Settings panel.
 #include "ui/statusbar/QuickSettingsLayout.hpp"
 
+#include <algorithm>
+
+namespace {
+
+std::vector<qypr::QSTile*> gridTiles(qypr::QSWifiComboTile* wifiCombo,
+                                     const std::vector<std::unique_ptr<qypr::QSTile>>& tiles) {
+    std::vector<qypr::QSTile*> result;
+    if (wifiCombo != nullptr) { result.push_back(wifiCombo); }
+    for (const auto& tile : tiles) {
+        if (tile && (tile->type() == qypr::QSTile::Type::Toggle ||
+                     tile->type() == qypr::QSTile::Type::WifiCombo)) {
+            result.push_back(tile.get());
+        }
+    }
+    return result;
+}
+
+double gridRowHeight(const qypr::QSLayoutMetrics& m, const std::vector<qypr::QSTile*>& grid,
+                     double colW) {
+    double rowH = m.gridRowH;
+    for (const auto* tile : grid) {
+        if (tile != nullptr) { rowH = std::max(rowH, tile->preferredGridHeight(colW)); }
+    }
+    return rowH;
+}
+
+}  // namespace
+
 namespace qypr {
 
+double QuickSettingsLayout::computeContentWidth(const QSLayoutMetrics& m,
+                                                QSWifiComboTile* wifiCombo,
+                                                const std::vector<std::unique_ptr<QSTile>>& tiles) {
+    double preferredColW = (m.panelW - (2.0 * m.pad) - (2.0 * m.gap)) / kGridCols;
+    if (wifiCombo != nullptr) {
+        preferredColW = std::max(preferredColW, wifiCombo->preferredGridWidth());
+    }
+    for (const auto& tile : tiles) {
+        if (tile &&
+            (tile->type() == QSTile::Type::Toggle || tile->type() == QSTile::Type::WifiCombo)) {
+            preferredColW = std::max(preferredColW, tile->preferredGridWidth());
+        }
+    }
+
+    // Keep the panel usable on smaller displays while allowing normal tile
+    // labels (for example "Do Not Disturb") to determine its natural width.
+    constexpr double kMaxPanelW = 640.0;
+    const double required = (2.0 * m.pad) + (kGridCols * preferredColW) + (2.0 * m.gap);
+    return std::min(std::max(m.panelW, required), std::max(m.panelW, kMaxPanelW));
+}
+
 double QuickSettingsLayout::computeContentHeight(const QSLayoutMetrics& m, bool hasHeader,
-                                                 bool hasWifiCombo,
+                                                 QSWifiComboTile* wifiCombo,
                                                  const std::vector<std::unique_ptr<QSTile>>& tiles,
                                                  bool hasVolume, bool hasMedia) {
     double h = m.pad;
     if (hasHeader) { h += kHeaderH; }
 
-    int toggleCount = 0;
-    if (hasWifiCombo) { toggleCount++; }
-    for (const auto& t : tiles) {
-        if (t && (t->type() == QSTile::Type::Toggle || t->type() == QSTile::Type::WifiCombo)) {
-            toggleCount++;
-        }
-    }
+    const auto grid = gridTiles(wifiCombo, tiles);
+    const int toggleCount = static_cast<int>(grid.size());
+    const double contentW = m.panelW - (2.0 * m.pad);
+    const double colW = (contentW - (2.0 * m.gap)) / kGridCols;
+    const double rowH = gridRowHeight(m, grid, colW);
     int rows = (toggleCount + kGridCols - 1) / kGridCols;
-    if (rows > 0) { h += m.gap + (rows * m.gridRowH) + ((rows - 1) * m.gap); }
+    if (rows > 0) { h += m.gap + (rows * rowH) + ((rows - 1) * m.gap); }
 
     for (const auto& t : tiles) {
         if (t && t->type() == QSTile::Type::Slider) { h += m.gap + kSliderH; }
@@ -70,27 +117,22 @@ QSLayoutResult QuickSettingsLayout::layout(const Rect& popBounds, const QSLayout
     y += kHeaderH + m.gap;
 
     // 2. 3-Column Toggle Grid
-    std::vector<QSTile*> gridTiles;
-    if (wifiCombo != nullptr) { gridTiles.push_back(wifiCombo); }
-    for (auto& t : tiles) {
-        if (t && (t->type() == QSTile::Type::Toggle || t->type() == QSTile::Type::WifiCombo)) {
-            gridTiles.push_back(t.get());
-        }
-    }
+    const auto grid = gridTiles(wifiCombo, tiles);
+    const double rowH = gridRowHeight(m, grid, colW);
 
     int col = 0;
     double rowY = y;
-    for (auto* tile : gridTiles) {
+    for (auto* tile : grid) {
         if (col >= kGridCols) {
             col = 0;
-            rowY += m.gridRowH + m.gap;
+            rowY += rowH + m.gap;
         }
         const double tx = popBounds.x + m.pad + (col * (colW + m.gap));
-        tile->bounds = {.x = tx, .y = rowY, .w = colW, .h = m.gridRowH};
+        tile->bounds = {.x = tx, .y = rowY, .w = colW, .h = rowH};
         col++;
     }
 
-    if (!gridTiles.empty()) { y = rowY + m.gridRowH; }
+    if (!grid.empty()) { y = rowY + rowH; }
 
     // 3. Slider section (Brightness)
     for (auto& t : tiles) {

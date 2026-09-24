@@ -4,6 +4,8 @@
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 
+#include <utility>
+
 #include "core/EventLoop.hpp"
 #include "render/Painter.hpp"
 #include "ui/Theme.hpp"
@@ -40,13 +42,34 @@ void Shell::setVideoPlayer(VideoPlayer* video) {
 }
 
 void Shell::setNotifications(std::vector<Notification> notes) {
+    std::unordered_set<uint64_t> incomingIds;
+    incomingIds.reserve(notes.size());
+    for (const auto& note : notes) { incomingIds.insert(note.id); }
+    std::erase_if(dismissedNotificationIds_,
+                  [&](uint64_t id) { return !incomingIds.contains(id); });
     pendingNotes_ = std::move(notes);
     applyNotificationFilter();
 }
 
+void Shell::setNotificationDismissHandler(std::function<void(const Notification&)> handler) {
+    lockScreen_.setNotificationDismissHandler(
+        [this, handler = std::move(handler)](const Notification& note) mutable {
+            dismissedNotificationIds_.insert(note.id);
+            applyNotificationFilter();
+            if (handler) { handler(note); }
+        });
+}
+
 void Shell::applyNotificationFilter() {
     const bool suppress = dnd_ && dnd_->enabled();
-    lockScreen_.setNotifications(suppress ? std::vector<Notification>{} : pendingNotes_);
+    std::vector<Notification> visible;
+    if (!suppress) {
+        visible.reserve(pendingNotes_.size());
+        for (const auto& note : pendingNotes_) {
+            if (!dismissedNotificationIds_.contains(note.id)) { visible.push_back(note); }
+        }
+    }
+    lockScreen_.setNotifications(std::move(visible));
     host_.invalidate();
 }
 
@@ -64,8 +87,8 @@ void Shell::draw(cairo_t* cr, int width, int height, int scale) {
     if (video_ && video_->hasFrame()) {
         video_->draw(cr, width, height);
     } else {
-        p.verticalGradient(width, height, Color::fromHex("#1e1e2e"), Color::fromHex("#181825"),
-                           Color::fromHex("#11111b"));
+        p.verticalGradient(width, height, theme().colors.background, theme().colors.surface,
+                           theme().colors.surfaceHover);
     }
 
     // Background darken overlay

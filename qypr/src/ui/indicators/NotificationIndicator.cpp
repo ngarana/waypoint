@@ -25,6 +25,7 @@
 #include "ui/Notification.hpp"
 #include "ui/Theme.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
+#include "ui/statusbar/PopoverLayout.hpp"
 
 namespace qypr {
 
@@ -40,7 +41,8 @@ constexpr const char* kChevronDown = "󰅀";
 constexpr const char* kChevronRight = "󰅂";
 
 constexpr double kPad = 14.0;
-constexpr double kMenuW = 390.0;
+constexpr double kMenuMinW = 320.0;
+constexpr double kMenuMaxW = 560.0;
 constexpr double kHeaderH = 30.0;       // "Notifications" / "Clear all" row
 constexpr double kGroupHeaderH = 26.0;  // per-app header (only when count > 1)
 constexpr double kCardH = 64.0;         // base card (icon + title + body)
@@ -134,7 +136,31 @@ public:
     // Offline preview: render from a fixed set instead of a live monitor.
     explicit NotificationPopover(std::vector<Notification> demo) : previewNotes_(std::move(demo)) {}
 
-    double contentWidth() const override { return kMenuW; }
+    double contentWidth() const override {
+        double textWidth = popover_layout::estimatedTextWidth("Notifications", 13.0);
+        double actionWidth = 0.0;
+        for (const auto& group : buildGroups(list())) {
+            textWidth = std::max(textWidth, popover_layout::estimatedTextWidth(group.app, 11.0));
+            for (const auto* note : group.notes) {
+                std::string title = note->title;
+                if (title.empty()) { title = note->app.empty() ? "Notification" : note->app; }
+                textWidth = std::max(textWidth, popover_layout::estimatedTextWidth(title, 12.0));
+                textWidth =
+                    std::max(textWidth, popover_layout::estimatedTextWidth(note->body, 11.0));
+                for (const auto& action : note->actions) {
+                    if (action.first != "default") {
+                        actionWidth +=
+                            popover_layout::estimatedTextWidth(action.second, 10.0) + 24.0;
+                    }
+                }
+            }
+        }
+
+        // Card text begins after the icon tile and keeps room for age/close
+        // affordances. Action labels share the same content column.
+        const double required = 102.0 + std::max(textWidth, actionWidth);
+        return popover_layout::boundedWidth(kMenuMinW, kMenuMaxW, required);
+    }
 
     // Transient like a real notification panel: fade away after a spell of no
     // interaction. Any hover/click/scroll over it resets the host's timer.

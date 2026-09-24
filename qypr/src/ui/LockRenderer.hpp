@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "ui/Clock.hpp"
 #include "ui/Notification.hpp"
 #include "ui/PasswordField.hpp"
@@ -22,6 +24,7 @@ public:
 
     void setTheme(const theme::State& state) override;
     void setAudioController(AudioController* audio) { audio_ = audio; }
+    void setNotificationDismissHandler(std::function<void(const Notification&)> handler);
 
     NotificationView& notifications() { return notifications_; }
     void draw(cairo_t* cr, int width, int height, int scale);

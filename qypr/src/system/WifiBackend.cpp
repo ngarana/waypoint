@@ -358,8 +358,9 @@ int WifiBackend::onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_er
 }
 
 void WifiBackend::setEnabled(bool on) {
-    if (!bus_.available()) { return; }
-
+    // Update the UI-facing snapshot first. This is intentionally optimistic:
+    // seeded/headless state must still respond to a toggle when NetworkManager
+    // is unavailable, while the live command below remains best-effort.
     snap_ = withRadioState(std::move(snap_), on);
     if (!on) {
         activeAp_.clear();
@@ -367,6 +368,8 @@ void WifiBackend::setEnabled(bool on) {
         scanning_ = false;
     }
     notifyReady();
+
+    if (!bus_.available()) { return; }
 
     ops_.setEnabled(on);
 
@@ -570,8 +573,21 @@ void WifiBackend::finishNetFetch() {
 }
 
 void WifiBackend::requestScan() {
-    if (!bus_.available() || device_.empty()) { return; }
     scanning_ = true;
+
+    // Keep the spinner responsive when the snapshot came from the cache or a
+    // headless test has no live NetworkManager connection. A real bus request
+    // is best-effort, but the UI state must not depend on D-Bus availability.
+    if (!bus_.available()) {
+        snap_.scanning = true;
+        notifyReady();
+        return;
+    }
+    if (device_.empty()) {
+        scanning_ = false;
+        return;
+    }
+
     publish();  // spinner on immediately
     ops_.requestScan();
     // Publish the current list right away (it may be stale or empty); NM

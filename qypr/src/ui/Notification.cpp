@@ -39,9 +39,15 @@ std::string tileGlyph(const std::string& s) {
 }  // namespace
 
 void NotificationView::update(std::vector<Notification> notes) {
+    std::unordered_set<uint64_t> incomingIds;
+    incomingIds.reserve(notes.size());
+    for (const auto& n : notes) { incomingIds.insert(n.id); }
+    std::erase_if(dismissedIds_, [&](uint64_t id) { return !incomingIds.contains(id); });
+
     std::vector<Card> next;
     next.reserve(notes.size());
     for (auto& n : notes) {
+        if (dismissedIds_.contains(n.id)) { continue; }
         auto it = std::ranges::find_if(cards_, [&](const Card& c) { return c.note.id == n.id; });
         if (it != cards_.end()) {
             Card c = *it;           // keep its animation state (no re-fade)
@@ -201,15 +207,28 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
 }
 
 bool NotificationView::handlePress(double x, double y, int64_t now) {
-    (void)now;
     for (const auto& [idx, r] : layout_) {
         if (r.contains(x, y) && idx < cards_.size()) {
             const double pad = theme().notification.padding;
             const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
             if (closeRect.contains(x, y)) {
+                const Notification dismissed = cards_.at(idx).note;
+                dismissedIds_.insert(dismissed.id);
                 cards_.erase(cards_.begin() + static_cast<std::vector<Card>::difference_type>(idx));
                 layout_.clear();
+                if (onDismiss_) { onDismiss_(dismissed); }
                 return true;
+            }
+
+            // Keep the stack readable: only one notification may be expanded
+            // at a time. Collapsing siblings also animates their height back
+            // before the next draw rebuilds the hit-test layout.
+            for (size_t i = 0; i < cards_.size(); ++i) {
+                if (i != idx && cards_.at(i).expanded) {
+                    cards_.at(i).expanded = false;
+                    cards_.at(i).expandProgress.animateTo(0.0, theme().anim.medium,
+                                                          ease::inOutQuad);
+                }
             }
             Card& c = cards_.at(idx);
             c.expanded = !c.expanded;

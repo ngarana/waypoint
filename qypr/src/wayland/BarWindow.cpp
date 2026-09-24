@@ -32,6 +32,7 @@ BarWindow::BarWindow(wl_output* output, uint32_t name, OutputEnv* env, int reser
       name_(name),
       env_(env),
       reservedHeight_(reservedHeight),
+      inputHeight_(reservedHeight),
       bottom_(bottom) {
     wl_output_add_listener(output_, &kOutputListener, this);
 }

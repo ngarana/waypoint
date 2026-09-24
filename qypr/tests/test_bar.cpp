@@ -167,6 +167,28 @@ TEST(QuickSettingsPanelLayout) {
     cairo_surface_destroy(surf);
 }
 
+TEST(QuickSettingsPanelAutoSizesLongTileNames) {
+    qypr::QuickSettingsPanel panel;
+    auto longTile = std::make_unique<qypr::QSToggleTile>(
+        "Very Long Network Sharing Configuration", "󰤨", []() { return true; }, []() {});
+    qypr::QSToggleTile* raw = longTile.get();
+    panel.addTile(std::move(longTile));
+
+    EXPECT_TRUE(panel.contentWidth() > 380.0);
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 400);
+    cairo_t* cr = cairo_create(surf);
+    qypr::Painter p(cr);
+    panel.draw(p, 3000);
+
+    const qypr::Rect bounds = panel.getBounds();
+    EXPECT_TRUE(bounds.w > 380.0);
+    EXPECT_NEAR(raw->bounds.w, (bounds.w - 32.0 - 16.0) / 3.0, 0.001);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+}
+
 // Test PopoverManager open/close lifecycle.
 TEST(PopoverManagerLifecycle) {
     qypr::PopoverManager pm;
@@ -185,8 +207,28 @@ TEST(PopoverManagerLifecycle) {
     EXPECT_TRUE(pm.active() == raw);
     EXPECT_TRUE(pm.active()->isOpen());
 
+    qypr::theme::State live{};
+    live.font.family = "MatugenFont";
+    pm.setTheme(live);
+    EXPECT_EQ(pm.active()->theme().font.family, std::string("MatugenFont"));
+
     pm.closeActive();
     EXPECT_TRUE(pm.active() == nullptr);
+}
+
+TEST(SliderPopoverPropagatesThemeToTile) {
+    auto tile =
+        std::make_unique<qypr::QSSliderTile>("brightness", [] { return 0.5; }, [](double) {});
+    qypr::QSSliderTile* raw = tile.get();
+    qypr::SliderPopover pop(std::move(tile));
+
+    qypr::theme::State live{};
+    live.font.family = "MatugenFont";
+    live.colors.primary = qypr::Color::fromHex("#102030");
+    pop.setTheme(live);
+
+    EXPECT_EQ(raw->theme().font.family, std::string("MatugenFont"));
+    EXPECT_NEAR(raw->theme().colors.primary.r, 0x10 / 255.0, 0.01);
 }
 
 // Test that StatusBar constructs, lays out, and draws without crashing.
@@ -714,7 +756,7 @@ TEST(QuickSettingsLayoutComputation) {
     }
 
     double const h = qypr::QuickSettingsLayout::computeContentHeight(
-        m, /*hasHeader=*/true, /*hasWifiCombo=*/false, tiles, /*hasVolume=*/true,
+        m, /*hasHeader=*/true, /*wifiCombo=*/nullptr, tiles, /*hasVolume=*/true,
         /*hasMedia=*/false);
     // Expected height:
     // pad (14) + header (52) + gap (8) + (2 rows * 76 + 1 gap * 8 = 160) +

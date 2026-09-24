@@ -12,18 +12,17 @@
 
 #include "core/Types.hpp"
 #include "render/IconResolver.hpp"
+#include "ui/Theme.hpp"
 
 namespace qypr::apptile {
 
 // A themed initial-letter tile colour. The hue is derived from the app id so
 // the same app is always the same colour, and different apps are
 // distinguishable.
-inline const Color& fallbackColor(const std::string& appId) {
-    static const Color palette[] = {
-        Color::fromHex("#89b4fa"), Color::fromHex("#a6e3a1"), Color::fromHex("#f9e2af"),
-        Color::fromHex("#f38ba8"), Color::fromHex("#cba6f7"), Color::fromHex("#94e2d5"),
-        Color::fromHex("#fab387"), Color::fromHex("#74c7ec"),
-    };
+inline Color fallbackColor(const std::string& appId, const theme::State& theme) {
+    const Color palette[] = {theme.colors.blue,  theme.colors.green, theme.colors.yellow,
+                             theme.colors.red,   theme.colors.mauve, theme.colors.teal,
+                             theme.colors.peach, theme.colors.sky};
     uint32_t h = 2166136261u;
     for (char c : appId) h = (h ^ static_cast<unsigned char>(c)) * 16777619u;
     return palette[h % (sizeof(palette) / sizeof(palette[0]))];

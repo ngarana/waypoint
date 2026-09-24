@@ -160,7 +160,7 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
     cardBounds_ = card;
 
     // Glass card — no backdrop scrim, floats above the lock screen.
-    p.fillRoundedRect(card, theme().radius.large, Color::fromHex("#e0181825"));
+    p.fillRoundedRect(card, theme().radius.large, theme().colors.glass);
     p.strokeRoundedRect(card, theme().radius.large, theme().colors.glassBorder, 1.0);
 
     // ── Header: icon + title on one line ─────────────────────────────────
@@ -204,9 +204,9 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
         Color border;
         Color fg;
         if (isPrimary) {
-            bg = hovered ? Color::fromHex("#cc89b4fa") : Color::fromHex("#7089b4fa");
+            bg = theme().colors.primary.withAlpha(hovered ? 0.80 : 0.44);
             border = theme().colors.primary.withAlpha(0.6);
-            fg = Color::rgba(0.08, 0.08, 0.14, 1.0);
+            fg = theme().colors.background;
         } else {
             bg = hovered ? theme().colors.glassHover : theme().colors.glass;
             border = theme().colors.glassBorder;

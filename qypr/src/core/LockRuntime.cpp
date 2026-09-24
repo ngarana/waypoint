@@ -38,6 +38,14 @@ bool LockRuntime::acquire(InputSink* sink, RenderFn renderFn, AnimatingFn animat
         return false;
     }
 
+    // The lock request and per-output surfaces are queued by lock(), but the
+    // event loop does not start until optional startup work has completed
+    // (notification backlog, GeoClue, and mpv). Flush and dispatch the first
+    // configure here so the compositor can cover the desktop immediately;
+    // the initial frame is the normal no-video fallback and later startup work
+    // can replace it without leaving the desktop exposed.
+    display_.roundtrip();
+
     return true;
 }
 

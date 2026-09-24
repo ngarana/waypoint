@@ -11,6 +11,9 @@
 
 #pragma once
 
+#include <functional>
+#include <unordered_set>
+
 #include "core/Interfaces.hpp"
 #include "core/Types.hpp"
 #include "system/DndState.hpp"
@@ -33,6 +36,7 @@ public:
     void setAudioController(AudioController* audio);
     void setVideoPlayer(VideoPlayer* video);
     void setNotifications(std::vector<Notification> notes);
+    void setNotificationDismissHandler(std::function<void(const Notification&)> handler);
     void setIdleTimeout(int64_t ms);
 
     // Render the full compositor stack.
@@ -74,6 +78,9 @@ private:
     // collecting, so the stack reappears intact when DND lifts.
     DndState* dnd_ = nullptr;
     std::vector<Notification> pendingNotes_;
+    // Local dismissals remain hidden until the monitor's source snapshot no
+    // longer contains the id. This survives DND's temporary empty view.
+    std::unordered_set<uint64_t> dismissedNotificationIds_;
 
     // Shared idle state (moved from LockScreen).
     bool idle_ = false;

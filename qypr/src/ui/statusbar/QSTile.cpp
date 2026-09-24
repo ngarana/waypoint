@@ -2,6 +2,7 @@
 #include "ui/statusbar/QSTile.hpp"
 #include "render/Painter.hpp"
 #include "ui/Theme.hpp"
+#include "ui/statusbar/PopoverLayout.hpp"
 #include "mpris/MprisController.hpp"
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <cmath>
@@ -17,9 +18,30 @@ constexpr double kSliderArrowStep = 0.05;  // ±5%
 // theme, not the geometry.
 constexpr double kTileRadius = 12.0;
 constexpr double kSectionRadius = 14.0;
+
+double wrappedLines(std::string_view text, double fontSize, double maxWidth) {
+    if (text.empty() || maxWidth <= 0.0) { return 1.0; }
+    return std::max(1.0, std::ceil(popover_layout::estimatedTextWidth(text, fontSize) / maxWidth));
+}
 }  // namespace
 
 // ─── Toggle tile ──────────────────────────────────────────────────────────
+
+double QSToggleTile::preferredGridWidth() const {
+    const std::string sub = subtitle_ ? subtitle_() : "On";
+    const double textW = std::max(popover_layout::estimatedTextWidth(title_, 11.5),
+                                  popover_layout::estimatedTextWidth(sub, 10.0));
+    // 44px icon column + 4px breathing room, with a little trailing inset.
+    return std::max(112.0, textW + 56.0);
+}
+
+double QSToggleTile::preferredGridHeight(double width) const {
+    const double textW = width - 48.0;
+    const std::string sub = subtitle_ ? subtitle_() : "On";
+    const double lines = wrappedLines(title_, 11.5, textW) + wrappedLines(sub, 10.0, textW);
+    // Pango's line metrics are slightly taller than the requested font size.
+    return 16.0 + (lines * 15.0) + 1.0;
+}
 
 void QSToggleTile::onClick(double, double) {
     if (onToggle_) onToggle_();
@@ -102,12 +124,12 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
     TextStyle subStyle{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL,
                        active ? theme().colors.primary : theme().colors.textSubtle};
 
-    Size titleSz = p.measureText(title_, titleStyle, maxW);
-    Size subSz = p.measureText(sub, subStyle, maxW);
+    Size titleSz = p.measureTextWrapped(title_, titleStyle, maxW);
+    Size subSz = p.measureTextWrapped(sub, subStyle, maxW);
     double startY = bounds.y + (bounds.h - (titleSz.h + subSz.h + 1.0)) / 2.0;
 
-    p.drawText(textX, startY, title_, titleStyle, HAlign::Left, maxW);
-    p.drawText(textX, startY + titleSz.h + 1.0, sub, subStyle, HAlign::Left, maxW);
+    p.drawTextWrapped(textX, startY, title_, titleStyle, HAlign::Left, maxW);
+    p.drawTextWrapped(textX, startY + titleSz.h + 1.0, sub, subStyle, HAlign::Left, maxW);
 }
 
 // ─── Slider tile ──────────────────────────────────────────────────────────
@@ -299,6 +321,21 @@ void QSPowerTile::draw(Painter& p, int64_t now) {
 
 // ─── Wi-Fi combo tile ─────────────────────────────────────────────────────
 
+double QSWifiComboTile::preferredGridWidth() const {
+    const std::string sub = ssid_.empty() ? "Not connected" : ssid_;
+    const double textW = std::max(popover_layout::estimatedTextWidth("Wi-Fi", 11.5),
+                                  popover_layout::estimatedTextWidth(sub, 10.0));
+    // The Wi-Fi tile reserves a 40px power strip on the right.
+    return std::max(112.0, textW + 92.0);
+}
+
+double QSWifiComboTile::preferredGridHeight(double width) const {
+    const double textW = width - 88.0;
+    const std::string sub = ssid_.empty() ? "Not connected" : ssid_;
+    const double lines = wrappedLines("Wi-Fi", 11.5, textW) + wrappedLines(sub, 10.0, textW);
+    return 16.0 + (lines * 15.0) + 1.0;
+}
+
 void QSWifiComboTile::draw(Painter& p, int64_t now) {
     double hAlpha = hoverAnim_.value(now);
     Color bg = theme().panelSurface();
@@ -383,12 +420,12 @@ void QSWifiComboTile::draw(Painter& p, int64_t now) {
     TextStyle subStyle{theme().font.family, 10.0, PANGO_WEIGHT_NORMAL,
                        enabled_ ? theme().colors.primary : theme().colors.textSubtle};
 
-    Size titleSz = p.measureText("Wi-Fi", titleStyle, maxW);
-    Size subSz = p.measureText(text, subStyle, maxW);
+    Size titleSz = p.measureTextWrapped("Wi-Fi", titleStyle, maxW);
+    Size subSz = p.measureTextWrapped(text, subStyle, maxW);
     double startY = bounds.y + (bounds.h - (titleSz.h + subSz.h + 1.0)) / 2.0;
 
-    p.drawText(textX, startY, "Wi-Fi", titleStyle, HAlign::Left, maxW);
-    p.drawText(textX, startY + titleSz.h + 1.0, text, subStyle, HAlign::Left, maxW);
+    p.drawTextWrapped(textX, startY, "Wi-Fi", titleStyle, HAlign::Left, maxW);
+    p.drawTextWrapped(textX, startY + titleSz.h + 1.0, text, subStyle, HAlign::Left, maxW);
 
     // Power zone affordance: a hairline divider and a radio glyph, so the two
     // hit zones are visible (body = picker, right strip = on/off).

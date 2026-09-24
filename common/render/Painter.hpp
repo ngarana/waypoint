@@ -75,16 +75,23 @@ public:
 
     // Text
     Size measureText(const std::string& text, const TextStyle& style, double maxWidth = -1);
+    // Measure text constrained to maxWidth using word/character wrapping.
+    // Unlike measureText(..., maxWidth), this never ellipsizes the content.
+    Size measureTextWrapped(const std::string& text, const TextStyle& style, double maxWidth);
     // Draws text anchored at (x, y): x is left/center/right per align, y is the top.
     void drawText(double x, double y, const std::string& text, const TextStyle& style,
                   HAlign align = HAlign::Left, double maxWidth = -1);
+    // Draw wrapped text constrained to maxWidth.
+    void drawTextWrapped(double x, double y, const std::string& text, const TextStyle& style,
+                         HAlign align, double maxWidth);
     // Same, but paints an offset drop-shadow underneath for readability.
     void drawTextShadowed(double x, double y, const std::string& text, const TextStyle& style,
                           HAlign align, double shadowAlpha, double shadowOffset);
 
 private:
     // Builds a configured, ellipsised layout the caller must g_object_unref.
-    PangoLayout* makeLayout(const std::string& text, const TextStyle& style, double maxWidth);
+    PangoLayout* makeLayout(const std::string& text, const TextStyle& style, double maxWidth,
+                            bool ellipsize = true);
     static double anchorX(double x, double layoutW, HAlign align);
 
     cairo_t* cr_;

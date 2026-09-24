@@ -398,30 +398,37 @@ TEST(BarSurfaceControllerOverlayAndKeyboard) {
     EXPECT_EQ(controller.currentOverlayHeight(), 48);
     EXPECT_FALSE(controller.isKeyboardActive());
 
-    // syncOverlay with 0 or smaller than idle height -> uses idle height
-    EXPECT_FALSE(controller.syncOverlay(0));   // already 48, no dispatch
-    EXPECT_FALSE(controller.syncOverlay(30));  // smaller than idle, clamped to 48 -> no dispatch
+    // The first sync must send the idle height to the host even though the
+    // controller's desired value was initialized to 48. This applies the
+    // bar's initial input region before any indicator can receive a click.
+    EXPECT_TRUE(controller.syncOverlay(0));
     loop.dispatchPosted();
-    EXPECT_EQ(host.overlayCalls, 0);
+    EXPECT_EQ(host.overlayCalls, 1);
+    EXPECT_EQ(host.overlayH, 48);
+
+    // Smaller overlay values remain clamped to the already-synced idle height.
+    EXPECT_FALSE(controller.syncOverlay(30));
+    loop.dispatchPosted();
+    EXPECT_EQ(host.overlayCalls, 1);
 
     // Expand overlay to 240
     EXPECT_TRUE(controller.syncOverlay(240));
     EXPECT_EQ(controller.currentOverlayHeight(), 240);
     // Dispatched via loop post
     loop.dispatchPosted();
-    EXPECT_EQ(host.overlayCalls, 1);
+    EXPECT_EQ(host.overlayCalls, 2);
     EXPECT_EQ(host.overlayH, 240);
 
     // Idempotent syncOverlay
     EXPECT_FALSE(controller.syncOverlay(240));
     loop.dispatchPosted();
-    EXPECT_EQ(host.overlayCalls, 1);
+    EXPECT_EQ(host.overlayCalls, 2);
 
     // Contract back to 0 -> returns to idle height 48
     EXPECT_TRUE(controller.syncOverlay(0));
     EXPECT_EQ(controller.currentOverlayHeight(), 48);
     loop.dispatchPosted();
-    EXPECT_EQ(host.overlayCalls, 2);
+    EXPECT_EQ(host.overlayCalls, 3);
     EXPECT_EQ(host.overlayH, 48);
 
     // Keyboard interactivity sync
@@ -509,5 +516,31 @@ TEST(ThemeRuntimeLifecycleAndSolar) {
 
     // Clear solar times when fix is null
     EXPECT_FALSE(runtime.refreshSolarTimes(std::nullopt));
+    ::unlink(path.c_str());
+}
+
+TEST(ThemeRuntimePaletteTransitionCallback) {
+    qypr::EventLoop loop;
+    qypr::ThemeRuntime runtime(loop);
+
+    qypr::Config c;
+    const std::string path = writeTempConfig("[theme]\n"
+                                             "palette-mode = auto\n"
+                                             "palette-sunrise = 7\n"
+                                             "palette-sunset = 19\n");
+    c.load(path);
+
+    std::string transition;
+    runtime.setOnPaletteTransition([&](const std::string& mode) { transition = mode; });
+    runtime.init(c, [](const qypr::theme::State&) {});
+
+    // Force a deterministic starting side of the auto window, independent of
+    // the wall clock at which the test suite runs.
+    runtime.palette().resolved = "light";
+    EXPECT_TRUE(runtime.tick(22, c));
+    EXPECT_EQ(transition, std::string("dark"));
+    EXPECT_FALSE(runtime.tick(23, c));
+    EXPECT_EQ(transition, std::string("dark"));
+
     ::unlink(path.c_str());
 }

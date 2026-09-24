@@ -91,6 +91,10 @@ private:
     // Rebuild the owned State from config_ + palette_ and cascade to the
     // status bar + monitor.
     void applyTheme();
+    // Auto palette darkening is also the bar's night transition. Enable Night
+    // Light on that edge, but never turn it off during daytime: it may have
+    // been enabled manually by the user.
+    void syncNightLightWithPalette();
 
     // Declaration order is initialisation order: config_ must precede
     // everything that reads it (geometry_, modules_, display_, statusBar_).

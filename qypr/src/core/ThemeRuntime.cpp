@@ -75,6 +75,7 @@ void ThemeRuntime::startMinuteTimer(const Config& config) {
     minuteTimerId_ = loop_.addTimer(60000, true, [this, &config] {
         if (palette_.tick(theme::localHourNow())) {
             applyTheme(config);
+            if (onPaletteTransition_) { onPaletteTransition_(palette_.resolved); }
             if (onInvalidate_) onInvalidate_();
         }
     });
@@ -90,6 +91,7 @@ void ThemeRuntime::stopMinuteTimer() {
 bool ThemeRuntime::tick(int hour, const Config& config) {
     if (palette_.tick(hour)) {
         applyTheme(config);
+        if (onPaletteTransition_) { onPaletteTransition_(palette_.resolved); }
         if (onInvalidate_) onInvalidate_();
         return true;
     }

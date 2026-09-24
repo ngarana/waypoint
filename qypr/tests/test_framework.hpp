@@ -149,6 +149,7 @@ extern int g_tests_failed;
 #include "ui/statusbar/QuickSettingsPanel.hpp"
 #include "ui/statusbar/PopoverManager.hpp"
 #include "ui/statusbar/DetailedPopover.hpp"
+#include "ui/statusbar/SliderPopover.hpp"
 #include "core/Config.hpp"
 #include "core/Process.hpp"  // QL-5/QL-6 spawn regressions
 #include "ui/indicators/ClockIndicator.hpp"

@@ -126,6 +126,7 @@ void StatusBar::setTheme(const theme::State& state) {
     theme_ = state;
     applyBackdropAlpha();
     cascadeTheme();
+    popovers_.setTheme(theme_);
 }
 
 const theme::State& StatusBar::theme() const {

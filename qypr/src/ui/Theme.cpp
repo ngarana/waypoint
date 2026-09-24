@@ -64,7 +64,7 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     state.font.iconFamily = "CaskaydiaCove Nerd Font";
     state.font.size = 16;
     state.font.sizeLarge = 22;
-    state.font.sizeClock = 64;
+    state.font.sizeClock = 96;
     state.font.sizeDate = 18;
 
     // Menu-bar backdrop resets to compiled-in alpha/enabled defaults; the tint
@@ -118,6 +118,14 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     std::string palettePath = resolveColorsPath(cfg, palette.isLight());
     if (palettePath.empty() && palette.isLight()) { palettePath = resolveColorsPath(cfg, false); }
     if (!palettePath.empty()) { applyColorsFile(palettePath, state); }
+
+    // These are derived surfaces, not independent palette roles. Rebuild them
+    // after Matugen has supplied the core roles so every glass card, slider
+    // popup, and lock overlay follows the active palette. Explicit [theme]
+    // glass/glass-hover/glass-border keys below still take precedence.
+    state.colors.glass = state.colors.surface.withAlpha(0.65);
+    state.colors.glassHover = state.colors.surfaceHover.withAlpha(0.75);
+    state.colors.glassBorder = state.colors.text.withAlpha(0.08);
 
     // ─── Colors ──────────────────────────────────────────────────────
     overrideColor(state.colors.background, cfg, kS, "background");

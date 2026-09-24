@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,7 @@ public:
 
     // Windows 11-style notification cards (bottom-left).
     void setNotifications(std::vector<Notification> notes);
+    void setNotificationDismissHandler(std::function<void(const Notification&)> handler);
 
     void draw(cairo_t* cr, int width, int height, int scale);
     bool isAnimating() const;

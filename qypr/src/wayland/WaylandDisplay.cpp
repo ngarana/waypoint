@@ -54,7 +54,13 @@ void WaylandDisplay::flush() {
 }
 
 void WaylandDisplay::roundtrip() {
-    if (display_) wl_display_roundtrip(display_);
+    if (display_) {
+        wl_display_roundtrip(display_);
+        // Configure callbacks may queue the initial lock-surface commit while
+        // the roundtrip is dispatching. Send that frame before startup work
+        // outside the event loop continues.
+        flush();
+    }
 }
 
 void WaylandDisplay::setInputSink(InputSink* sink) {

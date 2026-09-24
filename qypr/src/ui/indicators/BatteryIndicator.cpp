@@ -11,6 +11,7 @@
 #include "ui/Theme.hpp"
 #include "ui/statusbar/DetailedPopover.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
+#include "ui/statusbar/PopoverLayout.hpp"
 #include "ui/statusbar/QSTile.hpp"
 
 namespace qypr {
@@ -91,7 +92,46 @@ public:
     [[nodiscard]] bool hasProfiles() const {
         return (profiles_ != nullptr) && profiles_->snapshot().available;
     }
-    [[nodiscard]] double contentHeight() const override { return hasProfiles() ? 224.0 : 148.0; }
+    [[nodiscard]] double contentWidth() const override {
+        const double pad = theme().statusbar.popoverPadding;
+        double required = popover_layout::estimatedTextWidth("Battery", 14.0) +
+                          popover_layout::estimatedTextWidth("100%", 14.0) + 4.0;
+        required =
+            std::max(required, popover_layout::estimatedTextWidth("State: Pending Charge", 12.5));
+        if (snap_->timeToEmpty > 0) {
+            required = std::max(required, popover_layout::estimatedTextWidth(
+                                              formatTime(snap_->timeToEmpty) + " remaining", 12.5));
+        }
+        if (snap_->timeToFull > 0) {
+            required = std::max(required, popover_layout::estimatedTextWidth(
+                                              formatTime(snap_->timeToFull) + " until full", 12.5));
+        }
+        if (hasProfiles()) {
+            for (const auto& profile : profiles_->snapshot().profiles) {
+                required = std::max(
+                    required,
+                    popover_layout::estimatedTextWidth(profileLabel(profile), 11.0) + 28.0);
+            }
+        }
+        return popover_layout::boundedWidth(250.0, 440.0, (2.0 * pad) + required + 24.0);
+    }
+
+    [[nodiscard]] double contentHeight() const override {
+        const double pad = theme().statusbar.popoverPadding;
+        int detailLines = 1;  // State is always shown.
+        const bool hasTimeEstimate =
+            (snap_->state == BatterySnapshot::Discharging && snap_->timeToEmpty > 0) ||
+            (snap_->state == BatterySnapshot::Charging && snap_->timeToFull > 0);
+        if (hasTimeEstimate) { ++detailLines; }
+        if (snap_->energyRate > 0.05) { ++detailLines; }
+
+        // Header + charge bar + detail lines, followed by the optional profile
+        // selector. Unlike the old 148/224 constants, this shrinks when there
+        // is no time/power detail and expands for every rendered line.
+        double h = (2.0 * pad) + 30.0 + 8.0 + 16.0 + (detailLines * 20.0) + 8.0;
+        if (hasProfiles()) { h += 62.0; }
+        return h;
+    }
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
@@ -204,7 +244,7 @@ private:
             TextStyle const ts{.family = theme().font.family,
                                .size = 12.0,
                                .weight = active ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
-                               .color = active ? Color::fromHex("#1e1e2e") : theme().colors.text};
+                               .color = active ? theme().colors.background : theme().colors.text};
             p.drawText(r.x + (r.w / 2.0), r.y + ((ph - 14.0) / 2.0), profileLabel(name), ts,
                        HAlign::Center);
             profileButtons_.push_back({.rect = r, .name = name});

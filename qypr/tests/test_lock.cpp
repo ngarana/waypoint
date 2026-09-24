@@ -121,13 +121,11 @@ TEST(LockLayoutGeometryMultipleSizes) {
         EXPECT_NEAR(row.y + row.h, height - layout.theme().spacing.xlarge, 0.001);
         EXPECT_TRUE(anchor.y > row.y);
         EXPECT_NEAR(result.password.w, layout.centerColumnWidth(width), 0.001);
+        EXPECT_TRUE(result.clockTop >= layout.theme().statusbar.topMargin +
+                                           layout.theme().statusbar.height +
+                                           layout.theme().spacing.small);
         EXPECT_NEAR(result.audioTop, result.statusTop + status.h + layout.theme().spacing.small,
                     0.001);
-
-        for (int i = 1; i < qypr::LockLayout::kNumPowerActions; ++i) {
-            EXPECT_TRUE(result.powerButtons.at(static_cast<size_t>(i)).y >
-                        result.powerButtons.at(static_cast<size_t>(i - 1)).y);
-        }
     }
 }
 
@@ -214,6 +212,8 @@ TEST(LockInteractionAllowList) {
     note.title = "Hello";
     note.body = "World";
     qypr::NotificationView view;
+    uint64_t dismissedId = 0;
+    view.setOnDismiss([&](const qypr::Notification& dismissed) { dismissedId = dismissed.id; });
     view.update({note});
     EXPECT_TRUE(view.active());
 
@@ -246,6 +246,17 @@ TEST(LockInteractionAllowList) {
     }
     EXPECT_TRUE(dismissed);
     EXPECT_FALSE(view.active());
+    EXPECT_EQ(dismissedId, 7U);
+
+    // A monitor refresh can still contain the card while the daemon's
+    // CloseNotification signal is in flight; the local suppression prevents
+    // it from being resurrected. Once the source removes it, the id can be
+    // retired normally.
+    view.update({note});
+    EXPECT_FALSE(view.active());
+    view.update({});
+    view.update({note});
+    EXPECT_TRUE(view.active());
 
     cairo_destroy(cr);
     cairo_surface_destroy(surf);

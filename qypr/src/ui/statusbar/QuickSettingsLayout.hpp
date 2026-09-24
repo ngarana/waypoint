@@ -33,7 +33,10 @@ public:
     static constexpr double kInfoH = 50.0;
 
     // Measures total content height based on tile presence and metrics.
-    static double computeContentHeight(const QSLayoutMetrics& m, bool hasHeader, bool hasWifiCombo,
+    static double computeContentWidth(const QSLayoutMetrics& m, QSWifiComboTile* wifiCombo,
+                                      const std::vector<std::unique_ptr<QSTile>>& tiles);
+    static double computeContentHeight(const QSLayoutMetrics& m, bool hasHeader,
+                                       QSWifiComboTile* wifiCombo,
                                        const std::vector<std::unique_ptr<QSTile>>& tiles,
                                        bool hasVolume, bool hasMedia);
 

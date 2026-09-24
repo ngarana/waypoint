@@ -10,7 +10,20 @@ LockLayout::Result LockLayout::compute(int width, int height, const Size& clockS
                                        const Size& statusSize) const {
     Result result;
     result.centerX = width / 2.0;
-    result.clockTop = height * 0.18;
+
+    // Keep the auth stack clear of the chromeless status bar. The preferred
+    // position retains the established visual balance on normal displays,
+    // while the clamp prevents the clock from drifting under the bar on short
+    // laptop or portrait outputs.
+    const double topInset =
+        theme().statusbar.topMargin + theme().statusbar.height + theme().spacing.small;
+    const double bottomInset = theme().spacing.xlarge;
+    const double stackHeight = clockSize.h + theme().spacing.xlarge + PasswordField::kHeight +
+                               theme().spacing.small + statusSize.h;
+    const double preferredTop = height * 0.18;
+    const double latestTop =
+        std::max(topInset, static_cast<double>(height) - bottomInset - stackHeight);
+    result.clockTop = std::clamp(preferredTop, topInset, latestTop);
 
     const double clockBottom = result.clockTop + clockSize.h;
     result.columnWidth = centerColumnWidth(width);
@@ -22,17 +35,13 @@ LockLayout::Result LockLayout::compute(int width, int height, const Size& clockS
     result.statusTop = result.password.y + result.password.h + theme().spacing.small;
     result.audioTop = result.statusTop + statusSize.h + theme().spacing.small;
 
-    result.powerRow = powerRowRect(width, height);
-    for (int i = 0; i < kNumPowerActions; ++i) {
-        result.powerButtons.at(static_cast<size_t>(i)) = powerButtonRect(i, width, height);
-    }
-    result.powerAnchor = powerAnchorRect(width, height);
     return result;
 }
 
 double LockLayout::centerColumnWidth(int width) const {
-    return std::max(0.0, std::min(width - (theme().spacing.xlarge * 2.0),
-                                  static_cast<double>(theme().audio.maxWidth)));
+    const double horizontalMargin = theme().spacing.large;
+    return std::max(
+        0.0, std::min(static_cast<double>(width) - (horizontalMargin * 2.0), kMaxColumnWidth));
 }
 
 Rect LockLayout::powerRowRect(int width, int height) const {

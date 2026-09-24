@@ -10,12 +10,14 @@
 #include "render/Painter.hpp"
 #include "ui/Theme.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
+#include "ui/statusbar/PopoverLayout.hpp"
 #include "ui/statusbar/QSTile.hpp"
 
 namespace qypr {
 
 namespace {
-constexpr double kBW = 300.0;
+constexpr double kBMinW = 280.0;
+constexpr double kBMaxW = 480.0;
 constexpr double kBPad = 12.0;
 constexpr double kBHdrH = 30.0;  // title + radio switch row
 constexpr double kBSubH = 22.0;  // section label row
@@ -78,7 +80,26 @@ public:
     BluetoothPopover(BluetoothPopover&&) = delete;
     BluetoothPopover& operator=(BluetoothPopover&&) = delete;
 
-    [[nodiscard]] double contentWidth() const override { return kBW; }
+    [[nodiscard]] double contentWidth() const override {
+        double required = popover_layout::estimatedTextWidth("MY DEVICES", 11.0);
+        for (const auto& device : snap().devices) {
+            required = std::max(required, popover_layout::estimatedTextWidth(
+                                              device.name.empty() ? "Device" : device.name, 13.0) +
+                                              90.0);
+            required = std::max(required,
+                                popover_layout::estimatedTextWidth(subtitle(device), 11.0) + 90.0);
+        }
+        if (!snap().error.empty()) {
+            required =
+                std::max(required, popover_layout::estimatedTextWidth(snap().error, 11.0) + 24.0);
+        }
+        if (snap().pairing.active()) {
+            required = std::max(
+                required,
+                popover_layout::estimatedTextWidth(promptTitle(snap().pairing), 11.5) + 24.0);
+        }
+        return popover_layout::boundedWidth(kBMinW, kBMaxW, (2.0 * kBPad) + required);
+    }
 
     [[nodiscard]] double contentHeight() const override {
         double h = (kBPad * 2) + kBHdrH + promptHeight(snap().pairing);
@@ -433,7 +454,7 @@ private:
                            .weight = PANGO_WEIGHT_NORMAL,
                            .color =
                                d.connected ? theme().colors.primary : theme().colors.textSubtle};
-        p.drawText(row.x + 34.0, row.y + 23.0, subtitle(d), ss);
+        p.drawText(row.x + 34.0, row.y + 23.0, subtitle(d), ss, HAlign::Left, row.w - 90.0);
 
         // Right cluster: a spinner while an operation runs, otherwise a check
         // on the connected device.

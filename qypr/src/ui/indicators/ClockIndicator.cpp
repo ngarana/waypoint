@@ -178,7 +178,7 @@ public:
                 }
                 Color fg = theme().colors.text;
                 if (isToday) {
-                    fg = Color::fromHex("#1e1e2e");
+                    fg = theme().colors.background;
                 } else if (!inMonth) {
                     fg = theme().colors.textSubtle.withAlpha(0.35);
                 } else if (c >= 5) {

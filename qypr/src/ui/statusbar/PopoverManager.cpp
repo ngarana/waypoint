@@ -55,6 +55,13 @@ void PopoverManager::setBackdrop(bool enabled, double alpha) {
     if (borrowedClosing_) borrowedClosing_->setBackdrop(enabled, alpha);
 }
 
+void PopoverManager::setTheme(const theme::State& state) {
+    if (active_) active_->setTheme(state);
+    if (borrowed_) borrowed_->setTheme(state);
+    if (transitioning_) transitioning_->setTheme(state);
+    if (borrowedClosing_) borrowedClosing_->setTheme(state);
+}
+
 void PopoverManager::anchorToStrip(DetailedPopover& pop, bool bottom, const Rect& strip) const {
     // growUp makes getBounds() extend upward from the anchor instead of down.
     pop.growUp = bottom;

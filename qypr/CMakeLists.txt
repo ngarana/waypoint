@@ -265,7 +265,6 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/ui/LockLayout.cpp
     src/ui/LockRenderer.cpp
     src/ui/LockScreen.cpp
-    src/ui/PasswordField.cpp
     src/ui/PowerMenuController.cpp
     src/ui/Shell.cpp
     src/ui/ShellInputRouter.cpp

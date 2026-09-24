@@ -62,17 +62,23 @@ void QuickSettingsPanel::setTheme(const theme::State& state) {
 // ─── Geometry ─────────────────────────────────────────────────────────────
 
 double QuickSettingsPanel::contentWidth() const {
-    return panelW();
-}
-
-double QuickSettingsPanel::contentHeight() const {
     QSLayoutMetrics m{
         .panelW = panelW(),
         .pad = pad(),
         .gap = gap(),
         .gridRowH = gridRowH(),
     };
-    return QuickSettingsLayout::computeContentHeight(m, header_ != nullptr, wifiCombo_ != nullptr,
+    return QuickSettingsLayout::computeContentWidth(m, wifiCombo_.get(), model_.tiles());
+}
+
+double QuickSettingsPanel::contentHeight() const {
+    QSLayoutMetrics m{
+        .panelW = contentWidth(),
+        .pad = pad(),
+        .gap = gap(),
+        .gridRowH = gridRowH(),
+    };
+    return QuickSettingsLayout::computeContentHeight(m, header_ != nullptr, wifiCombo_.get(),
                                                      model_.tiles(), volume_ != nullptr,
                                                      media_ != nullptr);
 }
@@ -82,7 +88,7 @@ double QuickSettingsPanel::contentHeight() const {
 void QuickSettingsPanel::layoutTiles() {
     Rect const popBounds = getBounds();
     QSLayoutMetrics m{
-        .panelW = panelW(),
+        .panelW = contentWidth(),
         .pad = pad(),
         .gap = gap(),
         .gridRowH = gridRowH(),

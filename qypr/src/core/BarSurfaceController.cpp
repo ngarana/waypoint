@@ -18,8 +18,9 @@ void BarSurfaceController::setIdleHeight(int height) {
 
 bool BarSurfaceController::syncOverlay(int statusBarOverlayHeight) {
     const int want = std::max(idleHeight_, statusBarOverlayHeight);
-    if (want == overlayHeight_) { return false; }
+    if (overlaySynced_ && want == overlayHeight_) { return false; }
     overlayHeight_ = want;
+    overlaySynced_ = true;
     loop_.post([this, want] { host_.setOverlayHeight(want); });
     return true;
 }

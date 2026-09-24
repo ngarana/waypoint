@@ -9,6 +9,7 @@
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
 #include "mpris/MprisController.hpp"
+#include "notifications/NotificationActions.hpp"
 #include "notifications/NotificationMonitor.hpp"
 #include "power/SystemActions.hpp"
 #include "system/BatteryBackend.hpp"
@@ -69,6 +70,9 @@ private:
     // snapshots only).
     SystemBus systemBus_{loop_};
     SystemBus sessionBus_{loop_, BusKind::Session};
+    // The monitor is receive-only; lock-screen dismissal uses this separate
+    // sender connection to issue the standard CloseNotification call.
+    NotificationActions notificationActions_{sessionBus_};
     BatteryBackend battery_{systemBus_};
     BrightnessBackend brightness_{loop_, systemBus_};
     WifiBackend wifi_{systemBus_};

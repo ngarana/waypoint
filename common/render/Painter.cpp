@@ -192,7 +192,8 @@ void Painter::drawSurfaceTinted(cairo_surface_t* surface, const Rect& dest, cons
     cairo_restore(cr_);
 }
 
-PangoLayout* Painter::makeLayout(const std::string& text, const TextStyle& style, double maxWidth) {
+PangoLayout* Painter::makeLayout(const std::string& text, const TextStyle& style, double maxWidth,
+                                 bool ellipsize) {
     PangoLayout* layout = pango_cairo_create_layout(cr_);
     PangoFontDescription* desc = pango_font_description_new();
     pango_font_description_set_family(desc, style.family.c_str());
@@ -204,7 +205,11 @@ PangoLayout* Painter::makeLayout(const std::string& text, const TextStyle& style
     pango_layout_set_text(layout, text.c_str(), -1);
     if (maxWidth > 0) {
         pango_layout_set_width(layout, static_cast<int>(maxWidth) * PANGO_SCALE);
-        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        if (ellipsize) {
+            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        } else {
+            pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+        }
     }
     return layout;
 }
@@ -230,9 +235,30 @@ Size Painter::measureText(const std::string& text, const TextStyle& style, doubl
     return {.w = static_cast<double>(w), .h = static_cast<double>(h)};
 }
 
+Size Painter::measureTextWrapped(const std::string& text, const TextStyle& style, double maxWidth) {
+    PangoLayout* layout = makeLayout(text, style, maxWidth, /*ellipsize=*/false);
+    int w;
+    int h;
+    pango_layout_get_pixel_size(layout, &w, &h);
+    g_object_unref(layout);
+    return {.w = static_cast<double>(w), .h = static_cast<double>(h)};
+}
+
 void Painter::drawText(double x, double y, const std::string& text, const TextStyle& style,
                        HAlign align, double maxWidth) {
     PangoLayout* layout = makeLayout(text, style, maxWidth);
+    int w;
+    int h;
+    pango_layout_get_pixel_size(layout, &w, &h);
+    cairo_move_to(cr_, anchorX(x, w, align), y);
+    setSource(cr_, style.color);
+    pango_cairo_show_layout(cr_, layout);
+    g_object_unref(layout);
+}
+
+void Painter::drawTextWrapped(double x, double y, const std::string& text, const TextStyle& style,
+                              HAlign align, double maxWidth) {
+    PangoLayout* layout = makeLayout(text, style, maxWidth, /*ellipsize=*/false);
     int w;
     int h;
     pango_layout_get_pixel_size(layout, &w, &h);

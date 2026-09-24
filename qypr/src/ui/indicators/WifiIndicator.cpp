@@ -18,6 +18,7 @@
 #include "ui/Theme.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
 #include "ui/statusbar/QSTile.hpp"
+#include "ui/statusbar/PopoverLayout.hpp"
 
 namespace qypr {
 
@@ -49,7 +50,8 @@ const char* apGlyph(int strength) {
     return "󰤟";
 }
 
-constexpr double kWW = 300.0;
+constexpr double kWMinW = 300.0;
+constexpr double kWMaxW = 480.0;
 constexpr double kWPad = 12.0;
 constexpr double kWHeaderH = 30.0;  // title + switch row
 constexpr double kWSubH = 24.0;     // "Visible networks" + refresh row
@@ -83,7 +85,19 @@ public:
         }
     }
 
-    [[nodiscard]] double contentWidth() const override { return kWW; }
+    [[nodiscard]] double contentWidth() const override {
+        double required = popover_layout::estimatedTextWidth("VISIBLE NETWORKS", 11.0);
+        for (const auto& network : networks()) {
+            required =
+                std::max(required, popover_layout::estimatedTextWidth(network.ssid, 13.0) + 90.0);
+        }
+        if (!authSsid_.empty()) {
+            required = std::max(
+                required,
+                popover_layout::estimatedTextWidth("Password for " + authSsid_, 11.0) + 30.0);
+        }
+        return popover_layout::boundedWidth(kWMinW, kWMaxW, (2.0 * kWPad) + required);
+    }
 
     [[nodiscard]] double contentHeight() const override {
         double h = (kWPad * 2) + kWHeaderH + kWSubH;

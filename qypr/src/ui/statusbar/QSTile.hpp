@@ -23,6 +23,11 @@ public:
     virtual Type type() const = 0;
     virtual std::string title() const { return ""; }
 
+    // Grid tiles can advertise the width and height needed for their live
+    // labels. Zero means the layout should use its normal geometry.
+    virtual double preferredGridWidth() const { return 0.0; }
+    virtual double preferredGridHeight(double /*width*/) const { return 0.0; }
+
     // Stable identity for panel ownership (ARCHITECTURE_REVIEW finding 5):
     // which functional slot a tile fills, independent of its user-visible
     // title. The panel dedupes and replaces by role, so renaming a label
@@ -81,6 +86,8 @@ public:
 
     Type type() const override { return Type::Toggle; }
     std::string title() const override { return title_; }
+    double preferredGridWidth() const override;
+    double preferredGridHeight(double width) const override;
     Role role() const override { return role_; }
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
@@ -243,6 +250,8 @@ public:
 
     Type type() const override { return Type::WifiCombo; }
     std::string title() const override { return "Wi-Fi"; }
+    double preferredGridWidth() const override;
+    double preferredGridHeight(double width) const override;
     Role role() const override { return Role::Wifi; }
     void draw(Painter& p, int64_t now) override;
     // Split hit zones: the right power strip toggles the radio, the body

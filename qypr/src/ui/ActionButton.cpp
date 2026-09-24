@@ -26,7 +26,7 @@ void ActionButton::draw(Painter& p, int64_t now) {
     const double cy = bounds.cy();
     const double r = (diameter / 2.0) * scale;
 
-    Color fill = Color::rgba(0.3, 0.3, 0.3, 0.4);
+    Color fill = theme().colors.glass;
     if (enabled) { fill = hovered_ ? theme().colors.glassHover : theme().colors.glass; }
     Color border = theme().colors.textMuted;
     if (enabled) { border = hovered_ ? theme().colors.primary : theme().colors.glassBorder; }

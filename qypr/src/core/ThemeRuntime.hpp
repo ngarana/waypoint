@@ -18,6 +18,7 @@ namespace qypr {
 class ThemeRuntime {
 public:
     using ThemeChangeCallback = std::function<void(const theme::State&)>;
+    using PaletteTransitionCallback = std::function<void(const std::string&)>;
     using InvalidateCallback = std::function<void()>;
 
     explicit ThemeRuntime(EventLoop& loop);
@@ -29,6 +30,12 @@ public:
     // Initialise palette from config and publish the initial theme.
     void init(const Config& config, ThemeChangeCallback onThemeChanged,
               InvalidateCallback onInvalidate = nullptr);
+
+    // Called once when an auto palette actually changes between light and
+    // dark. Fixed palette modes never produce transitions.
+    void setOnPaletteTransition(PaletteTransitionCallback callback) {
+        onPaletteTransition_ = std::move(callback);
+    }
 
     // Watch [theme] colors-file and colors-file-light for live matugen reloads.
     void watchPalette(const Config& config);
@@ -59,6 +66,7 @@ private:
     ConfigWatcher paletteWatcher_{loop_};
     ConfigWatcher paletteLightWatcher_{loop_};
     ThemeChangeCallback onThemeChanged_;
+    PaletteTransitionCallback onPaletteTransition_;
     InvalidateCallback onInvalidate_;
     int minuteTimerId_ = -1;
 };

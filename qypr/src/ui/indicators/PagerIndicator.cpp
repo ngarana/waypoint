@@ -198,9 +198,10 @@ void PagerIndicator::drawChip(Painter& p, double x, const SessionCluster& c, con
             if (alpha < 1.0) { p.popGroupWithAlpha(alpha); }
         } else {
             const Rect tile{cx, iconY, m.iconPx, m.iconPx};
-            p.fillRoundedRect(tile, 4.0, apptile::fallbackColor(win->appId).withAlpha(alpha));
+            p.fillRoundedRect(tile, 4.0,
+                              apptile::fallbackColor(win->appId, theme()).withAlpha(alpha));
             const TextStyle st =
-                badgeStyle(theme(), m.iconPx * 0.62, Color::fromHex("#1e1e2e").withAlpha(alpha));
+                badgeStyle(theme(), m.iconPx * 0.62, theme().colors.background.withAlpha(alpha));
             const std::string ch = apptile::initialFor(win->appId);
             const Size cs = p.measureText(ch, st);
             p.drawText(cx + ((m.iconPx - cs.w) / 2.0), iconY + ((m.iconPx - cs.h) / 2.0), ch, st);
@@ -243,9 +244,10 @@ void PagerIndicator::drawLooseIcons(Painter& p, double x, const Metrics& m) {
             p.popGroupWithAlpha(kLooseAlpha);
         } else {
             const Rect tile{x, iconY, m.iconPx, m.iconPx};
-            p.fillRoundedRect(tile, 4.0, apptile::fallbackColor(win->appId).withAlpha(kLooseAlpha));
+            p.fillRoundedRect(tile, 4.0,
+                              apptile::fallbackColor(win->appId, theme()).withAlpha(kLooseAlpha));
             const TextStyle st = badgeStyle(theme(), m.iconPx * 0.62,
-                                            Color::fromHex("#1e1e2e").withAlpha(kLooseAlpha));
+                                            theme().colors.background.withAlpha(kLooseAlpha));
             const std::string ch = apptile::initialFor(win->appId);
             const Size cs = p.measureText(ch, st);
             p.drawText(x + ((m.iconPx - cs.w) / 2.0), iconY + ((m.iconPx - cs.h) / 2.0), ch, st);

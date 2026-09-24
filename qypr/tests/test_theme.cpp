@@ -23,6 +23,7 @@ TEST(ThemeLoadThemeDefaults) {
     EXPECT_EQ(stC.font.family, std::string("Inter"));
     EXPECT_EQ(stC.font.iconFamily, std::string("CaskaydiaCove Nerd Font"));
     EXPECT_EQ(stC.font.size, 16);
+    EXPECT_EQ(stC.font.sizeClock, 96);
     EXPECT_NEAR(stC.colors.primary.r, 0.537, 0.01);
     EXPECT_NEAR(stC.statusbar.height, 36.0, 0.01);
     // Icons default to Auto (themed-when-available, else glyph).
@@ -109,6 +110,11 @@ TEST(ThemeMatugenCssPalette) {
     // surface / hover come from the M3 container tones.
     EXPECT_NEAR(stC.colors.surface.r, 0x22 / 255.0, 0.01);
     EXPECT_NEAR(stC.colors.surfaceHover.r, 0x33 / 255.0, 0.01);
+    // Glass surfaces are derived from the resolved Matugen roles rather than
+    // retaining the compiled Catppuccin fallback.
+    EXPECT_NEAR(stC.colors.glass.r, stC.colors.surface.r, 0.01);
+    EXPECT_NEAR(stC.colors.glassHover.r, stC.colors.surfaceHover.r, 0.01);
+    EXPECT_NEAR(stC.colors.glassBorder.r, stC.colors.text.r, 0.01);
     EXPECT_NEAR(stC.colors.text.r, 0xdd / 255.0, 0.01);
     EXPECT_NEAR(stC.colors.textSubtle.r, 0x99 / 255.0, 0.01);
     EXPECT_NEAR(stC.colors.textMuted.r, 0x55 / 255.0, 0.01);

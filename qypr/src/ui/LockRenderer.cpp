@@ -1,6 +1,7 @@
 #include "ui/LockRenderer.hpp"
 
-#include <algorithm>
+#include <utility>
+
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
 #include "ui/AudioController.hpp"
@@ -15,6 +16,10 @@ LockRenderer::LockRenderer(LockController& controller, LockLayout& layout,
     : controller_(controller),
       layout_(layout),
       power_(power) {}
+
+void LockRenderer::setNotificationDismissHandler(std::function<void(const Notification&)> handler) {
+    notifications_.setOnDismiss(std::move(handler));
+}
 
 void LockRenderer::setTheme(const theme::State& state) {
     theme::ThemeAware::setTheme(state);
@@ -32,18 +37,16 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     Painter p(cr);
     const int64_t now = nowMs();
     const LockSnapshot state = controller_.snapshot(now);
-    const double centerX = width / 2.0;
-
-    p.fillRect({.x = 0, .y = 0, .w = static_cast<double>(width), .h = static_cast<double>(height)},
-               Color::rgba(0, 0, 0, lerp(0.15, 0.35, state.reveal)));
 
     const Size clockSize = clock_.measure(p);
-    clock_.draw(p, centerX, height * 0.18);
-
     status_.message = state.statusMessage;
     status_.isError = state.hasError;
     const Size statusSize = status_.measure(p);
     const LockLayout::Result geometry = layout_.compute(width, height, clockSize, statusSize);
+
+    // Shell owns the background and its single dim veil. This renderer starts
+    // at the lock widgets so the surface is not darkened twice.
+    clock_.draw(p, geometry.centerX, geometry.clockTop);
 
     passwordField_.bounds = geometry.password;
     passwordField_.charCount = static_cast<int>(controller_.passwordLength());
@@ -60,10 +63,11 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     };
 
     withAlpha(state.reveal, [&] { passwordField_.draw(p, now); });
-    withAlpha(state.reveal, [&] { status_.draw(p, centerX, geometry.statusTop); });
+    withAlpha(state.reveal, [&] { status_.draw(p, geometry.centerX, geometry.statusTop); });
     if (audio_ != nullptr && audio_->active()) {
-        withAlpha(state.reveal,
-                  [&] { audio_->draw(p, now, centerX, geometry.audioTop, geometry.columnWidth); });
+        withAlpha(state.reveal, [&] {
+            audio_->draw(p, now, geometry.centerX, geometry.audioTop, geometry.columnWidth);
+        });
     }
 
     power_.layout(width, height);

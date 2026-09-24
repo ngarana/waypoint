@@ -29,6 +29,7 @@ private:
     EventLoop& loop_;
     int idleHeight_ = 0;
     int overlayHeight_ = 0;
+    bool overlaySynced_ = false;
     bool kbActive_ = false;
 };
 
