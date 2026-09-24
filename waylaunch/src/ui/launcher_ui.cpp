@@ -1497,7 +1497,7 @@ void LauncherUI::render_frame() {
         renderer_->draw_text(text_x, text_y, config_->get().search.placeholder, sf,
                              Color::from_rgba(t.text_muted.r, t.text_muted.g, t.text_muted.b, 0.8));
     } else {
-        renderer_->draw_text(text_x, text_y, query_, sf, Color::from_rgba(1, 1, 1, 1));
+        renderer_->draw_text(text_x, text_y, query_, sf, t.foreground);
         int caret_x = text_x + renderer_->text_width(query_.substr(0, cursor_pos_), sf);
         int caret_h = text_h + 6;
         renderer_->fill_rect(caret_x + 1, midline - (caret_h / 2), 2, caret_h, t.accent);
@@ -1550,9 +1550,9 @@ void LauncherUI::render_frame() {
         if (it.description.empty() && !has_snip) {
             renderer_->draw_text(
                 tx, ry + ((layout_.row_h - static_cast<int>(t.result_font.size)) / 2) - 2, name,
-                t.result_font, Color::from_rgba(1, 1, 1, 1));
+                t.result_font, t.foreground);
         } else {
-            renderer_->draw_text(tx, ry + 7, name, t.result_font, Color::from_rgba(1, 1, 1, 1));
+            renderer_->draw_text(tx, ry + 7, name, t.result_font, t.foreground);
             int suby = ry + 7 + static_cast<int>(t.result_font.size) + 3;
             if (has_snip) {
                 renderer_->draw_markup(tx, suby,
@@ -1692,7 +1692,7 @@ void LauncherUI::render_preview(int px, int py, int pw, int ph, const Theme& t) 
     RenderFontConfig nf = t.result_font;
     nf.size = 15;
     nf.bold = true;
-    draw_centered(it.name, nf, Color::from_rgba(1, 1, 1, 1));
+    draw_centered(it.name, nf, t.foreground);
     cy += static_cast<int>(nf.size) + 10;
     {
         std::string bl = kind_badge(it);
@@ -1736,8 +1736,7 @@ void LauncherUI::render_preview(int px, int py, int pw, int ph, const Theme& t) 
                 val.erase(val.begin());
             val = "…" + val;
         }
-        renderer_->draw_text(inner_x, vy, val, t.result_detail_font,
-                             Color::from_rgba(0.9, 0.9, 0.95, 1));
+        renderer_->draw_text(inner_x, vy, val, t.result_detail_font, t.foreground);
         cy = vy + static_cast<int>(t.result_detail_font.size) + 12;
     };
 
@@ -1776,9 +1775,9 @@ void LauncherUI::render_preview(int px, int py, int pw, int ph, const Theme& t) 
                 Color::from_rgba(t.text_muted.r, t.text_muted.g, t.text_muted.b, 0.9));
             cy += static_cast<int>(t.result_detail_font.size) + 6;
             // Native word-wrap + inline highlight of the matched runs (up to 6 lines).
-            int h = renderer_->draw_markup(
-                inner_x, cy, snippet_markup(it.snippet, color_hex(t.accent)), t.result_detail_font,
-                Color::from_rgba(0.9, 0.9, 0.95, 1), inner_w, 6);
+            int h =
+                renderer_->draw_markup(inner_x, cy, snippet_markup(it.snippet, color_hex(t.accent)),
+                                       t.result_detail_font, t.foreground, inner_w, 6);
             cy += h + 8;
         }
         footer = "⏎ Open   ·   right-click: reveal";

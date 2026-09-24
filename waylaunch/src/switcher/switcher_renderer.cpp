@@ -40,10 +40,11 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
     }
 
     // 2. Glass tint background & border
+    renderer.rounded_rect(
+        hud_x, hud_y, hud_width, hud_height, corner_radius,
+        Color::from_rgba(theme.background.r, theme.background.g, theme.background.b, 0.82));
     renderer.rounded_rect(hud_x, hud_y, hud_width, hud_height, corner_radius,
-                          Color::from_rgba(0.1, 0.1, 0.14, 0.82));
-    renderer.rounded_rect(hud_x, hud_y, hud_width, hud_height, corner_radius,
-                          Color::from_rgba(1.0, 1.0, 1.0, 0.12));
+                          Color::from_rgba(theme.border.r, theme.border.g, theme.border.b, 0.18));
 
     // 3. Render items
     size_t selected_idx = manager.selected_index();
@@ -75,8 +76,9 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
 
         // Draw Minimized Indicator Dot if all windows are minimized
         if (grp.is_all_minimized()) {
-            renderer.rounded_rect(icon_x + (icon_size / 2) - 3, iy + item_height - 12, 6, 6, 3,
-                                  Color::from_rgba(0.7, 0.7, 0.7, 0.8));
+            renderer.rounded_rect(
+                icon_x + (icon_size / 2) - 3, iy + item_height - 12, 6, 6, 3,
+                Color::from_rgba(theme.text_muted.r, theme.text_muted.g, theme.text_muted.b, 0.8));
         }
     }
 
@@ -100,7 +102,8 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
         // Title pill background
         int tpill_padding = 12;
         renderer.rounded_rect(tx - tpill_padding, ty - 4, tw + (tpill_padding * 2), 28, 14,
-                              Color::from_rgba(0.08, 0.08, 0.12, 0.85));
+                              Color::from_rgba(theme.background_alt.r, theme.background_alt.g,
+                                               theme.background_alt.b, 0.85));
 
         renderer.draw_text(tx, ty, title_text, font, theme.foreground);
     }

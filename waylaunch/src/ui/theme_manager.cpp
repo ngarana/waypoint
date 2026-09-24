@@ -26,7 +26,12 @@ ColorConfig ThemeManager::colors(Config& repo_config, const std::string& config_
 }
 
 bool ThemeManager::poll(Config& repo_config, const std::string& config_path) {
-    return matugen_.poll(refresh(repo_config, config_path));
+    const ThemeConfig effective = refresh(repo_config, config_path);
+    const bool colors_changed = matugen_.poll(effective);
+    const bool mode_changed = !have_last_effective_mode_ || last_effective_mode_ != effective.mode;
+    last_effective_mode_ = effective.mode;
+    have_last_effective_mode_ = true;
+    return colors_changed || mode_changed;
 }
 
 } // namespace waylaunch

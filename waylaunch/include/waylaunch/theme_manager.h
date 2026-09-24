@@ -41,6 +41,8 @@ class ThemeManager {
     MatugenTheme matugen_;
     solar_tracker solar_;
     std::optional<std::filesystem::file_time_type> config_mtime_;
+    std::string last_effective_mode_;
+    bool have_last_effective_mode_ = false;
 };
 
 } // namespace waylaunch

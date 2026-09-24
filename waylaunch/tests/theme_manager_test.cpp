@@ -98,6 +98,28 @@ void test_poll_detects_config_edit() {
     std::cout << "[PASS] poll detects config edit\n";
 }
 
+void test_poll_detects_effective_mode_change_for_static_theme() {
+    auto dir = fresh_dir("static-poll");
+    std::string colors = (dir / "colors.json").string();
+    write_file(dir / "colors.json", kColorsJson);
+    std::string conf_path = write_config(dir, colors, "static", "dark");
+
+    Config repo_config;
+    assert(repo_config.load(conf_path));
+
+    ThemeManager themes;
+    assert(themes.poll(repo_config, conf_path));
+    assert(!themes.poll(repo_config, conf_path));
+
+    write_config(dir, colors, "static", "light");
+    assert(themes.poll(repo_config, conf_path));
+    assert(repo_config.get().theme.mode == "light");
+    // Static themes intentionally keep their configured colors; the mode edge
+    // still invalidates all overlay surfaces so auto-capable sources repaint.
+    assert(themes.colors(repo_config, conf_path).background == "#000000");
+    std::cout << "[PASS] poll detects static effective mode change\n";
+}
+
 void test_auto_resolves_either_scheme() {
     // No GeoClue stub here (live bus, any timezone): auto must resolve to
     // one of the two real schemes — membership, not the sun's position.
@@ -118,6 +140,7 @@ void test_auto_resolves_either_scheme() {
 int main() {
     test_static_modes_pass_through();
     test_poll_detects_config_edit();
+    test_poll_detects_effective_mode_change_for_static_theme();
     test_auto_resolves_either_scheme();
     std::cout << "theme_manager_test: all passed\n";
     return 0;
