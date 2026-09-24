@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "core/RetryTimer.hpp"
 #include "system/PulseLoop.hpp"
 
 namespace qypr {
@@ -117,13 +118,14 @@ private:
     void queryStreams();  // the per-app stream list
     void changed(const VolumeSnapshot& next);
     // Re-arm start() after a failed/dropped connection (the server may still be
-    // coming up). One 3s retry at a time; stopped_ guards the destructor path.
+    // coming up). Backoff is bounded; stopped_ guards the destructor path.
     void scheduleReconnect();
     void notify() {
         if (onChange_) onChange_();
     }
 
     PulseLoop pulseLoop_;
+    RetryTimer retry_;
     pa_context* ctx_ = nullptr;
     std::string defaultSink_;  // internal sink name (write target)
     uint8_t channels_ = 2;
@@ -133,7 +135,6 @@ private:
     std::vector<AudioStream> streams_;
     std::vector<AudioStream> streamsBuilding_;
     std::function<void()> onChange_;
-    int retryTimer_ = -1;   // pending reconnect timer fd (EventLoop)
     bool stopped_ = false;  // destructor ran; never schedule/publish again
     // Every result path calls this instead of onChange_ directly, so ready()
     // flips true exactly when the first real snapshot is published.

@@ -27,15 +27,17 @@
 
 #include <systemd/sd-bus.h>  // sd_bus_vtable must be complete for the member below
 
+#include "core/RetryTimer.hpp"
 #include "system/BluetoothModel.hpp"
 
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 class BluetoothAgent {
 public:
-    explicit BluetoothAgent(SystemBus& bus);
+    BluetoothAgent(EventLoop& loop, SystemBus& bus);
     ~BluetoothAgent();
 
     // Holds a live D-Bus call and a vtable slot bound to `this`; neither
@@ -95,9 +97,11 @@ private:
     [[nodiscard]] std::string nameFor(const std::string& path) const;
 
     SystemBus& bus_;
+    RetryTimer retry_;
     sd_bus_slot* vtableSlot_ = nullptr;
     bool exported_ = false;
     bool registered_ = false;
+    bool registrationPending_ = false;
     // The in-flight Agent1 call awaiting the user. Owned (ref'd) while pending;
     // exactly one reply is ever sent for it.
     sd_bus_message* pending_ = nullptr;

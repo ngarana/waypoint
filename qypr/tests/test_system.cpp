@@ -86,7 +86,7 @@ TEST(IdleInhibitorGating) {
 TEST(StateCacheSeedFillsPlaceholderThenDefersToLiveData) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend battery(bus);
+    qypr::BatteryBackend battery(loop, bus);
 
     // Nothing has replied: the indicator would draw its neutral glyph.
     EXPECT_FALSE(battery.ready());
@@ -109,8 +109,8 @@ TEST(StateCacheSeedFillsPlaceholderThenDefersToLiveData) {
 TEST(StateCacheRoundTripsThroughAFile) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend battery(bus);
-    qypr::WifiBackend wifi(bus);
+    qypr::BatteryBackend battery(loop, bus);
+    qypr::WifiBackend wifi(loop, bus);
 
     qypr::BatterySnapshot b;
     b.present = true;
@@ -138,8 +138,8 @@ TEST(StateCacheRoundTripsThroughAFile) {
     writer.flush();
 
     // Read it back into fresh backends — the next boot's first frame.
-    qypr::BatteryBackend battery2(bus);
-    qypr::WifiBackend wifi2(bus);
+    qypr::BatteryBackend battery2(loop, bus);
+    qypr::WifiBackend wifi2(loop, bus);
     qypr::SystemBackends restored{};
     restored.battery = &battery2;
     restored.wifi = &wifi2;
@@ -161,7 +161,7 @@ TEST(StateCacheRoundTripsThroughAFile) {
 TEST(StateCacheToleratesMissingAndCorruptFiles) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend battery(bus);
+    qypr::BatteryBackend battery(loop, bus);
     qypr::SystemBackends backends{};
     backends.battery = &battery;
 
@@ -192,7 +192,7 @@ TEST(StateCacheToleratesMissingAndCorruptFiles) {
 TEST(HardwareIndicatorsHideUntilTheirBackendReports) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend battery(bus);
+    qypr::BatteryBackend battery(loop, bus);
     qypr::SystemBackends backends{};
     backends.battery = &battery;
 
@@ -216,7 +216,7 @@ TEST(HardwareIndicatorsHideUntilTheirBackendReports) {
     // A backend that reports a definitive "no battery here" (a desktop) keeps
     // the indicator hidden even though it is now loaded.
     qypr::SystemBus bus2(loop);
-    qypr::BatteryBackend absent(bus2);
+    qypr::BatteryBackend absent(loop, bus2);
     qypr::BatterySnapshot none;
     none.present = false;
     absent.seed(none);  // seed() only gates on ready(), not on presence
@@ -232,7 +232,7 @@ TEST(StateCacheSkipsRedundantWrites) {
     // animation. Unchanged content must not cause file I/O.
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend battery(bus);
+    qypr::BatteryBackend battery(loop, bus);
     qypr::BatterySnapshot b;
     b.present = true;
     b.percentage = 30;

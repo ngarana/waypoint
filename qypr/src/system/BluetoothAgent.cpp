@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "system/SystemBus.hpp"
+#include "core/EventLoop.hpp"
 
 namespace qypr {
 
@@ -43,9 +44,12 @@ std::string readDevicePath(sd_bus_message* m) {
 }
 }  // namespace
 
-BluetoothAgent::BluetoothAgent(SystemBus& bus) : bus_(bus) {}
+BluetoothAgent::BluetoothAgent(EventLoop& loop, SystemBus& bus)
+    : bus_(bus),
+      retry_(loop, [this] { start(); }) {}
 
 BluetoothAgent::~BluetoothAgent() {
+    retry_.cancel();
     // Drop the observer *before* replying. rejectPending() clears the prompt,
     // which would otherwise notify an owner that is already tearing down — and
     // the owner's snapshot may be gone by then, so the callback would copy a
@@ -85,7 +89,7 @@ const std::array<sd_bus_vtable, 11> BluetoothAgent::kVtable = {{
 }};
 
 void BluetoothAgent::start() {
-    if (!bus_.available()) { return; }
+    if (!bus_.available() || registered_ || registrationPending_) { return; }
 
     if (!exported_) {
         const int r = sd_bus_add_object_vtable(bus_.get(), &vtableSlot_, kAgentPath, kAgentIface,
@@ -97,13 +101,20 @@ void BluetoothAgent::start() {
         exported_ = true;
     }
 
-    // Register (again) with BlueZ. A daemon restart forgets every agent, so
-    // this runs on each (re)appearance; a duplicate registration comes back as
-    // AlreadyExists, which is harmless.
-    registered_ = true;
-    sd_bus_call_method_async(bus_.get(), nullptr, kBlueZ, kBlueZPath, kAgentManagerIface,
-                             "RegisterAgent", &BluetoothAgent::onRegisterReply, this, "os",
-                             kAgentPath, kCapability);
+    // Register with BlueZ. A daemon restart forgets every agent; transient
+    // transport failures are retried with backoff, while AlreadyExists is
+    // treated as success by the reply handler.
+    registrationPending_ = true;
+    const int result = sd_bus_call_method_async(
+        bus_.get(), nullptr, kBlueZ, kBlueZPath, kAgentManagerIface, "RegisterAgent",
+        &BluetoothAgent::onRegisterReply, this, "os", kAgentPath, kCapability);
+    if (result < 0) {
+        registrationPending_ = false;
+        std::fprintf(stderr,
+                     "qypr: could not queue BlueZ pairing agent registration (%d); retrying\n",
+                     -result);
+        retry_.schedule();
+    }
 }
 
 // Registration failing means every non-"Just Works" pairing will fail later
@@ -111,19 +122,37 @@ void BluetoothAgent::start() {
 int BluetoothAgent::onRegisterReply(sd_bus_message* reply, void* userdata,
                                     sd_bus_error* /*unused*/) {
     auto* self = static_cast<BluetoothAgent*>(userdata);
-    if (sd_bus_message_is_method_error(reply, nullptr) == 0) { return 0; }
+    self->registrationPending_ = false;
+    if (sd_bus_message_is_method_error(reply, nullptr) == 0) {
+        self->registered_ = true;
+        self->retry_.reset();
+        return 0;
+    }
     const sd_bus_error* e = sd_bus_message_get_error(reply);
     const char* name = (e != nullptr && e->name != nullptr) ? e->name : "unknown";
     // Re-registering an already-registered agent is expected on reconnect.
-    if (std::strcmp(name, "org.bluez.Error.AlreadyExists") == 0) { return 0; }
+    if (std::strcmp(name, "org.bluez.Error.AlreadyExists") == 0) {
+        self->registered_ = true;
+        self->retry_.reset();
+        return 0;
+    }
     self->registered_ = false;
-    std::fprintf(stderr, "qypr: BlueZ rejected the pairing agent (%s); pairing will be limited\n",
-                 name);
+    const char* message = e != nullptr && e->message != nullptr ? e->message : "";
+    std::fprintf(stderr,
+                 "qypr: BlueZ rejected the pairing agent (%s: %s); pairing will be limited\n", name,
+                 message);
+    if (std::strstr(name, "NoReply") != nullptr || std::strstr(name, "Timeout") != nullptr ||
+        std::strstr(name, "ServiceUnknown") != nullptr ||
+        std::strstr(name, "NameHasNoOwner") != nullptr) {
+        self->retry_.schedule();
+    }
     return 0;
 }
 
 void BluetoothAgent::onBluezLost() {
     registered_ = false;
+    registrationPending_ = false;
+    retry_.cancel();
     // Any prompt on screen belongs to a pairing that died with the daemon.
     rejectPending(kErrCanceled, "BlueZ went away");
 }

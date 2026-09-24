@@ -47,11 +47,11 @@ public:
     // Async issuers: thin wrappers over sd_bus_call_method_async that keep the
     // facade's callback shape, so chain replies keep landing on the facade.
     using AsyncReply = int (*)(sd_bus_message*, void*, sd_bus_error*);
-    void getDevices(AsyncReply cb, void* userdata);
-    void getAll(const std::string& path, const char* iface, AsyncReply cb, void* userdata);
-    void listConnections(AsyncReply cb, void* userdata);
-    void getConnectionSettings(const std::string& conn, AsyncReply cb, void* userdata);
-    void getAccessPointProps(const std::string& ap, AsyncReply cb, void* userdata);
+    bool getDevices(AsyncReply cb, void* userdata);
+    bool getAll(const std::string& path, const char* iface, AsyncReply cb, void* userdata);
+    bool listConnections(AsyncReply cb, void* userdata);
+    bool getConnectionSettings(const std::string& conn, AsyncReply cb, void* userdata);
+    bool getAccessPointProps(const std::string& ap, AsyncReply cb, void* userdata);
 
     // Reply walkers: parse a Get property reply (v{type} container). False
     // when the variant holds another type (nothing consumed past the skip).

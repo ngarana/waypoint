@@ -449,7 +449,7 @@ TEST(StatusBarRightClickOnQSTileOpensDetail) {
         void requestUnlock() override {}
     } host;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend wb(bus);
+    qypr::WifiBackend wb(loop, bus);
     qypr::WifiSnapshot seeded;
     seeded.available = true;
     seeded.enabled = true;

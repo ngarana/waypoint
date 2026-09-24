@@ -73,15 +73,15 @@ private:
     // The monitor is receive-only; lock-screen dismissal uses this separate
     // sender connection to issue the standard CloseNotification call.
     NotificationActions notificationActions_{sessionBus_};
-    BatteryBackend battery_{systemBus_};
+    BatteryBackend battery_{loop_, systemBus_};
     BrightnessBackend brightness_{loop_, systemBus_};
-    WifiBackend wifi_{systemBus_};
-    BluetoothBackend bluetooth_{systemBus_};
+    WifiBackend wifi_{loop_, systemBus_};
+    BluetoothBackend bluetooth_{loop_, systemBus_};
     VolumeBackend volume_{loop_};
     SNIBackend sni_{sessionBus_};
     // City-accurate fix for the solar auto-palette (same source as the bar).
     // Absent/denied → the lock keeps the fixed theme hours.
-    GeoClueBackend geoClue_{systemBus_};
+    GeoClueBackend geoClue_{loop_, systemBus_};
     DndState dnd_;
     SystemBackends backends_{.hasSession = false,
                              .battery = &battery_,

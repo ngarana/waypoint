@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "core/RetryTimer.hpp"
+
 struct sd_bus_message;
 struct sd_bus_slot;
 #include <systemd/sd-bus.h>  // sd_bus_error is a typedef here, not a struct
@@ -17,6 +19,7 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 struct PowerProfilesSnapshot {
     bool available = false;
@@ -28,7 +31,7 @@ struct PowerProfilesSnapshot {
 
 class PowerProfilesBackend {
 public:
-    explicit PowerProfilesBackend(SystemBus& systemBus) : bus_(systemBus) {}
+    PowerProfilesBackend(EventLoop& loop, SystemBus& systemBus);
     ~PowerProfilesBackend();
 
     PowerProfilesBackend(const PowerProfilesBackend&) = delete;
@@ -46,10 +49,19 @@ public:
 
 private:
     static int onPropsChanged(sd_bus_message*, void*, sd_bus_error*);
-    void refresh();  // re-read Profiles + ActiveProfile
+    static int onNameOwnerChanged(sd_bus_message*, void*, sd_bus_error*);
+    static int onRefreshReply(sd_bus_message*, void*, sd_bus_error*);
+    void refresh();  // asynchronously re-read Profiles + ActiveProfile
+    void endRefresh(bool success);
+    void publish(PowerProfilesSnapshot&& next);
 
     SystemBus& bus_;
+    RetryTimer retry_;
     sd_bus_slot* slot_ = nullptr;
+    sd_bus_slot* ownerSlot_ = nullptr;
+    bool started_ = false;
+    bool fetchInFlight_ = false;
+    bool pendingRefresh_ = false;
     PowerProfilesSnapshot snap_;
     std::function<void()> onChange_;
 };

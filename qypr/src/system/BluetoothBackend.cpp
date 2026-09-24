@@ -14,29 +14,40 @@
 #include <cstring>
 #include <utility>
 
+#include "core/EventLoop.hpp"
 #include "system/BluetoothSnapshotReducer.hpp"
 #include "system/BluezClient.hpp"
 #include "system/SystemBus.hpp"
 
 namespace qypr {
 
-BluetoothBackend::BluetoothBackend(SystemBus& bus)
+BluetoothBackend::BluetoothBackend(EventLoop& loop, SystemBus& bus)
     : bus_(bus),
       client_(bus),
       port_(client_, adapter_),
       ops_(
           port_, [this](BluetoothSnapshot&& s) { publish(std::move(s)); },
           [this]() -> const BluetoothSnapshot& { return snap_; }, [this]() { refetch(); }),
-      agent_(bus) {}
+      retry_(loop, [this] { refetch(); }),
+      agent_(loop, bus) {}
 
 BluetoothBackend::~BluetoothBackend() {
+    cancelRetry();
     sd_bus_slot_unref(propsSlot_);
     sd_bus_slot_unref(ifacesSlot_);
     sd_bus_slot_unref(ownerSlot_);
 }
 
 bool BluetoothBackend::start() {
-    if (!bus_.available()) { return false; }
+    if (!bus_.available()) {
+        publishUnavailable();
+        return false;
+    }
+    if (started_) {
+        refetch();
+        return true;
+    }
+    started_ = true;
 
     // Subscribe before the first fetch so no state change can fall in the gap
     // (standard subscribe-then-fetch order).
@@ -67,6 +78,7 @@ void BluetoothBackend::respondPairingInput(const std::string& text) {
 // snapshot to stale state.
 void BluetoothBackend::refetch() {
     if (!bus_.available()) { return; }
+    cancelRetry();
     if (fetchInFlight_) {
         pendingFetch_ = true;
         return;
@@ -75,6 +87,7 @@ void BluetoothBackend::refetch() {
     if (!client_.getManagedObjects(&BluetoothBackend::onGetManagedObjects, this)) {
         fetchInFlight_ = false;
         publishUnavailable();  // resolve the placeholder rather than hang on it
+        scheduleRetry();
     }
 }
 
@@ -91,10 +104,11 @@ int BluetoothBackend::onGetManagedObjects(sd_bus_message* reply, void* userdata,
     auto* self = static_cast<BluetoothBackend*>(userdata);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
         const sd_bus_error* e = sd_bus_message_get_error(reply);
-        std::fprintf(stderr, "qypr: BlueZ unavailable (%s: %s); bluetooth indicator disabled\n",
+        std::fprintf(stderr, "qypr: BlueZ snapshot failed (%s: %s); retrying\n",
                      e != nullptr && e->name != nullptr ? e->name : "unknown",
                      e != nullptr && e->message != nullptr ? e->message : "");
         self->publishUnavailable();
+        self->scheduleRetry();
         self->endFetch();
         return 0;
     }
@@ -102,14 +116,26 @@ int BluetoothBackend::onGetManagedObjects(sd_bus_message* reply, void* userdata,
     BluetoothManagedObjects readings;
     bool parsed = BluezClient::parseManagedObjects(reply, &readings);
     ManagedObjectsResult result = parsed ? reduceManagedObjects(readings) : ManagedObjectsResult{};
-    if (!result.ok || !result.snapshot.available) {
-        if (!self->ready_ || self->snap_.available) {
-            std::fprintf(stderr, "qypr: no Bluetooth adapter via BlueZ; indicator disabled\n");
+    if (!parsed || !result.ok) {
+        if (!parsed) {
+            std::fprintf(stderr, "qypr: could not parse BlueZ snapshot; retrying\n");
+        } else {
+            std::fprintf(stderr, "qypr: could not reduce BlueZ snapshot; retrying\n");
         }
         self->publishUnavailable();
+        self->scheduleRetry();
         self->endFetch();
         return 0;
     }
+    if (!result.snapshot.available) {
+        if (!self->ready_ || self->snap_.available) {
+            std::fprintf(stderr, "qypr: no Bluetooth adapter via BlueZ\n");
+        }
+        self->publishUnavailable();
+        self->endFetch();  // adapter hotplug is delivered by InterfacesAdded
+        return 0;
+    }
+    self->retry_.reset();
     self->adapter_ = result.adapter;
 
     // BlueZ's object tree says nothing about an operation the bar itself has in
@@ -145,6 +171,15 @@ void BluetoothBackend::publishUnavailable() {
     // than applied to some future adapter the user did not ask about.
     ops_.dropPendingPower();
     publish({});
+}
+
+void BluetoothBackend::scheduleRetry() {
+    if (!started_) { return; }
+    retry_.schedule();
+}
+
+void BluetoothBackend::cancelRetry() {
+    retry_.cancel();
 }
 
 void BluetoothBackend::subscribeSignals() {
@@ -202,7 +237,9 @@ int BluetoothBackend::onNameOwnerChanged(sd_bus_message* m, void* userdata,
     }
     if (newOwner == nullptr || *newOwner == '\0') {
         self->agent_.onBluezLost();  // the registration died with the daemon
-        return 0;                    // gone: keep last state
+        self->publishUnavailable();
+        self->scheduleRetry();
+        return 0;
     }
     if (self->agentEnabled_) {
         self->agent_.start();  // (re)appeared: re-register the pairing agent

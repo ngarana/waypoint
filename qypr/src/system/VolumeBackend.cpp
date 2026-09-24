@@ -18,14 +18,15 @@ void fire(Op* op) {
 }
 }  // namespace
 
-VolumeBackend::VolumeBackend(EventLoop& loop) : pulseLoop_(loop) {}
+VolumeBackend::VolumeBackend(EventLoop& loop)
+    : pulseLoop_(loop),
+      retry_(loop, [this] {
+          if (!stopped_) { start(); }
+      }) {}
 
 VolumeBackend::~VolumeBackend() {
     stopped_ = true;  // the reconnect timer must not outlive the loop
-    if (retryTimer_ >= 0) {
-        pulseLoop_.loop().removeTimer(retryTimer_);
-        retryTimer_ = -1;
-    }
+    retry_.cancel();
     if (ctx_ != nullptr) {
         // Silence callbacks first: disconnect() fires the TERMINATED state
         // callback synchronously, and consumers (StatusBar) may already be
@@ -72,21 +73,18 @@ bool VolumeBackend::start() {
 }
 
 void VolumeBackend::scheduleReconnect() {
-    if (stopped_ || retryTimer_ >= 0) { return; }
+    if (stopped_) { return; }
     // The server may still be coming up (pipewire-pulse starts slowly), so a
     // dropped/refused connection is retried instead of leaving the indicator
     // on its placeholder forever.
-    retryTimer_ = pulseLoop_.loop().addTimer(3000, /*repeat=*/false, [this] {
-        retryTimer_ = -1;
-        if (stopped_) { return; }
-        start();
-    });
+    retry_.schedule();
 }
 
 void VolumeBackend::onContextState(pa_context* c, void* userdata) {
     auto* self = static_cast<VolumeBackend*>(userdata);
     switch (pa_context_get_state(c)) {
         case PA_CONTEXT_READY: {
+            self->retry_.reset();
             using mask_t = std::underlying_type_t<pa_subscription_mask_t>;
             // Bitmask cast: the analyzer flags the combined value as out of
             // enum range; the flags are only ever OR-ed together like this.

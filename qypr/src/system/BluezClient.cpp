@@ -143,6 +143,7 @@ bool BluezClient::getManagedObjects(AsyncReply cb, void* userdata) {
 }
 
 bool BluezClient::parseManagedObjects(sd_bus_message* m, BluetoothManagedObjects* out) {
+    out->ok = false;
     out->adapters.clear();
     out->devices.clear();
     if (sd_bus_message_enter_container(m, 'a', "{oa{sa{sv}}}") <= 0) { return false; }
@@ -186,6 +187,7 @@ bool BluezClient::parseManagedObjects(sd_bus_message* m, BluetoothManagedObjects
         sd_bus_message_exit_container(m);
     }
     sd_bus_message_exit_container(m);
+    out->ok = true;
     return true;
 }
 

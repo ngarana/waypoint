@@ -4,6 +4,7 @@
 #include <systemd/sd-bus.h>
 
 #include <cstring>
+#include <utility>
 
 #include "system/SystemBus.hpp"
 
@@ -14,22 +15,79 @@ constexpr const char* kSvc = "net.hadess.PowerProfiles";
 constexpr const char* kPath = "/net/hadess/PowerProfiles";
 constexpr const char* kIface = "net.hadess.PowerProfiles";
 constexpr const char* kProps = "org.freedesktop.DBus.Properties";
+
+bool readVariantString(sd_bus_message* message, std::string* value) {
+    if (sd_bus_message_enter_container(message, 'v', "s") <= 0) {
+        sd_bus_message_skip(message, "v");
+        return false;
+    }
+    const char* text = nullptr;
+    const int result = sd_bus_message_read(message, "s", &text);
+    sd_bus_message_exit_container(message);
+    if (result < 0 || text == nullptr) { return false; }
+    *value = text;
+    return true;
+}
+
+bool readProfiles(sd_bus_message* message, std::vector<std::string>* profiles) {
+    if (sd_bus_message_enter_container(message, 'v', "aa{sv}") <= 0) {
+        sd_bus_message_skip(message, "v");
+        return false;
+    }
+    bool valid = sd_bus_message_enter_container(message, 'a', "a{sv}") > 0;
+    if (valid) {
+        while (sd_bus_message_enter_container(message, 'a', "{sv}") > 0) {
+            while (sd_bus_message_enter_container(message, 'e', "sv") > 0) {
+                const char* key = nullptr;
+                sd_bus_message_read(message, "s", &key);
+                const bool isProfile = key != nullptr && std::strcmp(key, "Profile") == 0;
+                if (isProfile) {
+                    std::string name;
+                    if (readVariantString(message, &name)) { profiles->push_back(std::move(name)); }
+                }
+                if (!isProfile) { sd_bus_message_skip(message, "v"); }
+                sd_bus_message_exit_container(message);
+            }
+            sd_bus_message_exit_container(message);
+        }
+        sd_bus_message_exit_container(message);
+    }
+    sd_bus_message_exit_container(message);
+    return valid;
+}
 }  // namespace
 
+PowerProfilesBackend::PowerProfilesBackend(EventLoop& loop, SystemBus& systemBus)
+    : bus_(systemBus),
+      retry_(loop, [this] { refresh(); }) {}
+
 PowerProfilesBackend::~PowerProfilesBackend() {
-    if (slot_) sd_bus_slot_unref(slot_);
+    retry_.cancel();
+    sd_bus_slot_unref(slot_);
+    sd_bus_slot_unref(ownerSlot_);
 }
 
 bool PowerProfilesBackend::start() {
-    if (!bus_.available()) return false;
-    refresh();
-    if (!snap_.available) return false;  // daemon absent → caller omits the UI
+    if (!bus_.available()) {
+        publish({});
+        return false;
+    }
+    if (started_) {
+        refresh();
+        return snap_.available;
+    }
+    started_ = true;
     // Push: any property change (usually ActiveProfile) triggers a re-read.
     slot_ = bus_.addMatch("type='signal',sender='net.hadess.PowerProfiles',"
                           "interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',"
                           "path='/net/hadess/PowerProfiles'",
                           &PowerProfilesBackend::onPropsChanged, this);
-    return true;
+    ownerSlot_ = bus_.addMatch(
+        "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',"
+        "member='NameOwnerChanged',arg0='net.hadess.PowerProfiles'",
+        &PowerProfilesBackend::onNameOwnerChanged, this);
+    refresh();
+    return snap_.available;
 }
 
 int PowerProfilesBackend::onPropsChanged(sd_bus_message*, void* ud, sd_bus_error*) {
@@ -37,74 +95,90 @@ int PowerProfilesBackend::onPropsChanged(sd_bus_message*, void* ud, sd_bus_error
     return 0;
 }
 
-void PowerProfilesBackend::refresh() {
+int PowerProfilesBackend::onNameOwnerChanged(sd_bus_message* message, void* userdata,
+                                             sd_bus_error*) {
+    auto* self = static_cast<PowerProfilesBackend*>(userdata);
+    const char* name = nullptr;
+    const char* oldOwner = nullptr;
+    const char* newOwner = nullptr;
+    if (sd_bus_message_read(message, "sss", &name, &oldOwner, &newOwner) < 0 || name == nullptr) {
+        return 0;
+    }
+    if (newOwner == nullptr || *newOwner == '\0') {
+        self->publish({});
+        self->retry_.schedule();
+        return 0;
+    }
+    self->refresh();
+    return 0;
+}
+
+void PowerProfilesBackend::publish(PowerProfilesSnapshot&& next) {
+    if (next == snap_) return;
+    snap_ = std::move(next);
+    if (onChange_) onChange_();
+}
+
+void PowerProfilesBackend::refresh() {  // NOLINT(misc-no-recursion) async D-Bus reply cycle
     sd_bus* bus = bus_.get();
     if (!bus) return;
-
-    PowerProfilesSnapshot next;
-
-    // ActiveProfile (s).
-    {
-        sd_bus_error err = SD_BUS_ERROR_NULL;
-        char* active = nullptr;
-        int r =
-            sd_bus_get_property_string(bus, kSvc, kPath, kIface, "ActiveProfile", &err, &active);
-        if (r >= 0 && active) {
-            next.active = active;
-            next.available = true;
-        }
-        // NOLINTBEGIN(cppcoreguidelines-owning-memory) // sd-bus C API owns handle
-        // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // sd-bus C API owns handle
-        free(active);
-        // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
-        // NOLINTEND(cppcoreguidelines-owning-memory)
-        sd_bus_error_free(&err);
-    }
-    if (!next.available) {  // daemon not present
-        if (next != snap_) {
-            snap_ = next;
-            if (onChange_) onChange_();
-        }
+    retry_.cancel();
+    if (fetchInFlight_) {
+        pendingRefresh_ = true;
         return;
     }
+    fetchInFlight_ = true;
+    const int result =
+        sd_bus_call_method_async(bus, nullptr, kSvc, kPath, kProps, "GetAll",
+                                 &PowerProfilesBackend::onRefreshReply, this, "s", kIface);
+    if (result < 0) { endRefresh(true); }
+}
 
-    // Profiles (aa{sv}); pull the "Profile" name string out of each dict.
-    {
-        sd_bus_error err = SD_BUS_ERROR_NULL;
-        sd_bus_message* reply = nullptr;
-        int r = sd_bus_get_property(bus, kSvc, kPath, kIface, "Profiles", &err, &reply, "aa{sv}");
-        if (r >= 0 && reply) {
-            if (sd_bus_message_enter_container(reply, 'a', "a{sv}") >= 0) {
-                while (sd_bus_message_enter_container(reply, 'a', "{sv}") > 0) {
-                    while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
-                        void* keyRaw = nullptr;
-                        sd_bus_message_read_basic(reply, 's', static_cast<void*>(&keyRaw));
-                        const char* key = static_cast<const char*>(keyRaw);
-                        if (key && std::strcmp(key, "Profile") == 0 &&
-                            sd_bus_message_enter_container(reply, 'v', "s") >= 0) {
-                            void* nameRaw = nullptr;
-                            if (sd_bus_message_read_basic(reply, 's',
-                                                          static_cast<void*>(&nameRaw)) >= 0 &&
-                                nameRaw != nullptr)
-                                next.profiles.emplace_back(static_cast<const char*>(nameRaw));
-                            sd_bus_message_exit_container(reply);
-                        } else {
-                            sd_bus_message_skip(reply, "v");
-                        }
-                        sd_bus_message_exit_container(reply);  // dict entry
-                    }
-                    sd_bus_message_exit_container(reply);  // a{sv}
-                }
-                sd_bus_message_exit_container(reply);  // outer array
-            }
-        }
-        if (reply) sd_bus_message_unref(reply);
-        sd_bus_error_free(&err);
+int PowerProfilesBackend::onRefreshReply(sd_bus_message* reply, void* userdata,
+                                         sd_bus_error*) {  // NOLINT(misc-no-recursion) async reply
+    auto* self = static_cast<PowerProfilesBackend*>(userdata);
+    if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
+        self->publish({});
+        self->endRefresh(true);
+        return 0;
     }
 
-    if (next != snap_) {
-        snap_ = std::move(next);
-        if (onChange_) onChange_();
+    PowerProfilesSnapshot next;
+    bool activeRead = false;
+    bool profilesRead = false;
+    if (sd_bus_message_enter_container(reply, 'a', "{sv}") > 0) {
+        while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
+            const char* key = nullptr;
+            sd_bus_message_read(reply, "s", &key);
+            const bool isActive = key != nullptr && std::strcmp(key, "ActiveProfile") == 0;
+            const bool isProfiles = key != nullptr && std::strcmp(key, "Profiles") == 0;
+            if (isActive) {
+                activeRead = readVariantString(reply, &next.active);
+            } else if (isProfiles) {
+                profilesRead = readProfiles(reply, &next.profiles);
+            }
+            if (!isActive && !isProfiles) { sd_bus_message_skip(reply, "v"); }
+            sd_bus_message_exit_container(reply);
+        }
+        sd_bus_message_exit_container(reply);
+    }
+    next.available = activeRead && !next.active.empty();
+    self->publish(std::move(next));
+    self->endRefresh(activeRead && profilesRead);
+    return 0;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion) Async D-Bus replies resume on the event loop.
+void PowerProfilesBackend::endRefresh(bool success) {
+    fetchInFlight_ = false;
+    if (success) {
+        retry_.reset();
+    } else if (started_) {
+        retry_.schedule();
+    }
+    if (pendingRefresh_) {
+        pendingRefresh_ = false;
+        refresh();
     }
 }
 

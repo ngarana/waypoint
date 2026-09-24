@@ -1,7 +1,8 @@
 // BluetoothBackend.hpp - Bluetooth state via BlueZ on the shared system bus.
 //
 // Async startup: GetManagedObjects is issued via sd_bus_call_method_async so
-// the event loop is never blocked. Push-only afterwards via PropertiesChanged.
+// the event loop is never blocked. Healthy state is push-driven via BlueZ
+// signals; unavailable snapshots are retried with bounded backoff.
 
 #pragma once
 
@@ -10,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "core/RetryTimer.hpp"
 #include "system/BluetoothAgent.hpp"
 #include "system/BluetoothModel.hpp"
 #include "system/BluetoothOperations.hpp"
@@ -22,10 +24,11 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 class BluetoothBackend {
 public:
-    explicit BluetoothBackend(SystemBus& bus);
+    BluetoothBackend(EventLoop& loop, SystemBus& bus);
     ~BluetoothBackend();
 
     BluetoothBackend(const BluetoothBackend&) = delete;
@@ -101,6 +104,8 @@ private:
     void publishUnavailable();
     void refetch();
     void endFetch();
+    void scheduleRetry();
+    void cancelRetry();
     void subscribeSignals();
 
     // Port adapter: user commands need the facade's current adapter path, but
@@ -149,6 +154,8 @@ private:
     bool fetchInFlight_ = false;
     bool pendingFetch_ = false;
     bool subscribed_ = false;
+    bool started_ = false;
+    RetryTimer retry_;  // armed only after a failed/transient BlueZ read
     BluetoothSnapshot snap_;
     std::function<void()> onChange_;
     // Every result path calls this instead of onChange_ directly, so ready()

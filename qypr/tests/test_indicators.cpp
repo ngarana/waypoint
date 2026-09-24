@@ -108,7 +108,7 @@ TEST(BatteryPopoverAdjustsHeightToDetails) {
 TEST(BatteryBackendConstruction) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BatteryBackend backend(bus);
+    qypr::BatteryBackend backend(loop, bus);
 
     // start() fires an async D-Bus call and returns immediately.
     // On a machine with a bus, it returns true (the call was issued);
@@ -235,7 +235,7 @@ TEST(WifiIndicatorCreatesToggleTile) {
 TEST(WifiPopoverToggleSwitchAndScanning) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend backend(bus);
+    qypr::WifiBackend backend(loop, bus);
     // Seed a ready snapshot (as StateCache would): strongest-first, one saved
     // secured active, one open unsaved, one secured unsaved (needs a password).
     qypr::WifiSnapshot seeded;
@@ -295,7 +295,7 @@ TEST(WifiPopoverToggleSwitchAndScanning) {
 TEST(WifiPopoverGrowsForLongSsid) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend backend(bus);
+    qypr::WifiBackend backend(loop, bus);
     qypr::WifiSnapshot seeded;
     seeded.available = true;
     seeded.enabled = true;
@@ -314,7 +314,7 @@ TEST(WifiPopoverGrowsForLongSsid) {
 TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend backend(bus);
+    qypr::WifiBackend backend(loop, bus);
     qypr::WifiSnapshot seeded;
     seeded.available = true;
     seeded.enabled = true;
@@ -369,7 +369,7 @@ TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
 TEST(WifiPopoverClickRoutingByNetworkKind) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend backend(bus);
+    qypr::WifiBackend backend(loop, bus);
     qypr::WifiSnapshot seeded;
     seeded.available = true;
     seeded.enabled = true;
@@ -457,7 +457,7 @@ TEST(QSTileSecondaryClickCallback) {
 TEST(WifiPopoverSecondaryForgetAndDisconnect) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::WifiBackend backend(bus);
+    qypr::WifiBackend backend(loop, bus);
     qypr::WifiSnapshot seeded;
     seeded.available = true;
     seeded.enabled = true;
@@ -536,7 +536,7 @@ TEST(BluetoothIndicatorCreatesToggleTile) {
 TEST(BluetoothPopoverGrowsForLongDeviceName) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BluetoothBackend backend(bus);
+    qypr::BluetoothBackend backend(loop, bus);
     qypr::BluetoothSnapshot seeded;
     seeded.available = true;
     seeded.powered = true;

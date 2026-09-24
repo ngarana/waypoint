@@ -9,6 +9,8 @@
 #include <functional>
 #include <string>
 
+#include "core/RetryTimer.hpp"
+
 struct sd_bus_message;
 struct sd_bus_slot;
 #include <systemd/sd-bus.h>  // sd_bus_error is a typedef here, not a struct
@@ -16,6 +18,7 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 struct BatterySnapshot {
     int percentage = 0;
@@ -29,7 +32,7 @@ struct BatterySnapshot {
 
 class BatteryBackend {
 public:
-    explicit BatteryBackend(SystemBus& bus);
+    BatteryBackend(EventLoop& loop, SystemBus& bus);
     ~BatteryBackend();
 
     BatteryBackend(const BatteryBackend&) = delete;
@@ -66,7 +69,11 @@ private:
     static int onGetAllDisplay(sd_bus_message* reply, void* userdata, sd_bus_error* err);
     static int onEnumerateDevices(sd_bus_message* reply, void* userdata, sd_bus_error* err);
     static int onGetAllDevice(sd_bus_message* reply, void* userdata, sd_bus_error* err);
+    static int onDeviceAdded(sd_bus_message* message, void* userdata, sd_bus_error* err);
+    static int onDeviceRemoved(sd_bus_message* message, void* userdata, sd_bus_error* err);
     void fetchInitial();
+    void endFetch(bool retry = false);
+    void failFetch(const char* message);
     void subscribeSignal();
     bool parseProps(sd_bus_message* m);
 
@@ -74,10 +81,16 @@ private:
     static int onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
 
     SystemBus& bus_;
+    RetryTimer retry_;
     sd_bus_slot* signalSlot_ = nullptr;
     sd_bus_slot* ownerSlot_ = nullptr;  // UPower service (re)appearance
+    sd_bus_slot* addedSlot_ = nullptr;
+    sd_bus_slot* removedSlot_ = nullptr;
     std::string devicePath_;
     bool subscribed_ = false;
+    bool started_ = false;
+    bool fetchInFlight_ = false;
+    bool pendingFetch_ = false;
     BatterySnapshot snap_;
     std::function<void()> onChange_;
     // Every result path calls this instead of onChange_ directly, so ready()

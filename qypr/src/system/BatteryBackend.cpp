@@ -46,14 +46,28 @@ bool readVariant(sd_bus_message* m, const char* contents, void* out) {
 }
 }  // namespace
 
-BatteryBackend::BatteryBackend(SystemBus& bus) : bus_(bus) {}
+BatteryBackend::BatteryBackend(EventLoop& loop, SystemBus& bus)
+    : bus_(bus),
+      retry_(loop, [this] { fetchInitial(); }) {}
 
 BatteryBackend::~BatteryBackend() {
-    if (signalSlot_ != nullptr) { sd_bus_slot_unref(signalSlot_); }
+    sd_bus_slot_unref(signalSlot_);
+    sd_bus_slot_unref(ownerSlot_);
+    sd_bus_slot_unref(addedSlot_);
+    sd_bus_slot_unref(removedSlot_);
 }
 
 bool BatteryBackend::start() {
-    if (!bus_.available()) { return false; }
+    if (!bus_.available()) {
+        snap_ = {};
+        notifyReady();
+        return false;
+    }
+    if (started_) {
+        fetchInitial();
+        return true;
+    }
+    started_ = true;
 
     // Subscribe before the first fetch so no state change can fall in the gap
     // (standard subscribe-then-fetch order).
@@ -62,11 +76,43 @@ bool BatteryBackend::start() {
     return true;
 }
 
-void BatteryBackend::fetchInitial() {
+void BatteryBackend::fetchInitial() {  // NOLINT(misc-no-recursion) D-Bus callbacks are deferred
     if (!bus_.available()) { return; }
+    retry_.cancel();
+    if (fetchInFlight_) {
+        pendingFetch_ = true;
+        return;
+    }
+    fetchInFlight_ = true;
     // Async: GetAll on DisplayDevice → callback decides next step.
-    sd_bus_call_method_async(bus_.get(), nullptr, kUPower, kDisplayDevice, kPropsIface, "GetAll",
-                             &BatteryBackend::onGetAllDisplay, this, "s", kDeviceIface);
+    if (sd_bus_call_method_async(bus_.get(), nullptr, kUPower, kDisplayDevice, kPropsIface,
+                                 "GetAll", &BatteryBackend::onGetAllDisplay, this, "s",
+                                 kDeviceIface) < 0) {
+        failFetch("failed to enqueue UPower DisplayDevice query");
+    }
+}
+
+// NOLINTNEXTLINE(misc-no-recursion) D-Bus callbacks resume on the event loop.
+void BatteryBackend::endFetch(bool retry) {
+    fetchInFlight_ = false;
+    if (pendingFetch_) {
+        pendingFetch_ = false;
+        fetchInitial();
+        return;
+    }
+    if (retry) {
+        retry_.schedule();
+    } else {
+        retry_.reset();
+    }
+}
+
+void BatteryBackend::failFetch(const char* message) {  // NOLINT(misc-no-recursion) async path
+    std::fprintf(stderr, "qypr: UPower query failed (%s); retrying\n", message);
+    devicePath_.clear();
+    snap_ = {};
+    notifyReady();
+    endFetch(/*retry=*/true);
 }
 
 int BatteryBackend::onGetAllDisplay(sd_bus_message* reply, void* userdata,
@@ -74,8 +120,11 @@ int BatteryBackend::onGetAllDisplay(sd_bus_message* reply, void* userdata,
     auto* self = static_cast<BatteryBackend*>(userdata);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
         // DisplayDevice unavailable — try EnumerateDevices fallback.
-        sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, kUPowerPath, kUPower,
-                                 "EnumerateDevices", &BatteryBackend::onEnumerateDevices, self, "");
+        if (sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, kUPowerPath, kUPower,
+                                     "EnumerateDevices", &BatteryBackend::onEnumerateDevices, self,
+                                     "") < 0) {
+            self->failFetch("failed to enqueue EnumerateDevices query");
+        }
         return 0;
     }
 
@@ -83,12 +132,16 @@ int BatteryBackend::onGetAllDisplay(sd_bus_message* reply, void* userdata,
         self->devicePath_ = kDisplayDevice;
         self->subscribeSignal();
         self->notifyReady();
+        self->endFetch();
         return 0;
     }
 
     // DisplayDevice says not present — try EnumerateDevices fallback.
-    sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, kUPowerPath, kUPower,
-                             "EnumerateDevices", &BatteryBackend::onEnumerateDevices, self, "");
+    if (sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, kUPowerPath, kUPower,
+                                 "EnumerateDevices", &BatteryBackend::onEnumerateDevices, self,
+                                 "") < 0) {
+        self->failFetch("failed to enqueue EnumerateDevices query");
+    }
     return 0;
 }
 
@@ -96,19 +149,14 @@ int BatteryBackend::onEnumerateDevices(sd_bus_message* reply, void* userdata,
                                        sd_bus_error* /*unused*/) {
     auto* self = static_cast<BatteryBackend*>(userdata);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
-        // Publish a definitive "absent" instead of leaving the placeholder
-        // pending forever.
-        std::fprintf(stderr, "qypr: no battery via UPower; battery indicator disabled\n");
-        self->snap_.present = false;
-        self->notifyReady();  // hide the placeholder
+        self->failFetch("EnumerateDevices returned an error");
         return 0;
     }
 
-    // Walk object paths, find first that looks like a battery.
+    // A valid empty enumeration is definitive; DeviceAdded/Removed signals
+    // below handle later hotplug without polling.
     if (sd_bus_message_enter_container(reply, 'a', "o") < 0) {
-        std::fprintf(stderr, "qypr: no battery via UPower; battery indicator disabled\n");
-        self->snap_.present = false;
-        self->notifyReady();  // hide the placeholder
+        self->failFetch("malformed EnumerateDevices reply");
         return 0;
     }
     const char* path = nullptr;
@@ -122,15 +170,19 @@ int BatteryBackend::onEnumerateDevices(sd_bus_message* reply, void* userdata,
     sd_bus_message_exit_container(reply);
 
     if (found.empty()) {
-        std::fprintf(stderr, "qypr: no battery via UPower; battery indicator disabled\n");
-        self->snap_.present = false;
+        self->devicePath_.clear();
+        self->snap_ = {};
         self->notifyReady();  // hide the placeholder
+        self->endFetch();
         return 0;
     }
 
     self->devicePath_ = found;
-    sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, found.c_str(), kPropsIface,
-                             "GetAll", &BatteryBackend::onGetAllDevice, self, "s", kDeviceIface);
+    if (sd_bus_call_method_async(self->bus_.get(), nullptr, kUPower, found.c_str(), kPropsIface,
+                                 "GetAll", &BatteryBackend::onGetAllDevice, self, "s",
+                                 kDeviceIface) < 0) {
+        self->failFetch("failed to enqueue battery-device query");
+    }
     return 0;
 }
 
@@ -138,21 +190,25 @@ int BatteryBackend::onGetAllDevice(sd_bus_message* reply, void* userdata,
                                    sd_bus_error* /*unused*/) {
     auto* self = static_cast<BatteryBackend*>(userdata);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
-        std::fprintf(stderr, "qypr: no battery via UPower; battery indicator disabled\n");
-        self->snap_.present = false;
-        self->notifyReady();  // hide the placeholder
+        self->failFetch("battery-device query returned an error");
         return 0;
     }
 
-    self->parseProps(reply);
+    if (!self->parseProps(reply)) {
+        self->failFetch("malformed battery-device reply");
+        return 0;
+    }
     if (!self->snap_.present) {
-        std::fprintf(stderr, "qypr: no battery via UPower; battery indicator disabled\n");
+        self->devicePath_.clear();
+        self->snap_ = {};
         self->notifyReady();  // hide the placeholder
+        self->endFetch();
         return 0;
     }
 
     self->subscribeSignal();
     self->notifyReady();
+    self->endFetch();
     return 0;
 }
 
@@ -171,6 +227,26 @@ void BatteryBackend::subscribeSignal() {
         "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',"
         "member='NameOwnerChanged',arg0='org.freedesktop.UPower'",
         &BatteryBackend::onNameOwnerChanged, this);
+    addedSlot_ = bus_.addMatch(
+        "type='signal',sender='org.freedesktop.UPower',path='/org/freedesktop/UPower',"
+        "interface='org.freedesktop.UPower',member='DeviceAdded'",
+        &BatteryBackend::onDeviceAdded, this);
+    removedSlot_ = bus_.addMatch(
+        "type='signal',sender='org.freedesktop.UPower',path='/org/freedesktop/UPower',"
+        "interface='org.freedesktop.UPower',member='DeviceRemoved'",
+        &BatteryBackend::onDeviceRemoved, this);
+}
+
+int BatteryBackend::onDeviceAdded(sd_bus_message* /*message*/, void* userdata,
+                                  sd_bus_error* /*unused*/) {
+    static_cast<BatteryBackend*>(userdata)->fetchInitial();
+    return 0;
+}
+
+int BatteryBackend::onDeviceRemoved(sd_bus_message* /*message*/, void* userdata,
+                                    sd_bus_error* /*unused*/) {
+    static_cast<BatteryBackend*>(userdata)->fetchInitial();
+    return 0;
 }
 
 bool BatteryBackend::parseProps(sd_bus_message* m) {
@@ -257,8 +333,14 @@ int BatteryBackend::onNameOwnerChanged(sd_bus_message* m, void* userdata,
     if (sd_bus_message_read(m, "sss", &name, &oldOwner, &newOwner) < 0 || (name == nullptr)) {
         return 0;
     }
-    if (newOwner == nullptr || *newOwner == '\0') { return 0; }  // gone: keep last state
-    self->fetchInitial();  // (re)appeared: retry the initial fetch
+    if (newOwner == nullptr || *newOwner == '\0') {
+        self->devicePath_.clear();
+        self->snap_ = {};
+        self->notifyReady();
+        self->retry_.schedule();
+        return 0;
+    }
+    self->fetchInitial();  // (re)appeared: refresh immediately
     return 0;
 }
 

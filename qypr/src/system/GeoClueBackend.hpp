@@ -13,12 +13,15 @@
 #include <optional>
 #include <string>
 
+#include "core/RetryTimer.hpp"
+
 struct sd_bus_slot;
 #include <systemd/sd-bus.h>  // sd_bus_error is a typedef here, not a struct
 
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 struct GeoFix {
     double latitude = 0.0;
@@ -30,17 +33,15 @@ struct GeoFix {
 
 class GeoClueBackend {
 public:
-    explicit GeoClueBackend(SystemBus& systemBus) : bus_(systemBus) {}
+    GeoClueBackend(EventLoop& loop, SystemBus& systemBus);
     ~GeoClueBackend();
 
     GeoClueBackend(const GeoClueBackend&) = delete;
     GeoClueBackend& operator=(const GeoClueBackend&) = delete;
 
-    // Fetch our GeoClue client, configure it (DesktopId, City accuracy,
-    // coarse thresholds), Start() it and subscribe to LocationUpdated.
-    // Returns false when GeoClue is absent or denies us — the caller keeps
-    // the fixed-hour fallback. Safe to call once; a second call is a no-op
-    // reporting current availability.
+    // Asynchronously fetch/configure/start our GeoClue client and subscribe to
+    // LocationUpdated. Returns false only when the system bus is unavailable;
+    // a remote timeout cannot stall the shared event loop. Safe to call again.
     bool start();
 
     bool available() const { return fix_.has_value(); }
@@ -49,13 +50,24 @@ public:
 
 private:
     static int onLocationUpdated(sd_bus_message*, void*, sd_bus_error*);
-    // (Re)read the client's Location object, then latitude/longitude/
-    // accuracy. Fires onChange only when the fix actually moved.
-    bool refreshFix();
+    static int onGetClient(sd_bus_message*, void*, sd_bus_error*);
+    static int onDesktopIdSet(sd_bus_message*, void*, sd_bus_error*);
+    static int onStartClient(sd_bus_message*, void*, sd_bus_error*);
+    static int onLocationPath(sd_bus_message*, void*, sd_bus_error*);
+    static int onLocationProperties(sd_bus_message*, void*, sd_bus_error*);
+    // Start or coalesce an async read of the client's current fix.
+    void refreshFix();
+    void finishFixFetch(bool success);
+    void failStart(const char* stage, sd_bus_message* reply);
 
     SystemBus& bus_;
+    RetryTimer retry_;
     sd_bus_slot* slot_ = nullptr;
     std::string clientPath_;
+    bool startInFlight_ = false;
+    bool started_ = false;
+    bool fixFetchInFlight_ = false;
+    bool fixRefreshPending_ = false;
     std::optional<GeoFix> fix_;
     std::function<void()> onChange_;
 };

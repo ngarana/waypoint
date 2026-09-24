@@ -234,7 +234,7 @@ TEST(ProcessSpawnEnvAndDevnull) {
 TEST(BluetoothAgentDisabledWhileLocked) {
     qypr::EventLoop loop;
     qypr::SystemBus bus(loop);
-    qypr::BluetoothBackend bt(bus);
+    qypr::BluetoothBackend bt(loop, bus);
     bt.setPairingAgentEnabled(false);
     EXPECT_FALSE(bt.pairingAgentEnabled());
     // Re-enabling flips the flag; the real DBus start happens only when a

@@ -18,34 +18,40 @@ bool NetworkManagerClient::available() const {
     return bus_.available();
 }
 
-void NetworkManagerClient::getDevices(AsyncReply cb, void* userdata) {
+bool NetworkManagerClient::getDevices(AsyncReply cb, void* userdata) {
     // NetworkManager 1.58 removed org.freedesktop.DBus.ObjectManager, so
     // enumerate with GetDevices and read the properties per object instead of
     // one GetManagedObjects reply.
-    sd_bus_call_method_async(bus_.get(), nullptr, kNM, kNMPath, kNM, "GetDevices", cb, userdata,
-                             "");
+    sd_bus* bus = bus_.get();
+    return bus != nullptr && sd_bus_call_method_async(bus, nullptr, kNM, kNMPath, kNM, "GetDevices",
+                                                      cb, userdata, "") >= 0;
 }
 
-void NetworkManagerClient::getAll(const std::string& path, const char* iface, AsyncReply cb,
+bool NetworkManagerClient::getAll(const std::string& path, const char* iface, AsyncReply cb,
                                   void* userdata) {
-    sd_bus_call_method_async(bus_.get(), nullptr, kNM, path.c_str(), kPropsIface, "GetAll", cb,
-                             userdata, "s", iface);
+    sd_bus* bus = bus_.get();
+    return bus != nullptr && sd_bus_call_method_async(bus, nullptr, kNM, path.c_str(), kPropsIface,
+                                                      "GetAll", cb, userdata, "s", iface) >= 0;
 }
 
-void NetworkManagerClient::listConnections(AsyncReply cb, void* userdata) {
-    sd_bus_call_method_async(bus_.get(), nullptr, kNM, kSettingsPath, kSettingsIface,
-                             "ListConnections", cb, userdata, "");
+bool NetworkManagerClient::listConnections(AsyncReply cb, void* userdata) {
+    sd_bus* bus = bus_.get();
+    return bus != nullptr &&
+           sd_bus_call_method_async(bus, nullptr, kNM, kSettingsPath, kSettingsIface,
+                                    "ListConnections", cb, userdata, "") >= 0;
 }
 
-void NetworkManagerClient::getConnectionSettings(const std::string& conn, AsyncReply cb,
+bool NetworkManagerClient::getConnectionSettings(const std::string& conn, AsyncReply cb,
                                                  void* userdata) {
-    sd_bus_call_method_async(bus_.get(), nullptr, kNM, conn.c_str(), kSettingsConnIface,
-                             "GetSettings", cb, userdata, "");
+    sd_bus* bus = bus_.get();
+    return bus != nullptr &&
+           sd_bus_call_method_async(bus, nullptr, kNM, conn.c_str(), kSettingsConnIface,
+                                    "GetSettings", cb, userdata, "") >= 0;
 }
 
-void NetworkManagerClient::getAccessPointProps(const std::string& ap, AsyncReply cb,
+bool NetworkManagerClient::getAccessPointProps(const std::string& ap, AsyncReply cb,
                                                void* userdata) {
-    getAll(ap, kApIface, cb, userdata);
+    return getAll(ap, kApIface, cb, userdata);
 }
 
 bool NetworkManagerClient::extractBool(sd_bus_message* m, bool* out) {

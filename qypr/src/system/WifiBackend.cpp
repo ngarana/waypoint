@@ -20,13 +20,17 @@
 
 namespace qypr {
 
-WifiBackend::WifiBackend(SystemBus& bus)
+WifiBackend::WifiBackend(EventLoop& loop, SystemBus& bus)
     : bus_(bus),
+      retry_(loop, [this] { refreshAsync(); }),
+      networkRetry_(loop, [this] { refreshNetworksAsync(); }),
       client_(bus),
       port_(client_, device_),
       ops_(port_) {}
 
 WifiBackend::~WifiBackend() {
+    retry_.cancel();
+    networkRetry_.cancel();
     sd_bus_slot_unref(propsSlot_);
     sd_bus_slot_unref(addedSlot_);
     sd_bus_slot_unref(removedSlot_);
@@ -34,7 +38,15 @@ WifiBackend::~WifiBackend() {
 }
 
 bool WifiBackend::start() {
-    if (!bus_.available()) { return false; }
+    if (!bus_.available()) {
+        publishWifiFailure("system bus unavailable; Wi-Fi state disabled");
+        return false;
+    }
+    if (started_) {
+        refreshAsync();
+        return true;
+    }
+    started_ = true;
 
     // Subscribe before the first fetch: a change landing between the fetch and
     // the subscription would be lost (standard subscribe-then-fetch order).
@@ -71,8 +83,9 @@ void WifiBackend::subscribeSignals() {
 // pendingRefresh_, and the next chain runs when the current one lands. This is
 // what keeps replies from different chains from arriving out of order and
 // regressing the snapshot to stale state.
-void WifiBackend::refreshAsync() {
+void WifiBackend::refreshAsync() {  // NOLINT(misc-no-recursion) D-Bus callbacks are deferred
     if (!bus_.available()) { return; }
+    retry_.cancel();
     if (fetchInFlight_) {
         pendingRefresh_ = true;  // a change arrived mid-fetch; re-run after
         return;
@@ -86,24 +99,39 @@ void WifiBackend::refreshAsync() {
     fetchStep_ = 0;  // waiting for GetDevices
     // NetworkManager 1.58 removed org.freedesktop.DBus.ObjectManager, so
     // enumerate with GetDevices and read the properties we need per object.
-    client_.getDevices(&WifiBackend::onFetchStep, this);
+    if (!client_.getDevices(&WifiBackend::onFetchStep, this)) {
+        failFetch("failed to enqueue NetworkManager GetDevices query");
+    }
 }
 
-void WifiBackend::endFetch() {
+void WifiBackend::endFetch(bool retry) {  // NOLINT(misc-no-recursion) D-Bus callbacks are deferred
     fetchInFlight_ = false;
     if (pendingRefresh_) {
         pendingRefresh_ = false;
         refreshAsync();
+        return;
     }
+    if (retry) {
+        retry_.schedule();
+    } else {
+        retry_.reset();
+    }
+}
+
+void WifiBackend::failFetch(const std::string& message) {  // NOLINT(misc-no-recursion) async path
+    publishWifiFailure(message);
+    endFetch(/*retry=*/true);
 }
 
 int WifiBackend::onFetchStep(sd_bus_message* reply, void* userdata, sd_bus_error* /*unused*/) {
     auto* self = static_cast<WifiBackend*>(userdata);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
-        // Transient failure (NM restarting at bar start): publish a definitive
-        // "absent" instead of leaving the placeholder pending forever.
-        self->publishWifiFailure("NetworkManager unavailable; wifi indicator disabled");
-        self->endFetch();
+        const sd_bus_error* error = sd_bus_message_get_error(reply);
+        const char* name = error != nullptr && error->name != nullptr ? error->name : "unknown";
+        const char* message =
+            error != nullptr && error->message != nullptr ? error->message : "request failed";
+        self->failFetch(std::string("NetworkManager query failed (") + name + ": " + message +
+                        "); retrying");
         return 0;
     }
     // Dispatch to the step the chain is currently waiting on; a reply can only
@@ -122,8 +150,7 @@ int WifiBackend::onFetchStep(sd_bus_message* reply, void* userdata, sd_bus_error
             self->stepApProps(reply);
             break;
         default:
-            self->publishWifiFailure("internal: unexpected wifi fetch step");
-            self->endFetch();
+            self->failFetch("unexpected NetworkManager fetch step; retrying");
     }
     return 0;
 }
@@ -144,8 +171,11 @@ void WifiBackend::stepDevices(sd_bus_message* reply) {
         finishNoWifi();
         return;
     }
-    client_.getAll(NetworkManagerClient::kNMPath, NetworkManagerClient::kNM,
-                   &WifiBackend::onFetchStep, this);
+    if (!client_.getAll(NetworkManagerClient::kNMPath, NetworkManagerClient::kNM,
+                        &WifiBackend::onFetchStep, this)) {
+        failFetch("failed to enqueue NetworkManager properties query");
+        return;
+    }
     fetchStep_ = 1;  // waiting for root GetAll
 }
 
@@ -195,7 +225,10 @@ void WifiBackend::stepDeviceProps(sd_bus_message* reply) {
     device_ = devices_.at(devIndex_);
     devState_ = state;
     fetchStep_ = 2;  // waiting for Wireless GetAll
-    client_.getAll(device_, NetworkManagerClient::kWirelessIface, &WifiBackend::onFetchStep, this);
+    if (!client_.getAll(device_, NetworkManagerClient::kWirelessIface, &WifiBackend::onFetchStep,
+                        this)) {
+        failFetch("failed to enqueue NetworkManager wireless query");
+    }
 }
 
 // GetAll on the WiFi device (Wireless interface) → ActiveAccessPoint.
@@ -231,7 +264,9 @@ void WifiBackend::stepWirelessProps(sd_bus_message* reply) {
     }
     activeAp_ = ap;
     fetchStep_ = 3;  // waiting for AP GetAll
-    client_.getAccessPointProps(ap, &WifiBackend::onFetchStep, this);
+    if (!client_.getAccessPointProps(ap, &WifiBackend::onFetchStep, this)) {
+        failFetch("failed to enqueue NetworkManager access-point query");
+    }
 }
 
 // GetAll on the active AP → Ssid/Strength; terminal step of the chain.
@@ -267,8 +302,10 @@ void WifiBackend::fetchDeviceAt(size_t index) {
         return;
     }
     fetchStep_ = 1;  // waiting for device GetAll
-    client_.getAll(devices_.at(devIndex_), NetworkManagerClient::kDeviceIface,
-                   &WifiBackend::onFetchStep, this);
+    if (!client_.getAll(devices_.at(devIndex_), NetworkManagerClient::kDeviceIface,
+                        &WifiBackend::onFetchStep, this)) {
+        failFetch("failed to enqueue NetworkManager device query");
+    }
 }
 
 void WifiBackend::finishNoWifi() {
@@ -285,8 +322,9 @@ void WifiBackend::finishNoWifi() {
     endFetch();
 }
 
-void WifiBackend::publishWifiFailure(const char* what) {
-    std::fprintf(stderr, "qypr: %s\n", what);
+void WifiBackend::publishWifiFailure(const std::string& what) {
+    std::fprintf(stderr, "qypr: %s\n", what.c_str());
+    networkRetry_.cancel();
     device_.clear();
     activeAp_.clear();
     apSsid_.clear();
@@ -352,8 +390,12 @@ int WifiBackend::onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_er
     if (sd_bus_message_read(m, "sss", &name, &oldOwner, &newOwner) < 0 || (name == nullptr)) {
         return 0;
     }
-    if (newOwner == nullptr || *newOwner == '\0') { return 0; }  // gone: keep last state
-    self->refreshAsync();                                        // (re)appeared: re-enumerate
+    if (newOwner == nullptr || *newOwner == '\0') {
+        self->publishWifiFailure("NetworkManager stopped; waiting for recovery");
+        self->retry_.schedule();
+        return 0;
+    }
+    self->refreshAsync();  // (re)appeared: re-enumerate
     return 0;
 }
 
@@ -392,8 +434,7 @@ int WifiBackend::onNetStep(sd_bus_message* reply, void* userdata, sd_bus_error* 
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
         // A failed step must not wedge the spinner: publish whatever the chain
         // gathered so far and drop the scanning flag.
-        self->finishNetFetch();
-        self->endNetFetch();
+        self->finishNetFetch(/*retry=*/true);
         return 0;
     }
     switch (self->netPhase_) {
@@ -413,9 +454,10 @@ int WifiBackend::onNetStep(sd_bus_message* reply, void* userdata, sd_bus_error* 
     return 0;
 }
 
-void WifiBackend::refreshNetworksAsync() {
+void WifiBackend::refreshNetworksAsync() {  // NOLINT(misc-no-recursion) D-Bus callbacks deferred
     if (!bus_.available()) { return; }
     if (device_.empty()) { return; }
+    networkRetry_.cancel();
     if (netInFlight_) {
         pendingNetRefresh_ = true;
         return;
@@ -425,14 +467,23 @@ void WifiBackend::refreshNetworksAsync() {
     netActiveAp_.clear();
     netIndex_ = 0;
     netPhase_ = NetPhase::Device;
-    client_.getAll(device_, NetworkManagerClient::kWirelessIface, &WifiBackend::onNetStep, this);
+    if (!client_.getAll(device_, NetworkManagerClient::kWirelessIface, &WifiBackend::onNetStep,
+                        this)) {
+        finishNetFetch(/*retry=*/true);
+    }
 }
 
-void WifiBackend::endNetFetch() {
+void WifiBackend::endNetFetch(bool retry) {  // NOLINT(misc-no-recursion) D-Bus callbacks deferred
     netInFlight_ = false;
     if (pendingNetRefresh_) {
         pendingNetRefresh_ = false;
         refreshNetworksAsync();
+        return;
+    }
+    if (retry) {
+        networkRetry_.schedule();
+    } else {
+        networkRetry_.reset();
     }
 }
 
@@ -517,14 +568,19 @@ void WifiBackend::netStepAp(sd_bus_message* reply) {
 void WifiBackend::netFetchNext() {
     if (netIndex_ < netAps_.size()) {
         netPhase_ = NetPhase::Ap;
-        client_.getAccessPointProps(netAps_.at(netIndex_), &WifiBackend::onNetStep, this);
+        if (!client_.getAccessPointProps(netAps_.at(netIndex_), &WifiBackend::onNetStep, this)) {
+            finishNetFetch(/*retry=*/true);
+            return;
+        }
         ++netIndex_;
         return;
     }
     // APs done. Saved-network flags come from the settings walk (cached).
     if (savedDirty_) {
         netPhase_ = NetPhase::Connections;
-        client_.listConnections(&WifiBackend::onNetStep, this);
+        if (!client_.listConnections(&WifiBackend::onNetStep, this)) {
+            finishNetFetch(/*retry=*/true);
+        }
         return;
     }
     finishNetFetch();
@@ -553,7 +609,11 @@ void WifiBackend::netStepConnectionSettings(sd_bus_message* reply) {
 void WifiBackend::netFetchNextSaved() {
     if (savedIndex_ < savedConns_.size()) {
         netPhase_ = NetPhase::ConnectionSettings;
-        client_.getConnectionSettings(savedConns_.at(savedIndex_), &WifiBackend::onNetStep, this);
+        if (!client_.getConnectionSettings(savedConns_.at(savedIndex_), &WifiBackend::onNetStep,
+                                           this)) {
+            finishNetFetch(/*retry=*/true);
+            return;
+        }
         ++savedIndex_;
         return;
     }
@@ -563,13 +623,14 @@ void WifiBackend::netFetchNextSaved() {
 
 // Terminal step: merge saved flags, sort, publish. Also runs on chain errors,
 // so it must tolerate partial results.
-void WifiBackend::finishNetFetch() {
+// NOLINTNEXTLINE(misc-no-recursion) Async D-Bus replies resume on the event loop.
+void WifiBackend::finishNetFetch(bool retry) {
     applySavedFlags(netResults_, savedPairs_);
     sortForPicker(netResults_);
     ops_.setSavedCache(savedPairs_);
     scanning_ = false;
     publish();
-    endNetFetch();
+    endNetFetch(retry);
 }
 
 void WifiBackend::requestScan() {

@@ -108,10 +108,10 @@ private:
     // One shared connection per bus (system + session), same as the lock app.
     SystemBus systemBus_{loop_};
     SystemBus sessionBus_{loop_, BusKind::Session};
-    BatteryBackend battery_{systemBus_};
+    BatteryBackend battery_{loop_, systemBus_};
     BrightnessBackend brightness_{loop_, systemBus_};
-    WifiBackend wifi_{systemBus_};
-    BluetoothBackend bluetooth_{systemBus_};
+    WifiBackend wifi_{loop_, systemBus_};
+    BluetoothBackend bluetooth_{loop_, systemBus_};
     VolumeBackend volume_{loop_};
     SNIBackend sni_{sessionBus_};
     // Tray item context menus, on the shared session bus (bar-only).
@@ -127,10 +127,10 @@ private:
     // send); it reuses the shared session bus instead.
     NotificationActions notificationActions_{sessionBus_};
     SystemActions power_{loop_};
-    PowerProfilesBackend powerProfiles_{systemBus_};
+    PowerProfilesBackend powerProfiles_{loop_, systemBus_};
     // City-accurate fix for the solar auto-palette (bar-only; the lock app
     // never constructs this). Absent/denied → theme keeps fixed hours.
-    GeoClueBackend geoClue_{systemBus_};
+    GeoClueBackend geoClue_{loop_, systemBus_};
     IdleInhibitor idleInhibitor_;  // init()'d after display_.connect()
     MprisController mpris_;
     // Application launcher index (bar-only). load()'ed in run(); the lock app

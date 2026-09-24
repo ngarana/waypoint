@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "core/RetryTimer.hpp"
 #include "system/NetworkManagerClient.hpp"
 #include "system/WifiModel.hpp"
 #include "system/WifiOperations.hpp"
@@ -29,10 +30,11 @@ struct sd_bus_slot;
 namespace qypr {
 
 class SystemBus;
+class EventLoop;
 
 class WifiBackend {
 public:
-    explicit WifiBackend(SystemBus& bus);
+    WifiBackend(EventLoop& loop, SystemBus& bus);
     ~WifiBackend();
 
     WifiBackend(const WifiBackend&) = delete;
@@ -97,9 +99,10 @@ private:
     void fetchDeviceAt(size_t index);
     void refreshAsync();
     void publish();
-    void publishWifiFailure(const char* what);
+    void publishWifiFailure(const std::string& what);
     void finishNoWifi();
-    void endFetch();
+    void endFetch(bool retry = false);
+    void failFetch(const std::string& message);
     void subscribeSignals();
 
     // ── Network-list chain (the picker's data source) ──
@@ -110,14 +113,14 @@ private:
     // which is what makes an open picker live-update.
     static int onNetStep(sd_bus_message* reply, void* userdata, sd_bus_error* err);
     void refreshNetworksAsync();
-    void endNetFetch();
+    void endNetFetch(bool retry = false);
     void netStepDevice(sd_bus_message* reply);
     void netStepAp(sd_bus_message* reply);
     void netStepConnections(sd_bus_message* reply);
     void netStepConnectionSettings(sd_bus_message* reply);
     void netFetchNext();
     void netFetchNextSaved();
-    void finishNetFetch();
+    void finishNetFetch(bool retry = false);
 
     // Port adapter: user commands need the facade's current device path, but
     // chain state never enters the client — so the port is a thin forwarder
@@ -152,6 +155,8 @@ private:
     static int onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_error* err);
 
     SystemBus& bus_;
+    RetryTimer retry_;
+    RetryTimer networkRetry_;
     NetworkManagerClient client_;
     FacadePort port_;
     WifiOperations ops_;
@@ -167,6 +172,7 @@ private:
     bool fetchInFlight_ = false;
     bool pendingRefresh_ = false;
     bool subscribed_ = false;
+    bool started_ = false;
     // Fetch-chain state (valid between start() and endFetch()).
     std::vector<std::string> devices_;
     size_t devIndex_ = 0;
