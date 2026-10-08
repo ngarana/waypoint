@@ -25,7 +25,7 @@ jobs:
             libsqlite3-dev libzstd-dev libmagic-dev \
             libpam0g-dev libmpv-dev libpulse-dev libudev-dev \
             libsystemd-dev libsdbus-c++-dev libtomlplusplus-dev \
-            nlohmann-json3-dev
+            nlohmann-json3-dev libcurl4-openssl-dev
       - name: Configure (Ninja — Makefiles race the shared protocol codegen)
         run: |
           cmake -S qypr -B qypr/build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
