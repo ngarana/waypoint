@@ -1,4 +1,5 @@
 #include "waylaunch/wayland_core.h"
+#include "core/EventLoop.hpp"
 #include <algorithm>
 #include <cairo/cairo.h>
 #include <cerrno>
@@ -58,8 +59,10 @@ KeyboardState::~KeyboardState() {
 static void registry_global_cb(void* data, wl_registry* reg, uint32_t name, const char* interface,
                                uint32_t version);
 static void registry_global_remove_cb(void* data, wl_registry* reg, uint32_t name);
-static const wl_registry_listener registry_listener = {.global = registry_global_cb,
-                                                       .global_remove = registry_global_remove_cb};
+static const wl_registry_listener registry_listener = {
+    .global = registry_global_cb,
+    .global_remove = registry_global_remove_cb,
+};
 
 // Keyboard
 static void keyboard_keymap_cb(void* data, wl_keyboard*, uint32_t format, int32_t fd,
@@ -67,7 +70,10 @@ static void keyboard_keymap_cb(void* data, wl_keyboard*, uint32_t format, int32_
     static_cast<WaylandCore*>(data)->handle_keymap(format, fd, size);
 }
 static void keyboard_enter_cb(void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {}
-static void keyboard_leave_cb(void*, wl_keyboard*, uint32_t, wl_surface*) {}
+static void keyboard_leave_cb(void* data, wl_keyboard*, uint32_t, wl_surface*) {
+    // Focus lost: the release event will never reach us, so stop repeating.
+    static_cast<WaylandCore*>(data)->stop_repeat();
+}
 static void keyboard_key_cb(void* data, wl_keyboard*, uint32_t serial, uint32_t time, uint32_t key,
                             uint32_t state) {
     static_cast<WaylandCore*>(data)->handle_key(serial, time, key, state);
@@ -155,8 +161,10 @@ static void seat_capabilities_cb(void* data, wl_seat* seat, uint32_t caps) {
     }
 }
 static void seat_name_cb(void*, wl_seat*, const char*) {}
-static const wl_seat_listener seat_listener = {.capabilities = seat_capabilities_cb,
-                                               .name = seat_name_cb};
+static const wl_seat_listener seat_listener = {
+    .capabilities = seat_capabilities_cb,
+    .name = seat_name_cb,
+};
 
 // Output
 static void output_geometry_cb(void* data, wl_output* out, int32_t x, int32_t y, int32_t w,
@@ -229,6 +237,7 @@ static void registry_global_remove_cb(void*, wl_registry*, uint32_t) {}
 WaylandCore::WaylandCore() = default;
 
 WaylandCore::~WaylandCore() {
+    stop_repeat();
     buffers_.clear();
 #ifdef HAS_SCREENCOPY
     if (screencopy_manager_) zwlr_screencopy_manager_v1_destroy(screencopy_manager_);
@@ -541,7 +550,7 @@ void WaylandCore::handle_keymap(uint32_t format, int32_t fd, uint32_t size) {
     kbd_.state = xkb_state_new(kbd_.keymap);
 }
 
-void WaylandCore::handle_key(uint32_t, uint32_t time, uint32_t key, uint32_t state) {
+void WaylandCore::handle_key(uint32_t, uint32_t, uint32_t key, uint32_t state) {
     if (wl_dbg())
         fprintf(stderr, "[wl] key code=%u state=%u (xkb_state=%p)\n", key, state,
                 reinterpret_cast<void*>(kbd_.state));
@@ -550,15 +559,43 @@ void WaylandCore::handle_key(uint32_t, uint32_t time, uint32_t key, uint32_t sta
     uint32_t utf32 = xkb_state_key_get_utf32(kbd_.state, key + 8);
 
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-        // Store for repeat
-        repeat_keysym_ = keysym;
-        repeat_utf32_ = utf32;
-        repeat_time_ = time;
-        repeat_active_ = true;
         if (key_handler_) key_handler_(keysym, utf32, true);
-    } else {
-        repeat_active_ = false;
+        // After the handler: it may have quit/unmapped the surface.
+        if (kbd_.keymap && xkb_keymap_key_repeats(kbd_.keymap, key + 8)) start_repeat(key);
+    } else if (key == repeat_key_) {
+        // Releasing some other key must not cancel the held one.
+        stop_repeat();
     }
+}
+
+// The keysym/utf32 are re-derived on every tick rather than cached from the
+// press, so a modifier change mid-hold (e.g. Shift) is honoured like it would
+// be for a fresh press.
+void WaylandCore::start_repeat(uint32_t key) {
+    stop_repeat();
+    if (!loop_ || kbd_.repeat_rate <= 0) return; // no loop, or compositor disabled repeat
+    repeat_key_ = key;
+    const int64_t interval_ms = std::max(1, 1000 / kbd_.repeat_rate);
+    auto fire = [this] {
+        if (!kbd_.state || !key_handler_ || repeat_key_ == 0) return;
+        const uint32_t code = repeat_key_ + 8;
+        key_handler_(xkb_state_key_get_one_sym(kbd_.state, code),
+                     xkb_state_key_get_utf32(kbd_.state, code), true);
+    };
+    repeat_timer_ = loop_->addTimer(kbd_.repeat_delay, false, [this, fire, interval_ms] {
+        // The delay timer is one-shot and removes itself after this callback;
+        // swap in the periodic timer only once we are past it.
+        repeat_timer_ = -1;
+        fire();
+        if (repeat_key_ == 0) return; // handler released/stopped the repeat
+        repeat_timer_ = loop_->addTimer(interval_ms, true, fire);
+    });
+}
+
+void WaylandCore::stop_repeat() {
+    if (loop_ && repeat_timer_ >= 0) loop_->removeTimer(repeat_timer_);
+    repeat_timer_ = -1;
+    repeat_key_ = 0;
 }
 
 void WaylandCore::handle_modifiers(uint32_t md, uint32_t ml, uint32_t mk, uint32_t g) const {

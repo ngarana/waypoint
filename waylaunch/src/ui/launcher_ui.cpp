@@ -143,7 +143,7 @@ bool roundtrip_with_timeout(wl_display* dpy, int timeout_ms) {
             wl_display_cancel_read(dpy);
             break;
         }
-        if (pfd.revents & POLLIN) {
+        if ((static_cast<unsigned>(pfd.revents) & static_cast<unsigned>(POLLIN)) != 0U) {
             if (wl_display_read_events(dpy) < 0) break;
         } else {
             wl_display_cancel_read(dpy);
@@ -184,8 +184,8 @@ std::string percent_encode_path(const std::string& path) {
             out += static_cast<char>(c);
         } else {
             out += '%';
-            out += hex[c >> 4];
-            out += hex[c & 0x0F];
+            out += hex[(static_cast<unsigned>(c) >> 4U) & 0xFU];
+            out += hex[static_cast<unsigned>(c) & 0x0FU];
         }
     }
     return out;
@@ -349,6 +349,12 @@ bool try_enable_backdrop_blur() {
 LauncherUI::LauncherUI() = default;
 
 LauncherUI::~LauncherUI() {
+    // loop_ is declared after wayland_, so it dies first: drop the repeat timer
+    // and the borrowed pointer while the loop is still alive.
+    if (wayland_) {
+        wayland_->stop_repeat();
+        wayland_->set_event_loop(nullptr);
+    }
     {
         std::scoped_lock lk(file_mtx_);
         file_stop_ = true;
@@ -395,6 +401,9 @@ bool LauncherUI::init(Config& config) {
 
     wayland_ = std::make_unique<WaylandCore>();
     wayland_->set_want_backdrop(want_blur);
+    // Held-key autorepeat (hold Backspace in the search box). The power and
+    // switcher overlays keep their one-event-per-press behaviour.
+    if (!power_mode_ && !switcher_mode_) wayland_->set_event_loop(&loop_);
 
 #ifdef HAS_FOREIGN_TOPLEVEL
     // Create the toplevel backend and register the manager listener BEFORE
@@ -438,8 +447,8 @@ bool LauncherUI::init(Config& config) {
     wayland_->set_mouse_move_handler([this](double x, double y) { on_mouse_move(x, y); });
     wayland_->set_axis_handler(
         [this](double x, double y, int32_t a, double v) { on_axis(x, y, a, v); });
-    wayland_->set_close_handler([this]() { on_close(); });
-    wayland_->set_redraw_handler([this]() { on_redraw(); });
+    wayland_->set_close_handler([this] { on_close(); });
+    wayland_->set_redraw_handler([this] { on_redraw(); });
 
 #ifdef HAS_FOREIGN_TOPLEVEL
     if (switcher_backend_) {
@@ -455,7 +464,7 @@ bool LauncherUI::init(Config& config) {
             std::make_unique<SwitcherInputController>(switcher_manager_.get(), wayland_->seat());
         switcher_renderer_ = std::make_unique<SwitcherRenderer>();
 
-        switcher_manager_->set_change_callback([this]() {
+        switcher_manager_->set_change_callback([this] {
             needs_redraw_ = true;
             // Resident switcher: the first Alt+Tab starts this process; it then stays
             // alive and warm. On show it maps + grabs the keyboard; on hide (confirm
@@ -490,7 +499,7 @@ bool LauncherUI::init(Config& config) {
         power_manager_->set_countdown_seconds(config.get().power.countdown_seconds);
         power_input_ = std::make_unique<PowerInputController>(power_manager_.get());
         power_renderer_ = std::make_unique<PowerRenderer>();
-        power_manager_->set_change_callback([this]() {
+        power_manager_->set_change_callback([this] {
             needs_redraw_ = true;
             if (!power_manager_->is_visible()) {
                 wayland_->unmap_surface();
@@ -513,8 +522,10 @@ bool LauncherUI::init(Config& config) {
     if (file_roots_.empty()) file_roots_.push_back(home_dir());
     file_excludes_ = sc.file_excludes;
     if (file_excludes_.empty()) {
-        file_excludes_ = {".git",        "node_modules", ".cache",  "target", ".venv",
-                          "__pycache__", ".cargo",       ".rustup", "go/pkg", ".local/share/Trash"};
+        file_excludes_ = {
+            ".git",        "node_modules", ".cache",  "target", ".venv",
+            "__pycache__", ".cargo",       ".rustup", "go/pkg", ".local/share/Trash",
+        };
     }
     file_min_query_ = std::max(1, sc.file_min_query);
     max_file_results_ = std::max(1, sc.max_file_results);
@@ -541,7 +552,7 @@ bool LauncherUI::init(Config& config) {
     }
 
     results_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    file_thread_ = std::thread([this]() { file_worker_loop(); });
+    file_thread_ = std::thread([this] { file_worker_loop(); });
 
     // Exit the poll loop cleanly on SIGINT/SIGTERM (not just on Esc).
     signal_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -644,7 +655,7 @@ void LauncherUI::run() {
         // Complete the prepare_read intent from addPrepare: read when
         // readable, cancel otherwise — an unpaired prepare_read would wedge
         // the *next* prepare in a dispatch_pending spin.
-        if (events & EPOLLIN) {
+        if ((events & static_cast<uint32_t>(EPOLLIN)) != 0U) {
             if (wl_display_read_events(dpy) < 0) {
                 wl_read_pending_ = false;
                 loop_.quit();
@@ -880,7 +891,10 @@ void LauncherUI::rebuild_app_items() {
     // Synchronous ResultProviders: calculator (Top Hit), commands, applications —
     // in registration order, which preserves the previous sectioning and ranking.
     ProviderQuery pq{
-        .text = query_, .lower = to_lower(query_), .max_results = layout_.max_per_group};
+        .text = query_,
+        .lower = to_lower(query_),
+        .max_results = layout_.max_per_group,
+    };
     for (auto& p : providers_) {
         if (p->is_async() || !p->is_available()) continue;
         for (auto& it : p->query(pq)) app_items_.push_back(std::move(it));
@@ -1034,7 +1048,10 @@ void LauncherUI::file_worker_loop() {
         // content has its own CONTENTS section, so split by kind into the two
         // buckets the UI marshals back.
         ProviderQuery pq{
-            .text = q, .lower = to_lower(q), .max_results = std::max(1, max_file_results_)};
+            .text = q,
+            .lower = to_lower(q),
+            .max_results = std::max(1, max_file_results_),
+        };
         std::vector<ListItem> out;
         std::vector<ListItem> content_out;
         for (auto& p : providers_) {
@@ -1137,10 +1154,19 @@ void LauncherUI::open_file_location(int index) {
     // the file — the faithful "reveal in Finder" behaviour).
     if (Subprocess::command_exists("gdbus")) {
         std::string uri = "file://" + percent_encode_path(abs.string());
-        auto r =
-            Subprocess::run({"gdbus", "call", "--session", "--dest", "org.freedesktop.FileManager1",
-                             "--object-path", "/org/freedesktop/FileManager1", "--method",
-                             "org.freedesktop.FileManager1.ShowItems", "['" + uri + "']", ""});
+        auto r = Subprocess::run({
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.FileManager1",
+            "--object-path",
+            "/org/freedesktop/FileManager1",
+            "--method",
+            "org.freedesktop.FileManager1.ShowItems",
+            "['" + uri + "']",
+            "",
+        });
         if (r.exit_code == 0) {
             quit();
             return;
@@ -1249,22 +1275,22 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         return;
     }
 
-    if (utf32 >= 32 && utf32 < 0x110000) {
+    if (utf32 >= 32U && utf32 < 0x110000U) {
         char utf8[5] = {0};
-        if (utf32 < 0x80) {
+        if (utf32 < 0x80U) {
             utf8[0] = static_cast<char>(utf32);
-        } else if (utf32 < 0x800) {
-            utf8[0] = static_cast<char>(0xC0 | (utf32 >> 6));
-            utf8[1] = static_cast<char>(0x80 | (utf32 & 0x3F));
-        } else if (utf32 < 0x10000) {
-            utf8[0] = static_cast<char>(0xE0 | (utf32 >> 12));
-            utf8[1] = static_cast<char>(0x80 | ((utf32 >> 6) & 0x3F));
-            utf8[2] = static_cast<char>(0x80 | (utf32 & 0x3F));
+        } else if (utf32 < 0x800U) {
+            utf8[0] = static_cast<char>(0xC0U | (utf32 >> 6U));
+            utf8[1] = static_cast<char>(0x80U | (utf32 & 0x3FU));
+        } else if (utf32 < 0x10000U) {
+            utf8[0] = static_cast<char>(0xE0U | (utf32 >> 12U));
+            utf8[1] = static_cast<char>(0x80U | ((utf32 >> 6U) & 0x3FU));
+            utf8[2] = static_cast<char>(0x80U | (utf32 & 0x3FU));
         } else {
-            utf8[0] = static_cast<char>(0xF0 | (utf32 >> 18));
-            utf8[1] = static_cast<char>(0x80 | ((utf32 >> 12) & 0x3F));
-            utf8[2] = static_cast<char>(0x80 | ((utf32 >> 6) & 0x3F));
-            utf8[3] = static_cast<char>(0x80 | (utf32 & 0x3F));
+            utf8[0] = static_cast<char>(0xF0U | (utf32 >> 18U));
+            utf8[1] = static_cast<char>(0x80U | ((utf32 >> 12U) & 0x3FU));
+            utf8[2] = static_cast<char>(0x80U | ((utf32 >> 6U) & 0x3FU));
+            utf8[3] = static_cast<char>(0x80U | (utf32 & 0x3FU));
         }
         query_.insert(cursor_pos_, utf8);
         cursor_pos_ += std::strlen(utf8);
@@ -1273,7 +1299,7 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         size_t prev = cursor_pos_;
         while (prev > 0) {
             --prev;
-            if ((query_[prev] & 0xC0) != 0x80) { break; }
+            if ((static_cast<unsigned char>(query_[prev]) & 0xC0U) != 0x80U) { break; }
         }
         query_.erase(prev, cursor_pos_ - prev);
         cursor_pos_ = prev;
@@ -1282,18 +1308,20 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         size_t next = cursor_pos_;
         while (next < query_.size()) {
             ++next;
-            if ((query_[next] & 0xC0) != 0x80) { break; }
+            if ((static_cast<unsigned char>(query_[next]) & 0xC0U) != 0x80U) { break; }
         }
         query_.erase(cursor_pos_, next - cursor_pos_);
         update_search();
     } else if (keysym == XKB_KEY_Left && cursor_pos_ > 0) {
         while (cursor_pos_ > 0) {
             --cursor_pos_;
-            if ((query_[cursor_pos_] & 0xC0) != 0x80) { break; }
+            if ((static_cast<unsigned char>(query_[cursor_pos_]) & 0xC0U) != 0x80U) { break; }
         }
         needs_redraw_ = true;
     } else if (keysym == XKB_KEY_Right && cursor_pos_ < query_.size()) {
-        while (cursor_pos_ < query_.size() && (query_[cursor_pos_] & 0xC0) == 0x80) cursor_pos_++;
+        while (cursor_pos_ < query_.size() &&
+               (static_cast<unsigned char>(query_[cursor_pos_]) & 0xC0U) == 0x80U)
+            cursor_pos_++;
         needs_redraw_ = true;
     }
 }

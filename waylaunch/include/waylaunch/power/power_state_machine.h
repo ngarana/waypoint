@@ -6,7 +6,7 @@ enum class PowerState {
     Hidden,
     Active,      // grid shown, selection navigable
     ConfirmOpen, // modal confirmation dialog owns the keys
-    Dismissing
+    Dismissing,
 };
 
 enum class PowerEvent {
@@ -14,7 +14,7 @@ enum class PowerEvent {
     OpenConfirm, // destructive action selected → dialog
     Execute,     // action confirmed (or non-destructive activated)
     Cancel,      // Esc: dialog → grid, grid → dismiss
-    Dismissed    // teardown complete
+    Dismissed,   // teardown complete
 };
 
 class PowerStateMachine {

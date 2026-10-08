@@ -325,6 +325,38 @@ if(BUILD_TESTING)
     set_tests_properties(content_indexer_test PROPERTIES TIMEOUT 60)
     set_tests_properties(content_freshness_test PROPERTIES TIMEOUT 60)
 
+    # Held-key autorepeat in WaylandCore: real xkb keymap + EventLoop, no compositor.
+    add_executable(key_repeat_test tests/key_repeat_test.cpp
+        src/core/wayland_core.cpp
+        ${LIBWL_COMMON}/core/EventLoop.cpp
+        ${LIBWL_COMMON}/wayland/ShmBuffer.cpp
+        ${PROTOCOL_SOURCES})
+    target_include_directories(key_repeat_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON}
+        ${PROTOCOL_BUILD_DIR}
+        ${WAYLAND_INCLUDE_DIRS}
+        ${WAYLAND_CURSOR_INCLUDE_DIRS}
+        ${XKBCOMMON_INCLUDE_DIRS}
+        ${CAIRO_INCLUDE_DIRS})
+    target_link_libraries(key_repeat_test PRIVATE
+        ${WAYLAND_LIBRARIES}
+        ${WAYLAND_CURSOR_LIBRARIES}
+        ${XKBCOMMON_LIBRARIES}
+        ${CAIRO_LIBRARIES}
+        rt)
+    # Must match the waylaunch target: these macros change WaylandCore's layout.
+    target_compile_definitions(key_repeat_test PRIVATE HAS_LAYER_SHELL)
+    if(HAS_SCREENCOPY)
+        target_compile_definitions(key_repeat_test PRIVATE HAS_SCREENCOPY)
+    endif()
+    if(HAS_FOREIGN_TOPLEVEL)
+        target_compile_definitions(key_repeat_test PRIVATE HAS_FOREIGN_TOPLEVEL)
+    endif()
+    target_compile_options(key_repeat_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
+    add_test(NAME key_repeat_test COMMAND key_repeat_test)
+    set_tests_properties(key_repeat_test PROPERTIES TIMEOUT 30)
+
     # Power overlay unit tests — header-only includable (no Wayland, no cairo):
     # they instantiate PowerManager with a stub backend, mirroring the switcher
     # tests. waylaunch_content supplies Subprocess + toml++ include dirs.

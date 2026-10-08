@@ -139,8 +139,9 @@ struct AppSwitcherConfig {
 // [power] — the power-actions overlay (waylaunch --power). Additive: omitting
 // the section yields full defaults; enabled_actions = [] disables the overlay.
 struct PowerConfig {
-    std::vector<std::string> enabled_actions = {"lock",      "restart", "exit",
-                                                "hibernate", "suspend", "shutdown"};
+    std::vector<std::string> enabled_actions = {
+        "lock", "restart", "exit", "hibernate", "suspend", "shutdown",
+    };
     bool confirm_destructive = true;
     int countdown_seconds = 60;                      // dialog auto-confirms at 0; 0 = off
     double font_scale = 1.0;                         // power overlay only

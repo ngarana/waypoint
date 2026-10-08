@@ -9,6 +9,10 @@
 #include <vector>
 #include <xkbcommon/xkbcommon.h>
 
+namespace qypr {
+class EventLoop;
+}
+
 struct wl_display;
 struct wl_registry;
 struct wl_compositor;
@@ -57,8 +61,8 @@ struct KeyboardState {
     xkb_context* xkb_ctx = nullptr;
     xkb_keymap* keymap = nullptr;
     xkb_state* state = nullptr;
-    int repeat_rate = 0;
-    int repeat_delay = 0;
+    int repeat_rate = 25;   // keys/s; replaced by wl_keyboard.repeat_info (0 = off)
+    int repeat_delay = 600; // ms before repeat starts
     KeyboardState();
     ~KeyboardState();
 };
@@ -129,6 +133,11 @@ class WaylandCore {
     bool init();
     void run();
     void set_running(bool v); // begin/stop the external dispatch loop
+    // Wayland sends one key event per physical press; autorepeat is the
+    // client's job. With a loop set, a held repeating key re-fires the key
+    // handler at the compositor's repeat_info rate. Without one, no repeat.
+    void set_event_loop(qypr::EventLoop* loop) { loop_ = loop; }
+    void stop_repeat(); // also called on keyboard focus loss
     void quit();
 
     // Layer placement for the surface. Call before init() for the initial
@@ -290,8 +299,10 @@ class WaylandCore {
     // Key repeat state
     uint32_t repeat_keysym_ = 0;
     uint32_t repeat_utf32_ = 0;
-    uint32_t repeat_time_ = 0;
-    bool repeat_active_ = false;
+    void start_repeat(uint32_t key);
+    uint32_t repeat_key_ = 0; // evdev code of the key being repeated
+    int repeat_timer_ = -1;
+    qypr::EventLoop* loop_ = nullptr;
 };
 
 } // namespace waylaunch
