@@ -14,6 +14,7 @@
 #include "waylaunch/providers/content_provider.h"
 #include "waylaunch/providers/file_provider.h"
 #include "waylaunch/providers/result_provider.h"
+#include "waylaunch/query_text.h"
 #include "waylaunch/renderer.h"
 #include "waylaunch/search_util.h"
 #include "waylaunch/subprocess.h"
@@ -50,65 +51,6 @@ namespace {
 bool ui_dbg() {
     static bool v = std::getenv("WAYLAUNCH_DEBUG") != nullptr;
     return v;
-}
-
-// A control codepoint: C0 (incl. 0 for no-symbol keys), DEL, or C1. None of
-// these belong in the single-line search query. xkb folds editing keys onto
-// these (e.g. Delete -> U+007F), so this is the one gate both the typed path
-// and the paste path use to keep the query text-only.
-bool is_control_cp(uint32_t cp) {
-    return cp < 0x20U || cp == 0x7FU || (cp >= 0x80U && cp <= 0x9FU);
-}
-
-// Drop control codepoints from UTF-8 text. Pasted clipboard content can carry
-// newlines/tabs/other controls (wl-paste --no-newline only trims the trailing
-// one), which would otherwise land in the query verbatim. Decoding per
-// codepoint (not per byte) is required so C1 controls, which are two UTF-8
-// bytes, are removed without shearing adjacent multibyte characters; malformed
-// bytes are dropped so a bad clipboard cannot corrupt the query.
-std::string strip_control_chars(const std::string& in) {
-    std::string out;
-    out.reserve(in.size());
-    const size_t n = in.size();
-    size_t i = 0;
-    while (i < n) {
-        auto const c = static_cast<unsigned char>(in[i]);
-        uint32_t cp = 0;
-        size_t len = 0;
-        if (c < 0x80U) {
-            cp = c;
-            len = 1;
-        } else if ((c & 0xE0U) == 0xC0U) {
-            cp = c & 0x1FU;
-            len = 2;
-        } else if ((c & 0xF0U) == 0xE0U) {
-            cp = c & 0x0FU;
-            len = 3;
-        } else if ((c & 0xF8U) == 0xF0U) {
-            cp = c & 0x07U;
-            len = 4;
-        } else {
-            ++i; // stray continuation or invalid lead byte: drop and resync
-            continue;
-        }
-        if (i + len > n) { break; } // truncated sequence at end of input
-        bool valid = true;
-        for (size_t k = 1; k < len; ++k) {
-            auto const cont = static_cast<unsigned char>(in[i + k]);
-            if ((cont & 0xC0U) != 0x80U) {
-                valid = false;
-                break;
-            }
-            cp = (cp << 6U) | (cont & 0x3FU);
-        }
-        if (!valid) {
-            ++i; // bad continuation: drop the lead byte and resync
-            continue;
-        }
-        if (!is_control_cp(cp)) { out.append(in, i, len); }
-        i += len;
-    }
-    return out;
 }
 
 // Signal → event-loop wakeup. A SIGINT/SIGTERM handler writes to this eventfd so

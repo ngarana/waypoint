@@ -171,6 +171,7 @@ set(SOURCES
     src/providers/file_provider.cpp
     src/providers/content_provider.cpp
     src/util/search_util.cpp
+    src/util/query_text.cpp
     src/config/config.cpp
     src/config/matugen_theme.cpp
     src/ui/theme_manager.cpp
@@ -512,6 +513,12 @@ if(BUILD_TESTING)
     target_include_directories(config_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
     target_compile_options(config_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME config_test COMMAND config_test)
+
+    # Query-text sanitation (control-char filtering for typed + pasted input).
+    add_executable(query_text_test tests/query_text_test.cpp src/util/query_text.cpp)
+    target_include_directories(query_text_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_compile_options(query_text_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
+    add_test(NAME query_text_test COMMAND query_text_test)
 
     add_executable(matugen_theme_test tests/matugen_theme_test.cpp src/config/matugen_theme.cpp
         ${LIBWL_COMMON}/render/MatugenTokens.cpp)
