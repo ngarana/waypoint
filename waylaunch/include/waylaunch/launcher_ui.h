@@ -107,6 +107,9 @@ class LauncherUI {
     void launch_selected(); // activate selected item by kind
     void open_file_location(int index);
     void autocomplete();
+    // Scroll the list so the selected row is fully visible within the (possibly
+    // screen-clamped) panel; a no-op when everything already fits.
+    void ensure_selected_visible();
 
     // --- Rendering ---
     void relayout(); // recompute header/row slots + panel height
@@ -156,7 +159,7 @@ class LauncherUI {
     std::string query_;
     size_t cursor_pos_ = 0;
     int selected_index_ = 0;
-    int scroll_offset_ = 0;
+    int scroll_offset_ = 0; // pixels the list is scrolled down within the panel viewport
 
     std::vector<ListItem> items_;         // combined list actually rendered
     std::vector<ListItem> app_items_;     // synchronous: calculator + applications
@@ -165,7 +168,8 @@ class LauncherUI {
 
     std::vector<RowSlot> rows_;       // computed row layout (relative to panel top)
     std::vector<HeaderSlot> headers_; // computed section headers
-    int panel_total_h_ = 0;
+    int panel_total_h_ = 0;           // drawn panel height (content, clamped to the screen)
+    int content_h_ = 0;               // full content height before the screen clamp (scroll range)
 
     std::string initial_query_;
 

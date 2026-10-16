@@ -941,6 +941,8 @@ void LauncherUI::relayout() {
 
     if (items_.empty()) {
         panel_total_h_ = query_.empty() ? layout_.search_h : layout_.search_h + layout_.row_h;
+        content_h_ = panel_total_h_;
+        scroll_offset_ = 0;
         return;
     }
 
@@ -983,8 +985,19 @@ void LauncherUI::relayout() {
         y += 6;
     }
 
-    int content = y + layout_.pad_x;
-    panel_total_h_ = std::max(content, layout_.search_h + 240);
+    content_h_ = std::max(y + layout_.pad_x, layout_.search_h + 240);
+
+    // Clamp the drawn panel to what fits on screen below margin_top, so results
+    // can never land off the bottom unreachably; the list scrolls within this
+    // viewport when the full content is taller. Fall back to the full height if
+    // the output geometry isn't known yet (nothing worse than before).
+    panel_total_h_ = content_h_;
+    if (wayland_) {
+        constexpr int kBottomMargin = 24;
+        int avail = wayland_->output_height() - layout_.margin_top - kBottomMargin;
+        if (avail > layout_.search_h + layout_.row_h) panel_total_h_ = std::min(content_h_, avail);
+    }
+    scroll_offset_ = std::clamp(scroll_offset_, 0, content_h_ - panel_total_h_);
 }
 
 void LauncherUI::update_search() {
@@ -1088,7 +1101,29 @@ int LauncherUI::panel_height() const { return panel_total_h_; }
 void LauncherUI::select_item(int index) {
     if (items_.empty()) return;
     selected_index_ = std::max(0, std::min(index, static_cast<int>(items_.size()) - 1));
+    ensure_selected_visible();
     needs_redraw_ = true;
+}
+
+void LauncherUI::ensure_selected_visible() {
+    int ry = -1;
+    for (const auto& r : rows_)
+        if (r.item_index == selected_index_) {
+            ry = r.y;
+            break;
+        }
+    if (ry < 0) return;
+    const int view_top = layout_.search_h + 8;              // first content row (panel-relative)
+    const int view_bottom = panel_total_h_ - layout_.pad_x; // last visible pixel of the list
+    if (ry < scroll_offset_ + view_top) {
+        scroll_offset_ = ry - view_top; // row scrolled above the fold: bring it down
+        // Within a header's height of the top, snap fully up so the row's
+        // section header (and the Top Hit header) isn't left clipped.
+        if (scroll_offset_ <= layout_.header_h) scroll_offset_ = 0;
+    } else if (ry + layout_.row_h > scroll_offset_ + view_bottom) {
+        scroll_offset_ = ry + layout_.row_h - view_bottom; // below the fold: bring it up
+    }
+    scroll_offset_ = std::clamp(scroll_offset_, 0, content_h_ - panel_total_h_);
 }
 
 void LauncherUI::autocomplete() {
@@ -1410,9 +1445,10 @@ int LauncherUI::hit_test(double x, double y) const {
     int py = layout_.margin_top;
 
     if (x < px || x > px + pw || y < py || y > py + panel_total_h_) return -1;
-    if (x > px + layout_.list_w) return -1; // preview column isn't selectable
+    if (x > px + layout_.list_w) return -1;   // preview column isn't selectable
+    if (y < py + layout_.search_h) return -1; // clicks in the search field aren't rows
     for (const auto& r : rows_) {
-        int ry = py + r.y;
+        int ry = py + r.y - scroll_offset_; // rows are scrolled within the viewport
         if (y >= ry && y < ry + layout_.row_h) return r.item_index;
     }
     return -1;
@@ -1618,32 +1654,42 @@ void LauncherUI::render_frame() {
     // "Spotlight" tracking.
     RenderFontConfig hf = t.result_detail_font;
     hf.size = std::max(10.0, t.result_detail_font.size - 1);
+
+    // The list (headers + rows) scrolls within the panel viewport below the
+    // search field; clip to that rect so partially-scrolled rows don't bleed
+    // over the search bar or the panel's rounded corners.
+    cairo_t* cr = renderer_->cr();
+    if (cr) {
+        cairo_save(cr);
+        cairo_rectangle(cr, px, py + layout_.search_h + 1, layout_.list_w,
+                        panel_total_h_ - layout_.search_h - 1);
+        cairo_clip(cr);
+    }
     for (const auto& h : headers_)
         renderer_->draw_markup(
-            row_x, py + h.y, "<span letter_spacing=\"1400\">" + escape_markup(h.label) + "</span>",
-            hf, hdr);
-    int total_rows = static_cast<int>(rows_.size());
-    // Compute visible rows within the panel, for scrollbar.
-    int vis_rows = 0;
-    int list_top = py + (rows_.empty() ? 0 : rows_.front().y);
-    for (const auto& r : rows_) {
-        if (py + r.y + layout_.row_h <= py + panel_total_h_ - 20) vis_rows++;
-    }
-    if (vis_rows < total_rows && total_rows > 0) {
+            row_x, py + h.y - scroll_offset_,
+            "<span letter_spacing=\"1400\">" + escape_markup(h.label) + "</span>", hf, hdr);
+    for (const auto& r : rows_)
+        draw_row(items_[r.item_index], py + r.y - scroll_offset_, r.item_index == selected_index_,
+                 r.hero ? layout_.icon_size + 6 : layout_.icon_size);
+    if (cr) { cairo_restore(cr); }
+
+    // Scrollbar: shown only when the content is taller than the viewport, sized
+    // and positioned by the pixel scroll offset (drawn outside the clip).
+    int scroll_max = content_h_ - panel_total_h_;
+    if (scroll_max > 0) {
+        int list_view_h = panel_total_h_ - layout_.search_h; // visible list height
+        int list_full_h = content_h_ - layout_.search_h;     // total list height
         int sb_x = px + layout_.list_w - 8;
-        int sb_y = list_top;
-        int sb_h = ph - (sb_y - py) - 20;
-        int thumb_h = std::max(24, sb_h * vis_rows / total_rows);
-        int thumb_y =
-            sb_y + ((scroll_offset_ * (sb_h - thumb_h)) / std::max(1, total_rows - vis_rows));
+        int sb_y = py + layout_.search_h + 8;
+        int sb_h = panel_total_h_ - layout_.search_h - 16;
+        int thumb_h = std::max(24, sb_h * list_view_h / list_full_h);
+        int thumb_y = sb_y + ((sb_h - thumb_h) * scroll_offset_ / scroll_max);
         renderer_->fill_rect(sb_x, sb_y, 4, sb_h,
                              Color::from_rgba(t.border.r, t.border.g, t.border.b, 0.15));
         renderer_->rounded_rect(sb_x, thumb_y, 4, thumb_h, 2,
                                 Color::from_rgba(t.accent.r, t.accent.g, t.accent.b, 0.6));
     }
-    for (const auto& r : rows_)
-        draw_row(items_[r.item_index], py + r.y, r.item_index == selected_index_,
-                 r.hero ? layout_.icon_size + 6 : layout_.icon_size);
 
     // --- Preview pane (right column) ---
     render_preview(px, py, pw, ph, t);
