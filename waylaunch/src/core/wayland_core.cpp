@@ -616,14 +616,17 @@ OutputInfo* WaylandCore::output_for(wl_output* out) {
     return nullptr;
 }
 
-void WaylandCore::handle_output_geometry(wl_output* out, int32_t, int32_t, int32_t w, int32_t h,
-                                         int32_t, int32_t) {
-    if (OutputInfo* info = output_for(out); info != nullptr) {
-        info->width = w;
-        info->height = h;
-    }
+void WaylandCore::handle_output_geometry(wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t,
+                                         int32_t) {
+    // wl_output.geometry carries the PHYSICAL panel size in millimetres, not the
+    // resolution in pixels. Writing it into width/height corrupted them (a 1200px
+    // monitor reported height 190), so the pixel size is taken only from the mode
+    // event below. Some compositors (Hyprland) emit geometry AFTER mode, so a
+    // stray assignment here would clobber the correct value.
 }
-void WaylandCore::handle_output_mode(wl_output* out, uint32_t, int32_t w, int32_t h, int32_t) {
+void WaylandCore::handle_output_mode(wl_output* out, uint32_t flags, int32_t w, int32_t h,
+                                     int32_t) {
+    if ((flags & WL_OUTPUT_MODE_CURRENT) == 0U) return; // ignore non-active modes
     if (OutputInfo* info = output_for(out); info != nullptr) {
         info->width = w;
         info->height = h;

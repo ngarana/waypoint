@@ -520,6 +520,40 @@ if(BUILD_TESTING)
     target_compile_options(query_text_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME query_text_test COMMAND query_text_test)
 
+    # wl_output size handling: geometry (millimetres) must never clobber the
+    # mode's pixel resolution that the launcher clamps/scrolls its list against.
+    add_executable(wayland_output_test
+        tests/wayland_output_test.cpp
+        src/core/wayland_core.cpp
+        ${LIBWL_COMMON}/core/EventLoop.cpp
+        ${LIBWL_COMMON}/wayland/ShmBuffer.cpp
+        ${PROTOCOL_SOURCES})
+    target_include_directories(wayland_output_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON}
+        ${PROTOCOL_BUILD_DIR}
+        ${WAYLAND_INCLUDE_DIRS}
+        ${WAYLAND_CURSOR_INCLUDE_DIRS}
+        ${XKBCOMMON_INCLUDE_DIRS}
+        ${CAIRO_INCLUDE_DIRS})
+    target_link_libraries(wayland_output_test PRIVATE
+        ${WAYLAND_LIBRARIES}
+        ${WAYLAND_CURSOR_LIBRARIES}
+        ${XKBCOMMON_LIBRARIES}
+        ${CAIRO_LIBRARIES}
+        rt)
+    # Must match the waylaunch target: these macros change WaylandCore's layout
+    # and select the screencopy-enabled code path (not the fallback stubs).
+    target_compile_definitions(wayland_output_test PRIVATE HAS_LAYER_SHELL)
+    if(HAS_SCREENCOPY)
+        target_compile_definitions(wayland_output_test PRIVATE HAS_SCREENCOPY)
+    endif()
+    if(HAS_FOREIGN_TOPLEVEL)
+        target_compile_definitions(wayland_output_test PRIVATE HAS_FOREIGN_TOPLEVEL)
+    endif()
+    target_compile_options(wayland_output_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
+    add_test(NAME wayland_output_test COMMAND wayland_output_test)
+
     add_executable(matugen_theme_test tests/matugen_theme_test.cpp src/config/matugen_theme.cpp
         ${LIBWL_COMMON}/render/MatugenTokens.cpp)
     target_link_libraries(matugen_theme_test PRIVATE tomlplusplus::tomlplusplus)
