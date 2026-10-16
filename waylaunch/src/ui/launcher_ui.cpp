@@ -52,6 +52,65 @@ bool ui_dbg() {
     return v;
 }
 
+// A control codepoint: C0 (incl. 0 for no-symbol keys), DEL, or C1. None of
+// these belong in the single-line search query. xkb folds editing keys onto
+// these (e.g. Delete -> U+007F), so this is the one gate both the typed path
+// and the paste path use to keep the query text-only.
+bool is_control_cp(uint32_t cp) {
+    return cp < 0x20U || cp == 0x7FU || (cp >= 0x80U && cp <= 0x9FU);
+}
+
+// Drop control codepoints from UTF-8 text. Pasted clipboard content can carry
+// newlines/tabs/other controls (wl-paste --no-newline only trims the trailing
+// one), which would otherwise land in the query verbatim. Decoding per
+// codepoint (not per byte) is required so C1 controls, which are two UTF-8
+// bytes, are removed without shearing adjacent multibyte characters; malformed
+// bytes are dropped so a bad clipboard cannot corrupt the query.
+std::string strip_control_chars(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    const size_t n = in.size();
+    size_t i = 0;
+    while (i < n) {
+        auto const c = static_cast<unsigned char>(in[i]);
+        uint32_t cp = 0;
+        size_t len = 0;
+        if (c < 0x80U) {
+            cp = c;
+            len = 1;
+        } else if ((c & 0xE0U) == 0xC0U) {
+            cp = c & 0x1FU;
+            len = 2;
+        } else if ((c & 0xF0U) == 0xE0U) {
+            cp = c & 0x0FU;
+            len = 3;
+        } else if ((c & 0xF8U) == 0xF0U) {
+            cp = c & 0x07U;
+            len = 4;
+        } else {
+            ++i; // stray continuation or invalid lead byte: drop and resync
+            continue;
+        }
+        if (i + len > n) { break; } // truncated sequence at end of input
+        bool valid = true;
+        for (size_t k = 1; k < len; ++k) {
+            auto const cont = static_cast<unsigned char>(in[i + k]);
+            if ((cont & 0xC0U) != 0x80U) {
+                valid = false;
+                break;
+            }
+            cp = (cp << 6U) | (cont & 0x3FU);
+        }
+        if (!valid) {
+            ++i; // bad continuation: drop the lead byte and resync
+            continue;
+        }
+        if (!is_control_cp(cp)) { out.append(in, i, len); }
+        i += len;
+    }
+    return out;
+}
+
 // Signal → event-loop wakeup. A SIGINT/SIGTERM handler writes to this eventfd so
 // run()'s poll loop can exit cleanly. Static because a handler carries no state;
 // there is only ever one LauncherUI.
@@ -1091,7 +1150,7 @@ void LauncherUI::select_item(int index) {
 }
 
 void LauncherUI::autocomplete() {
-    if (items_.empty()) return;
+    if (items_.empty() || std::cmp_greater_equal(selected_index_, items_.size())) return;
     const auto& it = items_[selected_index_];
     if (it.kind != ItemKind::Application) return; // only app names make sense to complete
     query_ = it.name;
@@ -1228,7 +1287,7 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
             return;
         }
         if (keysym == XKB_KEY_v) {
-            std::string pasted = Clipboard::paste_text();
+            std::string pasted = strip_control_chars(Clipboard::paste_text());
             if (!pasted.empty()) {
                 query_.insert(cursor_pos_, pasted);
                 cursor_pos_ += pasted.size();
@@ -1238,7 +1297,11 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         }
     }
 
-    if (keysym == XKB_KEY_Return) {
+    // Numpad variants mirror their main-cluster keys: KP_Enter launches,
+    // KP_Delete forward-deletes (below), and the KP nav keys (produced when Num
+    // Lock is off) navigate. With Num Lock on the numpad yields KP_0..KP_9,
+    // which resolve to digits and fall through to the text-input branch.
+    if (keysym == XKB_KEY_Return || keysym == XKB_KEY_KP_Enter) {
         launch_selected();
         return;
     }
@@ -1246,11 +1309,11 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         quit();
         return;
     }
-    if (keysym == XKB_KEY_Up) {
+    if (keysym == XKB_KEY_Up || keysym == XKB_KEY_KP_Up) {
         select_item(selected_index_ - 1);
         return;
     }
-    if (keysym == XKB_KEY_Down) {
+    if (keysym == XKB_KEY_Down || keysym == XKB_KEY_KP_Down) {
         select_item(selected_index_ + 1);
         return;
     }
@@ -1258,24 +1321,29 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         autocomplete();
         return;
     }
-    if (keysym == XKB_KEY_Page_Up) {
+    if (keysym == XKB_KEY_Page_Up || keysym == XKB_KEY_KP_Page_Up) {
         select_item(selected_index_ - layout_.max_per_group);
         return;
     }
-    if (keysym == XKB_KEY_Page_Down) {
+    if (keysym == XKB_KEY_Page_Down || keysym == XKB_KEY_KP_Page_Down) {
         select_item(selected_index_ + layout_.max_per_group);
         return;
     }
-    if (keysym == XKB_KEY_Home) {
+    if (keysym == XKB_KEY_Home || keysym == XKB_KEY_KP_Home) {
         select_item(0);
         return;
     }
-    if (keysym == XKB_KEY_End) {
+    if (keysym == XKB_KEY_End || keysym == XKB_KEY_KP_End) {
         select_item(static_cast<int>(items_.size()) - 1);
         return;
     }
 
-    if (utf32 >= 32U && utf32 < 0x110000U) {
+    // Only real printable text is typed into the query. xkb folds editing keys
+    // onto control codepoints (Delete -> U+007F DEL, and the C1 range), which
+    // pass a bare `>= 32` test; without this guard Delete would insert a DEL
+    // byte instead of forward-deleting in its branch below (BackSpace, Return,
+    // etc. map below 32, so only Delete slipped through).
+    if (utf32 < 0x110000U && !is_control_cp(utf32)) {
         char utf8[5] = {0};
         if (utf32 < 0x80U) {
             utf8[0] = static_cast<char>(utf32);
@@ -1304,7 +1372,8 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         query_.erase(prev, cursor_pos_ - prev);
         cursor_pos_ = prev;
         update_search();
-    } else if (keysym == XKB_KEY_Delete && cursor_pos_ < query_.size()) {
+    } else if ((keysym == XKB_KEY_Delete || keysym == XKB_KEY_KP_Delete) &&
+               cursor_pos_ < query_.size()) {
         size_t next = cursor_pos_;
         while (next < query_.size()) {
             ++next;
@@ -1312,13 +1381,14 @@ void LauncherUI::on_key(uint32_t keysym, uint32_t utf32, bool pressed) {
         }
         query_.erase(cursor_pos_, next - cursor_pos_);
         update_search();
-    } else if (keysym == XKB_KEY_Left && cursor_pos_ > 0) {
+    } else if ((keysym == XKB_KEY_Left || keysym == XKB_KEY_KP_Left) && cursor_pos_ > 0) {
         while (cursor_pos_ > 0) {
             --cursor_pos_;
             if ((static_cast<unsigned char>(query_[cursor_pos_]) & 0xC0U) != 0x80U) { break; }
         }
         needs_redraw_ = true;
-    } else if (keysym == XKB_KEY_Right && cursor_pos_ < query_.size()) {
+    } else if ((keysym == XKB_KEY_Right || keysym == XKB_KEY_KP_Right) &&
+               cursor_pos_ < query_.size()) {
         while (cursor_pos_ < query_.size() &&
                (static_cast<unsigned char>(query_[cursor_pos_]) & 0xC0U) == 0x80U)
             cursor_pos_++;
