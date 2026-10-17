@@ -8,9 +8,9 @@
 namespace qypr {
 
 LockScreen::LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam,
-                       SystemActions& power)
+                       SystemActions& power, FingerprintAuthenticator* fp)
     : host_(host),
-      controller_(loop, host, pam),
+      controller_(loop, host, pam, fp),
       power_(host, power, layout_),
       renderer_(controller_, layout_, power_),
       input_(controller_, power_, renderer_.notifications(), host) {

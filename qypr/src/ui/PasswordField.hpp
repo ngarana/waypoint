@@ -17,6 +17,9 @@ public:
 
     int charCount = 0;
     bool focused = true;
+    // When the background fingerprint auth is waiting, the pill hints at it
+    // (icon + placeholder) instead of looking password-only.
+    bool fingerprintActive = false;
 
     void draw(Painter& p, int64_t now) override;
 };

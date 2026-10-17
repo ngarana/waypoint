@@ -25,12 +25,13 @@ namespace qypr {
 
 class EventLoop;
 class AudioController;
+class FingerprintAuthenticator;
 class VideoPlayer;
 
 class Shell : public InputSink, public theme::ThemeAware {
 public:
     Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
-          const SystemBackends& backends);
+          const SystemBackends& backends, FingerprintAuthenticator* fp = nullptr);
 
     // Inject optional subsystems (same API LockScreen had).
     void setAudioController(AudioController* audio);

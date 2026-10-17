@@ -30,9 +30,10 @@ App::App()
     : display_(loop_),
       lock_(display_),
       pam_(loop_),
+      fingerprint_(loop_),
       audio_(mpris_),
       video_(loop_, *this),
-      shell_(loop_, *this, pam_, power_, backends_) {
+      shell_(loop_, *this, pam_, power_, backends_, &fingerprint_) {
     // Lock-process hardening (QL-3): no core dump of the heap that holds the
     // password, and no same-uid ptrace attach to read it out. /proc/<pid>/* turns
     // root-owned, which blocks other processes but not this one (a process may
@@ -83,6 +84,12 @@ int App::run() {
     }
 
     lockRuntime_.startBackends(backends_, notifications_);
+
+    // Fingerprint unlock races password auth (swaylock#445 pattern): start the
+    // background pam_fprintd attempt now. If no reader is enrolled the worker
+    // reports Unavailable immediately and the lock stays password-only. The
+    // module check skips the thread entirely on systems without fprintd.
+    if (FingerprintAuthenticator::moduleInstalled()) { shell_.lockScreen().startFingerprint(); }
 
     // Lock runtime consumes only the bar's private cached coordinates. Network
     // lookups stay in qypr-bar; if the cache updates while locked, the existing

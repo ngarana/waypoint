@@ -38,8 +38,16 @@
 //   - mock_pam_force_rc() lets a test simulate a PAM subsystem error.
 // -----------------------------------------------------------------------------
 namespace {
+// pam_start -> pam_authenticate runs sequentially on the *same* worker thread,
+// but password and fingerprint workers run concurrently. The conversation and
+// service must therefore be thread-local — otherwise one worker's pam_start
+// would clobber the other's in-flight pam_authenticate (production libpam
+// keeps per-handle state; the mock's globals would not).
 struct pam_conv g_pam_conv{};
 std::array<char, 256> g_pam_user{};
+std::array<char, 256> g_pam_service{};
+thread_local struct pam_conv t_pam_conv{};
+thread_local std::array<char, 256> t_pam_service{};
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization) // strcpy is noexcept
 std::array<char, 256> g_pam_expected_password = [] {
     std::array<char, 256> buf{};
@@ -47,6 +55,11 @@ std::array<char, 256> g_pam_expected_password = [] {
     return buf;
 }();
 int g_pam_forced_rc = -1;  // when >= 0, pam_authenticate returns this verbatim
+// Fingerprint-service override (qypr-fingerprint): when >= 0 it wins over
+// g_pam_forced_rc for that service only, so tests can fail the password stack
+// while the finger stack succeeds (and vice versa).
+int g_fp_forced_rc = -1;
+int g_fp_fail_remaining = 0;
 }  // namespace
 
 extern "C" {
@@ -54,8 +67,11 @@ extern "C" {
 // Test controls (declared in the test translation unit).
 WAYLAND_EXPORT void mock_pam_reset() {
     g_pam_user[0] = '\0';
+    g_pam_service[0] = '\0';
     std::strcpy(g_pam_expected_password.data(), "correct");
     g_pam_forced_rc = -1;
+    g_fp_forced_rc = -1;
+    g_fp_fail_remaining = 0;
 }
 WAYLAND_EXPORT void mock_pam_set_expected_password(const char* p) {
     std::strncpy(g_pam_expected_password.data(), p ? p : "", g_pam_expected_password.size() - 1);
@@ -67,6 +83,15 @@ WAYLAND_EXPORT void mock_pam_force_rc(int rc) {
 WAYLAND_EXPORT const char* mock_pam_last_user() {
     return g_pam_user.data();
 }
+WAYLAND_EXPORT const char* mock_pam_last_service() {
+    return g_pam_service.data();
+}
+WAYLAND_EXPORT void mock_fp_force_rc(int rc) {
+    g_fp_forced_rc = rc;
+}
+WAYLAND_EXPORT void mock_fp_fail_n_times(int n) {
+    g_fp_fail_remaining = n;
+}
 
 WAYLAND_EXPORT int pam_start(const char* service_name, const char* user,
                              const struct pam_conv* pam_conversation, pam_handle_t** pamh) {
@@ -76,14 +101,59 @@ WAYLAND_EXPORT int pam_start(const char* service_name, const char* user,
     } else {
         g_pam_user[0] = '\0';
     }
+    // service_name is PAM_NONNULL per pam_appl.h (params 1,3,4), so it is used
+    // unconditionally — matching the pre-existing `user` handling below, which
+    // stays conditional because param 2 is nullable.
+    std::strncpy(g_pam_service.data(), service_name, g_pam_service.size() - 1);
+    g_pam_service[g_pam_service.size() - 1] = '\0';
+    std::strncpy(t_pam_service.data(), service_name, t_pam_service.size() - 1);
+    t_pam_service[t_pam_service.size() - 1] = '\0';
     g_pam_conv = *pam_conversation;
+    t_pam_conv = *pam_conversation;
     *pamh = (pam_handle_t*)0x1111;
     return PAM_SUCCESS;
 }
 
 WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
-    if (g_pam_forced_rc >= 0) return g_pam_forced_rc;
-    if (!g_pam_conv.conv) return PAM_AUTH_ERR;
+    const bool isFingerprint = std::strcmp(t_pam_service.data(), "qypr-fingerprint") == 0;
+    if (isFingerprint && g_fp_forced_rc >= 0) return g_fp_forced_rc;
+    if (!isFingerprint && g_pam_forced_rc >= 0) return g_pam_forced_rc;
+    const struct pam_conv conv = t_pam_conv;
+    if (!conv.conv) return PAM_AUTH_ERR;
+
+    if (isFingerprint) {
+        // Dedicated-service conversation (swaylock#445 style): the worker
+        // answers echo prompts with an empty reply; the stack emits a
+        // pam_fprintd-style info banner first (SDDM info forwarding path).
+        // mock_fp_fail_n_times() burns failures that still drive the
+        // conversation (so info IS posted) before succeeding — the retry path.
+        auto driveFpConversation = [conv]() -> bool {
+            struct pam_message info{PAM_TEXT_INFO, "Place your finger on the reader"};
+            struct pam_message prompt{PAM_PROMPT_ECHO_OFF, "Fingerprint: "};
+            const struct pam_message* msgs[2] = {&info, &prompt};
+            struct pam_response* resp = nullptr;
+            int rc = conv.conv(2, msgs, &resp, conv.appdata_ptr);
+            // NOLINTBEGIN(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
+            if (rc != PAM_SUCCESS) {
+                if (resp) free(resp);
+                return false;
+            }
+            bool ok = resp && (resp[1].resp == nullptr || resp[1].resp[0] == '\0');
+            if (resp) {
+                free(resp[0].resp);
+                free(resp[1].resp);
+                free(resp);
+            }
+            // NOLINTEND(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
+            return ok;
+        };
+        if (g_fp_fail_remaining > 0) {
+            --g_fp_fail_remaining;
+            driveFpConversation();
+            return PAM_AUTH_ERR;
+        }
+        return driveFpConversation() ? PAM_SUCCESS : PAM_AUTH_ERR;
+    }
 
     // Drive the real conversation callback the way libpam would: a realistic
     // stack emits an informational banner (which the callback must ignore)
@@ -93,7 +163,7 @@ WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
     struct pam_message prompt{PAM_PROMPT_ECHO_OFF, "Password: "};
     const struct pam_message* msgs[2] = {&info, &prompt};
     struct pam_response* resp = nullptr;
-    int rc = g_pam_conv.conv(2, msgs, &resp, g_pam_conv.appdata_ptr);
+    int rc = conv.conv(2, msgs, &resp, conv.appdata_ptr);
     // Mock owns the PAM response memory across the conversation callback.
     // NOLINTBEGIN(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
     if (rc != PAM_SUCCESS) {
@@ -113,6 +183,11 @@ WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
 }
 
 WAYLAND_EXPORT int pam_acct_mgmt(pam_handle_t* pamh, int flags) {
+    // Mirrors production: the shipped qypr-fingerprint service defines no
+    // `account` stack, so acct_mgmt there falls through to pam_warn+deny.
+    // The fingerprint worker must not depend on it (verify-only); the
+    // password stack on `login` keeps the real account stack.
+    if (std::strcmp(t_pam_service.data(), "qypr-fingerprint") == 0) return PAM_PERM_DENIED;
     return PAM_SUCCESS;
 }
 
@@ -140,7 +215,7 @@ using mpv_format = enum {
     MPV_FORMAT_NODE = 6,
     MPV_FORMAT_NODE_ARRAY = 7,
     MPV_FORMAT_NODE_MAP = 8,
-    MPV_FORMAT_BYTE_ARRAY = 9
+    MPV_FORMAT_BYTE_ARRAY = 9,
 };
 
 using mpv_event_id = enum {
@@ -162,7 +237,7 @@ using mpv_event_id = enum {
     MPV_EVENT_PLAYBACK_RESTART = 21,
     MPV_EVENT_PROPERTY_CHANGE = 22,
     MPV_EVENT_QUEUE_OVERFLOW = 24,
-    MPV_EVENT_HOOK = 25
+    MPV_EVENT_HOOK = 25,
 };
 
 struct mpv_event {
@@ -244,10 +319,10 @@ struct wl_buffer;
 
 namespace {
 // Listener slots recorded by wl_proxy_add_listener for the Seat test.
-void (**g_registry_listener)(void) = nullptr;
+void (**g_registry_listener)() = nullptr;
 void* g_registry_data = nullptr;
 
-void (**g_seat_listener)(void) = nullptr;
+void (**g_seat_listener)() = nullptr;
 void* g_seat_data = nullptr;
 }  // namespace
 
@@ -271,9 +346,8 @@ WAYLAND_EXPORT int wl_display_flush(struct wl_display* display) {
 
 WAYLAND_EXPORT int wl_display_get_fd(struct wl_display* display) {
     static int pipe_fds[2] = {-1, -1};
-    if (pipe_fds[0] < 0) {
-        if (pipe(pipe_fds) < 0) return 0;
-    }
+    if ((pipe_fds[0] < 0) && (pipe(pipe_fds) < 0)) return 0;
+
     return pipe_fds[0];
 }
 
@@ -305,7 +379,7 @@ WAYLAND_EXPORT int wl_display_roundtrip(struct wl_display* display) {
     return 0;
 }
 
-WAYLAND_EXPORT int wl_proxy_add_listener(struct wl_proxy* proxy, void (**implementation)(void),
+WAYLAND_EXPORT int wl_proxy_add_listener(struct wl_proxy* proxy, void (**implementation)(),
                                          void* data) {
     // Save registry listener and seat listener sequentially
     if (!g_registry_listener) {
@@ -490,9 +564,8 @@ WAYLAND_EXPORT void sd_bus_error_free(struct sd_bus_error* e) {}
 
 WAYLAND_EXPORT int sd_bus_get_fd(struct sd_bus* bus) {
     static int pipe_fds[2] = {-1, -1};
-    if (pipe_fds[0] < 0) {
-        if (pipe(pipe_fds) < 0) return 0;
-    }
+    if ((pipe_fds[0] < 0) && (pipe(pipe_fds) < 0)) return 0;
+
     return pipe_fds[0];
 }
 

@@ -279,6 +279,7 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/wayland/WaylandDisplay.cpp
     src/video/VideoPlayer.cpp
     src/auth/PamAuthenticator.cpp
+    src/auth/FingerprintAuthenticator.cpp
 )
 
 # qypr-bar is exactly the shared set: lock-only sources were never in it,
@@ -466,3 +467,8 @@ install(FILES man/man1/qypr-lock.1 man/man1/qypr-bar.1 man/man1/qypr-record.1
 
 # Example configuration (copy to $XDG_CONFIG_HOME/qypr/bar.conf to use).
 install(FILES examples/bar.conf DESTINATION share/qypr/examples)
+
+# Fingerprint PAM service (copy to /etc/pam.d/qypr-fingerprint to enable).
+# Installed under share (not /etc) deliberately: writing to /etc from `cmake
+# --install` would fight the distro package manager, which owns /etc/pam.d.
+install(FILES pam/qypr-fingerprint DESTINATION share/qypr/pam)

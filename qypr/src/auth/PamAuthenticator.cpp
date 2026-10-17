@@ -17,6 +17,11 @@ namespace {
 // process is the strdup()ed reply libpam takes ownership of and wipes itself.
 struct ConvData {
     const SecureBuffer* password = nullptr;
+    // Optional SDDM-style info sink. The conversation runs on the PAM worker
+    // thread, so messages are posted to the loop; the callback itself always
+    // runs on the loop thread (possibly while pam_authenticate still blocks).
+    EventLoop* loop = nullptr;
+    PamAuthenticator::Info* info = nullptr;
 };
 
 int conversation(int numMsg, const pam_message** msg, pam_response** resp, void* appdata) {
@@ -36,8 +41,28 @@ int conversation(int numMsg, const pam_message** msg, pam_response** resp, void*
                 replies[i].resp = strdup(data->password != nullptr ? data->password->cStr() : "");
                 break;
             case PAM_PROMPT_ECHO_ON:
+                replies[i].resp = strdup("");
+                // Echo-on prompts (e.g. username) are unexpected on the lock
+                // screen; answer empty rather than failing the whole stack.
+                break;
             case PAM_ERROR_MSG:
-            case PAM_TEXT_INFO:
+            case PAM_TEXT_INFO: {
+                // SDDM PamBackend::converse() forwards these to the greeter via
+                // info()/error() signals. Mirror that: capture the text and
+                // post it to the loop so the status line can show e.g.
+                // pam_fprintd's "Place your finger on the reader" while the
+                // worker thread stays blocked inside pam_authenticate().
+                if (data->loop != nullptr && data->info != nullptr && *data->info) {
+                    std::string text = msg[i]->msg != nullptr ? msg[i]->msg : "";
+                    const bool isError = msg[i]->msg_style == PAM_ERROR_MSG;
+                    auto cb = *data->info;
+                    data->loop->post([cb = std::move(cb), text = std::move(text), isError] {
+                        cb(text, isError);
+                    });
+                }
+                replies[i].resp = nullptr;
+                break;
+            }
             default:
                 replies[i].resp = nullptr;
                 break;
@@ -77,7 +102,7 @@ bool PamAuthenticator::authenticate(SecureBuffer&& password, Done done) {
     // thread exits (success, failure, or a PAM error).
     worker_ = std::thread(
         [this, service, user, pw = std::move(password), done = std::move(done)]() mutable {
-            ConvData data{&pw};
+            ConvData data{&pw, &loop_, &info_};
             pam_conv const conv{.conv = conversation, .appdata_ptr = &data};
             pam_handle_t* pamh = nullptr;
 

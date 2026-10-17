@@ -27,11 +27,17 @@ class PamAuthenticator {
 public:
     enum class Result { Success, Failure, Error };
     using Done = std::function<void(Result, std::string message)>;
+    // SDDM-inspired info channel: PAM_TEXT_INFO / PAM_ERROR_MSG forwarded to
+    // the UI while pam_authenticate() blocks (e.g. pam_fprintd's
+    // "Place your finger..."). Runs on the loop thread; may fire before Done.
+    using Info = std::function<void(std::string message, bool isError)>;
 
     PamAuthenticator(EventLoop& loop, std::string service = "login");
     ~PamAuthenticator();
 
     bool busy() const { return busy_.load(); }
+
+    void setInfoHandler(Info cb) { info_ = std::move(cb); }
 
     // Begin authentication. `done` runs on the loop thread exactly once.
     // Returns false if a previous attempt is still running or password empty.
@@ -42,6 +48,7 @@ public:
 private:
     EventLoop& loop_;
     std::string service_;
+    Info info_;
     std::atomic<bool> busy_{false};
     std::thread worker_;
 };

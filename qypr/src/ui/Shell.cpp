@@ -15,10 +15,10 @@
 namespace qypr {
 
 Shell::Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
-             const SystemBackends& backends)
+             const SystemBackends& backends, FingerprintAuthenticator* fp)
     : loop_(loop),
       host_(host),
-      lockScreen_(loop, host, pam, power),
+      lockScreen_(loop, host, pam, power, fp),
       statusBar_(loop, host, backends),
       dnd_(backends.dnd) {
     if (dnd_) {

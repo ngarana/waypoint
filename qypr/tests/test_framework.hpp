@@ -110,6 +110,7 @@ extern int g_tests_failed;
 #include "core/Types.hpp"
 #include "core/EventLoop.hpp"
 #include "core/ConfigWatcher.hpp"
+#include "auth/FingerprintAuthenticator.hpp"
 #include "auth/PamAuthenticator.hpp"
 #include "power/SystemActions.hpp"
 #include "mpris/MprisController.hpp"
@@ -202,6 +203,9 @@ void mock_pam_reset();
 void mock_pam_set_expected_password(const char* p);
 void mock_pam_force_rc(int rc);
 const char* mock_pam_last_user();
+const char* mock_pam_last_service();
+void mock_fp_force_rc(int rc);
+void mock_fp_fail_n_times(int n);
 
 void mock_xkb_reset();
 void mock_xkb_set_sym(uint32_t s);

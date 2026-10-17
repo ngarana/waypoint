@@ -9,6 +9,7 @@
 #include <string_view>
 #include <utility>
 
+#include "auth/FingerprintAuthenticator.hpp"
 #include "auth/PamAuthenticator.hpp"
 #include "core/SecureBuffer.hpp"
 #include "ui/Theme.hpp"
@@ -18,12 +19,16 @@ namespace qypr {
 class EventLoop;
 class RenderHost;
 
+enum class FingerprintState { Disabled, Waiting, Prompting };
+
 struct LockSnapshot {
     bool revealed = false;
     bool unlocking = false;
     bool hasError = false;
     std::string statusMessage;
     double reveal = 0.0;
+    FingerprintState fingerprint = FingerprintState::Disabled;
+    std::string fingerprintMessage;
 };
 
 // Owns the lock policy and authentication state. It deliberately exposes no
@@ -31,7 +36,11 @@ struct LockSnapshot {
 // RenderHost::requestUnlock(). The secret remains a SecureBuffer throughout.
 class LockController : public theme::ThemeAware {
 public:
-    LockController(EventLoop& loop, RenderHost& host, PamAuthenticator& pam);
+    // `fp` may be nullptr (bar previews / tests that only exercise password
+    // auth). When non-null, fingerprint verification races password auth and
+    // the first success wins — see FingerprintAuthenticator.
+    LockController(EventLoop& loop, RenderHost& host, PamAuthenticator& pam,
+                   FingerprintAuthenticator* fp = nullptr);
     ~LockController() override;
 
     LockController(const LockController&) = delete;
@@ -63,6 +72,17 @@ public:
     // object. The controller invokes this hook from its timer and Escape path.
     void setOnCollapse(std::function<void()> callback) { onCollapse_ = std::move(callback); }
 
+    // Fingerprint (parallel to password auth; no-op when disabled).
+    // Production starts it once the lock is up; tests toggle it explicitly.
+    void startFingerprint();
+    void stopFingerprint();
+    void setFingerprintEnabled(bool on);
+    FingerprintState fingerprintState() const { return fingerprint_; }
+    bool fingerprintActive() const {
+        return fingerprint_ == FingerprintState::Waiting ||
+               fingerprint_ == FingerprintState::Prompting;
+    }
+
 #ifdef TESTING
     // Test-only seam. Production code can only observe the password length.
     SecureBuffer& password() { return password_; }
@@ -71,10 +91,15 @@ public:
 private:
     void restartHideTimer();
     void onAuthResult(PamAuthenticator::Result result, const std::string& message);
+    void onFingerprintResult(FingerprintAuthenticator::Result result, const std::string& message);
+    void onFingerprintInfo(const std::string& message, bool isError);
+    void onPamInfo(std::string message, bool isError);
 
     EventLoop& loop_;
     RenderHost& host_;
     PamAuthenticator& pam_;
+    FingerprintAuthenticator* fp_ = nullptr;
+    bool fingerprintEnabled_ = true;
     int hideTimer_ = -1;
     int tickTimer_ = -1;
     std::function<void()> onTick_;
@@ -85,6 +110,9 @@ private:
     SecureBuffer password_;
     std::string statusMessage_;
     bool hasError_ = false;
+    FingerprintState fingerprint_ = FingerprintState::Disabled;
+    std::string fingerprintMessage_;
+    bool fingerprintError_ = false;
     Animated revealAnim_{0};
 };
 

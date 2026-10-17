@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "auth/FingerprintAuthenticator.hpp"
 #include "auth/PamAuthenticator.hpp"
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
@@ -58,6 +59,7 @@ private:
     WaylandDisplay display_;
     LockSession lock_;
     PamAuthenticator pam_;
+    FingerprintAuthenticator fingerprint_{loop_};
     SystemActions power_{loop_};
     MprisController mpris_;
     AudioController audio_;

@@ -50,6 +50,8 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
 
     passwordField_.bounds = geometry.password;
     passwordField_.charCount = static_cast<int>(controller_.passwordLength());
+    passwordField_.fingerprintActive = state.fingerprint == FingerprintState::Waiting ||
+                                       state.fingerprint == FingerprintState::Prompting;
 
     auto withAlpha = [&](double alpha, auto&& drawFn) {
         if (alpha <= 0.01) { return; }

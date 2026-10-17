@@ -261,3 +261,148 @@ TEST(LockInteractionAllowList) {
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 }
+
+// Fingerprint unlock (docs/FINGERPRINT.md): the background worker on the
+// dedicated qypr-fingerprint service unlocks without any password typed.
+// Mirrors LockScreenUnlockGating's spy-host shape; the Done + Info callbacks
+// arrive via loop.post, so the test pumps dispatchPosted() while waiting.
+TEST(FingerprintSuccessUnlocksWithoutPassword) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+
+    screen.startFingerprint();
+    for (int i = 0; i < 1000 && fp.running(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+
+    EXPECT_FALSE(fp.running());
+    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_TRUE(screen.unlocking());
+    EXPECT_EQ(std::string(mock_pam_last_service()), std::string("qypr-fingerprint"));
+}
+
+// A hard misconfiguration (missing service file, no device) reports
+// Unavailable: no unlock, fingerprint UI disabled, password auth unaffected.
+TEST(FingerprintUnavailableStaysPasswordOnly) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+    mock_fp_force_rc(PAM_SERVICE_ERR);
+
+    screen.startFingerprint();
+    for (int i = 0; i < 1000 && fp.running(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+    mock_fp_force_rc(-1);
+
+    EXPECT_EQ(host.unlocks, 0);
+    EXPECT_FALSE(screen.unlocking());
+
+    // Password auth still unlocks exactly once afterwards.
+    screen.password().clear();
+    screen.password().append("open-sesame");
+    screen.submitPassword();
+    while (pam.busy()) {}
+    loop.dispatchPosted();
+    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_TRUE(screen.unlocking());
+}
+
+// Transient mismatches retry: each failed attempt still drives the SDDM-style
+// info conversation ("Place your finger..."), which the controller surfaces as
+// the Prompting state, before a later attempt succeeds and unlocks.
+TEST(FingerprintRetryShowsPromptThenUnlocks) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    mock_fp_fail_n_times(2);
+
+    screen.startFingerprint();
+    bool sawPrompt = false;
+    for (int i = 0; i < 2000 && host.unlocks == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+        if (screen.controller_.fingerprint_ == qypr::FingerprintState::Prompting) {
+            sawPrompt = true;
+        }
+    }
+    loop.dispatchPosted();
+
+    EXPECT_TRUE(sawPrompt);
+    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_TRUE(screen.unlocking());
+}
+
+// The race policy: a correct password unlocks exactly once while the finger
+// worker is still retrying, and the loser's late success never double-unlocks.
+TEST(PasswordSuccessStopsFingerprintRace) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+    mock_fp_fail_n_times(50);  // finger keeps missing while the password lands
+
+    screen.startFingerprint();
+    screen.password().clear();
+    screen.password().append("open-sesame");
+    screen.submitPassword();
+    while (pam.busy()) {}
+    for (int i = 0; i < 200 && host.unlocks == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+
+    EXPECT_EQ(host.unlocks, 1);
+
+    // Let the finger worker finish in the background; unlocks must stay at 1.
+    mock_fp_fail_n_times(0);
+    for (int i = 0; i < 200; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    EXPECT_EQ(host.unlocks, 1);
+}

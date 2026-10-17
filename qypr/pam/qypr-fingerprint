@@ -1,0 +1,22 @@
+# PAM service for qypr-lock fingerprint unlock.
+#
+# Installed as /etc/pam.d/qypr-fingerprint. The lock screen drives this stack
+# on a background thread with an empty conversation reply, in parallel to the
+# normal password check on the "login" service (the swaylock#445 pattern: a
+# single stack cannot race pam_unix against pam_fprintd because the modules
+# run sequentially and whichever comes first blocks).
+#
+# Setup:
+#   1. Enroll a finger:  fprintd-enroll "$USER"  (verify with fprintd-verify)
+#   2. Install this file to /etc/pam.d/qypr-fingerprint
+#   3. Lock with qypr-lock; touching the reader unlocks, password still works.
+#
+# If this file is missing, or no finger is enrolled, the fingerprint worker
+# reports PAM_SERVICE_ERR / PAM_AUTHINFO_UNAVAIL and the lock quietly stays
+# password-only.
+#
+# Note: no `account`/`session`/`password` stacks here on purpose. The lock
+# screen only *verifies identity* to return to an existing session (it never
+# calls pam_acct_mgmt on this service), so an account stack would be dead
+# weight at best.
+auth    sufficient  pam_fprintd.so max-tries=3 timeout=30

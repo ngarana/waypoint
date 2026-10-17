@@ -21,13 +21,15 @@ namespace qypr {
 
 class AudioController;
 class EventLoop;
+class FingerprintAuthenticator;
 class PamAuthenticator;
 class RenderHost;
 class SystemActions;
 
 class LockScreen : public theme::ThemeAware {
 public:
-    LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power);
+    LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemActions& power,
+               FingerprintAuthenticator* fp = nullptr);
 
     // Optional audio panel, injected once MPRIS is available.
     void setAudioController(AudioController* audio);
@@ -51,6 +53,11 @@ public:
     double getReveal(int64_t now) const { return controller_.reveal(now); }
     bool modalActive() const { return power_.modalActive(); }
     void wake() { controller_.wake(); }
+
+    // Background fingerprint verification races password auth (no-op when the
+    // controller was built without an authenticator).
+    void startFingerprint() { controller_.startFingerprint(); }
+    void stopFingerprint() { controller_.stopFingerprint(); }
 
 #ifdef TESTING
     // Test seams retain the old lock-screen test vocabulary while the state
