@@ -206,6 +206,8 @@ const char* mock_pam_last_user();
 const char* mock_pam_last_service();
 void mock_fp_force_rc(int rc);
 void mock_fp_fail_n_times(int n);
+void mock_fp_silent_fail_n_times(int n);
+int mock_fp_attempts();
 
 void mock_xkb_reset();
 void mock_xkb_set_sym(uint32_t s);

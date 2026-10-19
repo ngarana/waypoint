@@ -406,3 +406,175 @@ TEST(PasswordSuccessStopsFingerprintRace) {
     }
     EXPECT_EQ(host.unlocks, 1);
 }
+
+// The password must be checked on a stack without pam_fprintd, or a typed
+// password waits behind a fingerprint scan. The dedicated qypr-lock service is
+// preferred when installed; otherwise "login" — never a missing service, which
+// PAM would resolve to the deny-all "other" stack.
+TEST(PasswordServicePrefersDedicatedStack) {
+    std::string dirTemplate = "/tmp/qypr-pam-d-XXXXXX";
+    char* const dir = ::mkdtemp(dirTemplate.data());
+    EXPECT_TRUE(dir != nullptr);
+    if (dir == nullptr) { return; }
+    const std::filesystem::path pamDir(dir);
+
+    EXPECT_EQ(std::string(qypr::PamAuthenticator::passwordService(pamDir.string())),
+              std::string("login"));
+
+    // A directory of that name is not a PAM service file.
+    std::filesystem::create_directory(pamDir / "qypr-lock");
+    EXPECT_EQ(std::string(qypr::PamAuthenticator::passwordService(pamDir.string())),
+              std::string("login"));
+    std::filesystem::remove(pamDir / "qypr-lock");
+
+    std::ofstream(pamDir / "qypr-lock") << "auth include system-auth\n";
+    EXPECT_EQ(std::string(qypr::PamAuthenticator::passwordService(pamDir.string())),
+              std::string("qypr-lock"));
+
+    // The chosen service is the one pam_start() sees.
+    qypr::EventLoop loop;
+    qypr::PamAuthenticator pam(
+        loop, std::string(qypr::PamAuthenticator::passwordService(pamDir.string())));
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+    qypr::SecureBuffer pw;
+    pw.append("open-sesame");
+    auto result = qypr::PamAuthenticator::Result::Error;
+    EXPECT_TRUE(pam.authenticate(
+        std::move(pw), [&](qypr::PamAuthenticator::Result r, const std::string&) { result = r; }));
+    while (pam.busy()) {}
+    loop.dispatchPosted();
+    EXPECT_EQ(std::string(mock_pam_last_service()), std::string("qypr-lock"));
+    EXPECT_TRUE(result == qypr::PamAuthenticator::Result::Success);
+
+    std::filesystem::remove_all(pamDir);
+}
+
+// Attempts that never reach the reader (no device, no enrolled finger, reader
+// claimed elsewhere, or the shipped `sufficient` stack's flat PERM_DENIED) are
+// silent. They must not spin forever: back off, then report Unavailable after
+// kMaxSilentFailures in a row — fingerprint UI off, password still unlocks.
+TEST(FingerprintSilentFailuresGiveUp) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    fp.retryBackoff_ = std::chrono::milliseconds(1);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+    mock_fp_force_rc(PAM_PERM_DENIED);
+
+    screen.startFingerprint();
+    EXPECT_TRUE(screen.controller_.fingerprintActive());
+    for (int i = 0; i < 1000 && fp.running(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+    mock_fp_force_rc(-1);
+
+    EXPECT_FALSE(fp.running());
+    EXPECT_EQ(mock_fp_attempts(), qypr::FingerprintAuthenticator::kMaxSilentFailures);
+    EXPECT_FALSE(screen.controller_.fingerprintActive());
+    EXPECT_EQ(host.unlocks, 0);
+
+    screen.password().clear();
+    screen.password().append("open-sesame");
+    screen.submitPassword();
+    while (pam.busy()) {}
+    loop.dispatchPosted();
+    EXPECT_EQ(host.unlocks, 1);
+}
+
+// Attempts that did reach the reader (it said "Place your finger...") are
+// ordinary misses or timeouts — pam_fprintd reports a timeout as
+// PAM_AUTHINFO_UNAVAIL, the same code as a missing reader. However many pile
+// up while the user is away, the worker keeps waiting and a later touch
+// unlocks.
+TEST(FingerprintTimeoutsNeverGiveUp) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    fp.retryBackoff_ = std::chrono::milliseconds(1);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    const int timeouts = qypr::FingerprintAuthenticator::kMaxSilentFailures * 3;
+    mock_fp_fail_n_times(timeouts);
+
+    screen.startFingerprint();
+    for (int i = 0; i < 2000 && host.unlocks == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+
+    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_EQ(mock_fp_attempts(), timeouts + 1);
+}
+
+// A reader briefly held by another client (sudo's pam_fprintd, say) fails
+// silently until it is released; as long as that ends inside the give-up
+// window, the worker picks the reader up and a touch unlocks.
+TEST(FingerprintSurvivesBrieflyBusyReader) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::FingerprintAuthenticator fp(loop);
+    fp.retryBackoff_ = std::chrono::milliseconds(1);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power, &fp);
+
+    mock_pam_reset();
+    const int busy = qypr::FingerprintAuthenticator::kMaxSilentFailures - 1;
+    mock_fp_silent_fail_n_times(busy);
+
+    screen.startFingerprint();
+    for (int i = 0; i < 2000 && host.unlocks == 0 && fp.running(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop.dispatchPosted();
+    }
+    loop.dispatchPosted();
+
+    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_EQ(mock_fp_attempts(), busy + 1);
+}
+
+// Without its PAM file the worker would run against the deny-all "other"
+// stack (instant failure plus a pam_warn journal line per attempt), so App
+// only starts it when the service file is installed.
+TEST(FingerprintServiceInstalledChecksPamDir) {
+    std::string dirTemplate = "/tmp/qypr-pam-d-XXXXXX";
+    char* const dir = ::mkdtemp(dirTemplate.data());
+    EXPECT_TRUE(dir != nullptr);
+    if (dir == nullptr) { return; }
+    const std::filesystem::path pamDir(dir);
+
+    qypr::EventLoop loop;
+    qypr::FingerprintAuthenticator fp(loop);
+    EXPECT_FALSE(fp.serviceInstalled(pamDir.string()));
+    std::ofstream(pamDir / "qypr-fingerprint") << "auth sufficient pam_fprintd.so\n";
+    EXPECT_TRUE(fp.serviceInstalled(pamDir.string()));
+
+    qypr::FingerprintAuthenticator custom(loop, "other-finger");
+    EXPECT_FALSE(custom.serviceInstalled(pamDir.string()));
+
+    std::filesystem::remove_all(pamDir);
+}

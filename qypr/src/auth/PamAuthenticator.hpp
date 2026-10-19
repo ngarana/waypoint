@@ -2,7 +2,8 @@
 //
 // pam_authenticate() blocks, so it runs on a worker thread; the result is
 // posted back onto the event loop so all UI/state changes stay single-threaded.
-// Mirrors LockController.qml's PAM flow (service "login").
+// Mirrors LockController.qml's PAM flow, on the dedicated "qypr-lock" service
+// when installed and "login" otherwise (see passwordService()).
 //
 // The secret is a SecureBuffer, and the worker takes ownership of it by rvalue
 // reference — there is deliberately no std::string overload. A std::string
@@ -15,6 +16,7 @@
 #include <atomic>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "core/SecureBuffer.hpp"
@@ -36,6 +38,21 @@ public:
     ~PamAuthenticator();
 
     bool busy() const { return busy_.load(); }
+    const std::string& service() const { return service_; }
+
+    // The service the lock screen should check passwords against: "qypr-lock"
+    // (shipped in pam/qypr-lock) when `pamDir` has it, else "login".
+    //
+    // Fingerprint setups commonly put pam_fprintd at the top of the login
+    // stack (Arch: system-local-login). Modules run in order, so a typed
+    // password on "login" waits behind a fingerprint scan, and that scan
+    // fights FingerprintAuthenticator for the reader — the password never
+    // unlocks on its own. The dedicated stack keeps pam_fprintd out.
+    //
+    // Only fall back to "login", never to a missing service: PAM resolves an
+    // unknown service to the deny-all "other" stack, which would make the
+    // password unable to unlock at all.
+    static std::string_view passwordService(const std::string& pamDir = "/etc/pam.d");
 
     void setInfoHandler(Info cb) { info_ = std::move(cb); }
 

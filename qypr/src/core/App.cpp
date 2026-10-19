@@ -29,7 +29,7 @@ void renderToPng(qypr::Shell& shell, const std::string& path, int w, int h) {
 App::App()
     : display_(loop_),
       lock_(display_),
-      pam_(loop_),
+      pam_(loop_, std::string(PamAuthenticator::passwordService())),
       fingerprint_(loop_),
       audio_(mpris_),
       video_(loop_, *this),
@@ -86,10 +86,20 @@ int App::run() {
     lockRuntime_.startBackends(backends_, notifications_);
 
     // Fingerprint unlock races password auth (swaylock#445 pattern): start the
-    // background pam_fprintd attempt now. If no reader is enrolled the worker
-    // reports Unavailable immediately and the lock stays password-only. The
-    // module check skips the thread entirely on systems without fprintd.
-    if (FingerprintAuthenticator::moduleInstalled()) { shell_.lockScreen().startFingerprint(); }
+    // background pam_fprintd attempt now. If no finger is enrolled or there is
+    // no reader, the worker gives up after a few silent attempts and the lock
+    // stays password-only. The static checks skip the thread entirely on
+    // systems without fprintd or without /etc/pam.d/qypr-fingerprint.
+    if (FingerprintAuthenticator::moduleInstalled() && fingerprint_.serviceInstalled()) {
+        // The race only works if the password stack has no pam_fprintd of its
+        // own; "login" usually does once fingerprint login is set up, and then
+        // a typed password waits for a finger instead (docs/FINGERPRINT.md).
+        if (pam_.service() == "login") {
+            std::fprintf(stderr, "qypr-lock: password auth on PAM service 'login'; if it includes "
+                                 "pam_fprintd, install pam/qypr-lock to /etc/pam.d/qypr-lock\n");
+        }
+        shell_.lockScreen().startFingerprint();
+    }
 
     // Lock runtime consumes only the bar's private cached coordinates. Network
     // lookups stay in qypr-bar; if the cache updates while locked, the existing

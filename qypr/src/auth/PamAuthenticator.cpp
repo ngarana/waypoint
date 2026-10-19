@@ -6,6 +6,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <system_error>
 
 #include "core/EventLoop.hpp"
 
@@ -78,6 +80,14 @@ std::string currentUser() {
     return "";
 }
 }  // namespace
+
+std::string_view PamAuthenticator::passwordService(const std::string& pamDir) {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(std::filesystem::path(pamDir) / "qypr-lock", ec)) {
+        return "qypr-lock";
+    }
+    return "login";
+}
 
 PamAuthenticator::PamAuthenticator(EventLoop& loop, std::string service)
     : loop_(loop),

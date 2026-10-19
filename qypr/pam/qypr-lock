@@ -1,0 +1,22 @@
+#%PAM-1.0
+# PAM service for qypr-lock password unlock.
+#
+# Installed as /etc/pam.d/qypr-lock. When present, the lock screen checks the
+# typed password against this stack instead of "login" (see
+# PamAuthenticator::passwordService()).
+#
+# Why not "login": fingerprint setups commonly put `auth sufficient
+# pam_fprintd.so` at the top of the login stack (on Arch, in
+# /etc/pam.d/system-local-login). PAM runs modules in order, so a typed
+# password would wait behind a fingerprint scan ("Place your finger on the
+# reader") for up to the fprintd timeout, and that scan would fight the
+# parallel qypr-fingerprint worker for the reader. Keeping pam_fprintd out of
+# this stack is what lets either the password or a finger unlock on its own.
+#
+# Keep it that way: do NOT add pam_fprintd.so here (or to the stacks this
+# includes). Fingerprint lives in /etc/pam.d/qypr-fingerprint.
+auth      include   system-auth
+# Parity with "login": re-unlock the GNOME keyring with the typed password if
+# it was locked. The leading '-' skips it silently where it is not installed.
+-auth     optional  pam_gnome_keyring.so
+account   include   system-auth

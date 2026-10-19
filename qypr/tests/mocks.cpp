@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -60,6 +61,8 @@ int g_pam_forced_rc = -1;  // when >= 0, pam_authenticate returns this verbatim
 // while the finger stack succeeds (and vice versa).
 int g_fp_forced_rc = -1;
 int g_fp_fail_remaining = 0;
+int g_fp_silent_fail_remaining = 0;
+std::atomic<int> g_fp_attempts{0};  // bumped on the worker, read by the test
 }  // namespace
 
 extern "C" {
@@ -72,6 +75,8 @@ WAYLAND_EXPORT void mock_pam_reset() {
     g_pam_forced_rc = -1;
     g_fp_forced_rc = -1;
     g_fp_fail_remaining = 0;
+    g_fp_silent_fail_remaining = 0;
+    g_fp_attempts.store(0);
 }
 WAYLAND_EXPORT void mock_pam_set_expected_password(const char* p) {
     std::strncpy(g_pam_expected_password.data(), p ? p : "", g_pam_expected_password.size() - 1);
@@ -91,6 +96,12 @@ WAYLAND_EXPORT void mock_fp_force_rc(int rc) {
 }
 WAYLAND_EXPORT void mock_fp_fail_n_times(int n) {
     g_fp_fail_remaining = n;
+}
+WAYLAND_EXPORT void mock_fp_silent_fail_n_times(int n) {
+    g_fp_silent_fail_remaining = n;
+}
+WAYLAND_EXPORT int mock_fp_attempts() {
+    return g_fp_attempts.load();
 }
 
 WAYLAND_EXPORT int pam_start(const char* service_name, const char* user,
@@ -116,6 +127,7 @@ WAYLAND_EXPORT int pam_start(const char* service_name, const char* user,
 
 WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
     const bool isFingerprint = std::strcmp(t_pam_service.data(), "qypr-fingerprint") == 0;
+    if (isFingerprint) { g_fp_attempts.fetch_add(1); }
     if (isFingerprint && g_fp_forced_rc >= 0) return g_fp_forced_rc;
     if (!isFingerprint && g_pam_forced_rc >= 0) return g_pam_forced_rc;
     const struct pam_conv conv = t_pam_conv;
@@ -125,8 +137,14 @@ WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
         // Dedicated-service conversation (swaylock#445 style): the worker
         // answers echo prompts with an empty reply; the stack emits a
         // pam_fprintd-style info banner first (SDDM info forwarding path).
-        // mock_fp_fail_n_times() burns failures that still drive the
+        // mock_fp_silent_fail_n_times() burns failures that never reach the
+        // reader (no device / no enrolled finger / reader claimed elsewhere):
+        // no conversation at all, and PAM_PERM_DENIED — what the shipped
+        // single-`sufficient` stack returns for any module failure.
+        // mock_fp_fail_n_times() then burns failures that still drive the
         // conversation (so info IS posted) before succeeding — the retry path.
+        // They return PAM_AUTHINFO_UNAVAIL, pam_fprintd's code for a plain
+        // verification timeout: the worker must not mistake it for a hard error.
         auto driveFpConversation = [conv]() -> bool {
             struct pam_message info{PAM_TEXT_INFO, "Place your finger on the reader"};
             struct pam_message prompt{PAM_PROMPT_ECHO_OFF, "Fingerprint: "};
@@ -147,10 +165,14 @@ WAYLAND_EXPORT int pam_authenticate(pam_handle_t* pamh, int flags) {
             // NOLINTEND(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc,hicpp-no-malloc)
             return ok;
         };
+        if (g_fp_silent_fail_remaining > 0) {
+            --g_fp_silent_fail_remaining;
+            return PAM_PERM_DENIED;
+        }
         if (g_fp_fail_remaining > 0) {
             --g_fp_fail_remaining;
             driveFpConversation();
-            return PAM_AUTH_ERR;
+            return PAM_AUTHINFO_UNAVAIL;
         }
         return driveFpConversation() ? PAM_SUCCESS : PAM_AUTH_ERR;
     }
@@ -186,7 +208,7 @@ WAYLAND_EXPORT int pam_acct_mgmt(pam_handle_t* pamh, int flags) {
     // Mirrors production: the shipped qypr-fingerprint service defines no
     // `account` stack, so acct_mgmt there falls through to pam_warn+deny.
     // The fingerprint worker must not depend on it (verify-only); the
-    // password stack on `login` keeps the real account stack.
+    // password stack (`qypr-lock` / `login`) keeps the real account stack.
     if (std::strcmp(t_pam_service.data(), "qypr-fingerprint") == 0) return PAM_PERM_DENIED;
     return PAM_SUCCESS;
 }

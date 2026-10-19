@@ -17,20 +17,25 @@
 // This class is the qypr-lock equivalent of swaylock's fingerprint child: a
 // worker thread drives pam_authenticate() on a dedicated service
 // ("qypr-fingerprint", shipped in pam/qypr-fingerprint) answering every echo
-// prompt with an empty reply. Password auth (PamAuthenticator on the "login"
-// service) keeps running untouched on its own thread; the first success wins
-// and LockController stops the loser.
+// prompt with an empty reply. Password auth (PamAuthenticator on the
+// "qypr-lock" service, which must stay free of pam_fprintd) keeps running
+// untouched on its own thread; the first success wins and LockController
+// stops the loser.
 //
-// Lifecycle: start() spawns the worker, which retries transient failures
-// (mismatch / timeout -> PAM_AUTH_ERR) until stop() is called or the stack
-// reports a hard misconfiguration (missing service/module, no device ->
-// Unavailable). stop() is non-blocking: a pam_authenticate() already in flight
-// cannot be cancelled portably, so the worker is left to finish and its late
-// result is dropped via a generation counter. Only the destructor joins.
+// Lifecycle: start() spawns the worker, which retries failed attempts until
+// stop() is called or the reader proves unusable (Unavailable): a hard PAM
+// error (service/module failed to load), or kMaxSilentFailures attempts in a
+// row that never reached the reader (no device, no enrolled finger, reader
+// claimed by another client). Return codes cannot make that call on their
+// own — see workerMain(). stop() is non-blocking: a pam_authenticate() already
+// in flight cannot be cancelled portably, so the worker is left to finish and
+// its late result is dropped via a generation counter. Only the destructor
+// joins.
 
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <string>
 #include <thread>
@@ -66,9 +71,20 @@ public:
     void stop();
 
     // Cheap static gate: is pam_fprintd even installed? The worker still
-    // reports Unavailable at runtime for missing service files / unenrolled
-    // users; this just lets the UI skip starting the thread entirely.
+    // reports Unavailable at runtime for unenrolled users / missing readers;
+    // this just lets the UI skip starting the thread entirely.
     static bool moduleInstalled();
+
+    // Is this instance's PAM service file installed in `pamDir`? Without it
+    // PAM falls back to the deny-all "other" stack, which fails instantly and
+    // logs a pam_warn line per attempt; don't start the worker at all.
+    bool serviceInstalled(const std::string& pamDir = "/etc/pam.d") const;
+
+    // Consecutive silent attempts (the module never reached the reader) before
+    // giving up. With the doubling back-off from 500 ms that spans ~30 s:
+    // enough to outlast another pam_fprintd client (sudo, polkit) that still
+    // holds the reader when the lock starts.
+    static constexpr int kMaxSilentFailures = 7;
 
 private:
     void workerMain(const Done& done, Info info, uint64_t generation);
@@ -78,6 +94,9 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> finished_{true};
     std::atomic<uint64_t> generation_{0};
+    // Pause after a failed attempt; doubled per consecutive silent failure.
+    // A member (not a constant) only so tests can shrink it.
+    std::chrono::milliseconds retryBackoff_{500};
     std::thread worker_;
 };
 

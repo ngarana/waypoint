@@ -4,6 +4,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -26,6 +27,11 @@ std::string currentUser() {
 struct ConvData {
     EventLoop* loop = nullptr;
     FingerprintAuthenticator::Info* info = nullptr;
+    // Set once the stack says anything (PAM_TEXT_INFO / PAM_ERROR_MSG).
+    // pam_fprintd only talks after it has claimed the reader and started
+    // verifying, so this is how the worker tells a real miss or timeout from
+    // an attempt that never reached the reader (see workerMain()).
+    bool engaged = false;
 };
 
 // Dedicated-service conversation (swaylock#445 style): every echo prompt is
@@ -53,6 +59,7 @@ int conversation(int numMsg, const pam_message** msg, pam_response** resp, void*
                 break;
             case PAM_ERROR_MSG:
             case PAM_TEXT_INFO: {
+                data->engaged = true;
                 if (data->loop != nullptr && data->info != nullptr && *data->info) {
                     std::string text = msg[i]->msg != nullptr ? msg[i]->msg : "";
                     const bool isError = msg[i]->msg_style == PAM_ERROR_MSG;
@@ -75,9 +82,11 @@ int conversation(int numMsg, const pam_message** msg, pam_response** resp, void*
 }
 
 // Hard misconfiguration: retrying is pointless, report Unavailable once.
+// PAM_AUTHINFO_UNAVAIL is deliberately absent: pam_fprintd returns it for an
+// ordinary verification timeout as well as for a missing reader, so the code
+// alone would switch fingerprint off after the first idle timeout.
 bool isHardFailure(int rc) {
     switch (rc) {
-        case PAM_AUTHINFO_UNAVAIL:
         case PAM_MODULE_UNKNOWN:
         case PAM_SERVICE_ERR:
         case PAM_USER_UNKNOWN:
@@ -124,6 +133,11 @@ bool FingerprintAuthenticator::moduleInstalled() {
         if (std::filesystem::exists(p, ec)) { return true; }
     }
     return false;
+}
+
+bool FingerprintAuthenticator::serviceInstalled(const std::string& pamDir) const {
+    std::error_code ec;
+    return std::filesystem::is_regular_file(std::filesystem::path(pamDir) / service_, ec);
 }
 
 void FingerprintAuthenticator::start(Done done, Info info) {
@@ -176,8 +190,9 @@ void FingerprintAuthenticator::workerMain(const Done& done, Info info, uint64_t 
         return;
     }
 
-    // Retry transient failures (finger mismatch / timeout surface as
-    // PAM_AUTH_ERR from pam_fprintd) until stop() or a hard error.
+    // Retry failed attempts until success, stop(), or the reader proves
+    // unusable. Consecutive attempts that never reached the reader:
+    int silentFailures = 0;
     for (;;) {
         ConvData data{&loop_, &info};
         pam_conv const conv{.conv = conversation, .appdata_ptr = &data};
@@ -190,7 +205,7 @@ void FingerprintAuthenticator::workerMain(const Done& done, Info info, uint64_t 
         // service defines no `account` stack, so acct_mgmt falls through to
         // pam_warn+deny and would turn every successful verification into a
         // transient failure (infinite retry, never unlocks). The password path
-        // on the `login` service keeps its own acct_mgmt untouched.
+        // on `qypr-lock` (or `login`) keeps its own acct_mgmt untouched.
 
         std::string const message = pamh != nullptr ? pam_strerror(pamh, rc) : "pam_start failed";
         pam_end(pamh, rc);
@@ -210,14 +225,35 @@ void FingerprintAuthenticator::workerMain(const Done& done, Info info, uint64_t 
             finish([done, message] { done(Result::Unavailable, message); });
             return;
         }
-        // Transient PAM_AUTH_ERR (mismatch, timeout, swipe again): back off
-        // briefly and retry. Sleep in small slices so stop() shortens the wait.
-        for (int i = 0; i < 10; ++i) {
+
+        // Return codes cannot tell a miss from a reader that is out of reach.
+        // pam_fprintd answers a 30 s timeout and "no reader / no enrolled
+        // finger / reader claimed elsewhere" alike with PAM_AUTHINFO_UNAVAIL,
+        // and the shipped single-`sufficient` stack flattens every failure to
+        // PAM_PERM_DENIED anyway. What differs is whether the module spoke:
+        // it always announces "Place your ... finger on the reader" once it
+        // holds the reader. An attempt that spoke was a real mismatch or
+        // timeout — retry promptly, forever. A silent one never got that far —
+        // back off (doubling), and give up after kMaxSilentFailures in a row.
+        std::chrono::milliseconds backoff = retryBackoff_;
+        if (data.engaged) {
+            silentFailures = 0;
+        } else if (++silentFailures >= kMaxSilentFailures) {
+            running_.store(false);
+            finish([done, message] { done(Result::Unavailable, message); });
+            return;
+        } else {
+            backoff = retryBackoff_ * (1U << static_cast<unsigned>(silentFailures - 1));
+        }
+
+        // Sleep in small slices so stop() shortens the wait.
+        constexpr auto kSlice = std::chrono::milliseconds(50);
+        for (auto slept = std::chrono::milliseconds(0); slept < backoff; slept += kSlice) {
             if (!stillCurrent()) {
                 finished_.store(true);
                 return;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(std::min(kSlice, backoff - slept));
         }
     }
 }
