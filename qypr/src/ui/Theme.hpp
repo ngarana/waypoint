@@ -202,10 +202,18 @@ struct State {
         int bodySize = 13;
         int maxVisible = 4;
         int radius = 12;
-        // Height the notification band reserves at the bottom of the screen.
-        // The view draws its chips bottom-anchored inside this band; the lock
-        // layout keeps the clock column clear of it.
-        int bandHeight = 80;
+        // The chip band along the bottom of the lock screen. The view draws
+        // the chips; the lock layout reserves the room they claim, so both
+        // read the same numbers instead of guessing.
+        int chipHeight = 27;  // a collapsed chip: padding + one text line
+        int chipGap = 12;     // between chips in a row and between rows
+        int chipRows = 2;     // how many rows the band may grow
+        int chipPadX = 12;
+        int chipPadY = 6;
+        int chipRadius = 4;
+        int chipDotRadius = 3;
+        int chipDotGap = 8;
+        int chipDismissSize = 16;
     };
     struct Statusbar {
         double height = 36.0;

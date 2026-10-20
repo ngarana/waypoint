@@ -20,26 +20,39 @@ namespace qypr {
 
 namespace {
 
-// The chip's metrics, in the mock's units: a 6px dot, 12px of horizontal
-// padding, 6px of vertical padding, 12px between chips.
-constexpr double kDotRadius = 3.0;
-constexpr double kDotGap = 8.0;
-constexpr double kChipPadX = 12.0;
-constexpr double kChipPadY = 6.0;
-constexpr double kChipGap = 12.0;
-constexpr double kChipRadius = 4.0;
-constexpr double kDismissSize = 16.0;
-
+// The chip's box metrics live in the theme: the view draws the chips and
+// the lock layout reserves the room they claim, so both read the same
+// numbers (theme().notification.chip*).
 constexpr double kLabelSize = 11.0;
 constexpr double kValueSize = 10.0;
 constexpr double kBodySize = 10.0;
 
-// The chip band is two rows deep; the rest of the notifications become the
-// overflow count.
-constexpr size_t kMaxRows = 2;
-
 constexpr double kLabelTracking = 1.4;
 constexpr double kValueTracking = 0.8;
+
+// The chip's box, read from the theme.
+struct ChipBox {
+    double dotRadius = 3.0;
+    double dotGap = 8.0;
+    double padX = 12.0;
+    double padY = 6.0;
+    double gap = 12.0;
+    double radius = 4.0;
+    double dismissSize = 16.0;
+    size_t rows = 2;  // how many rows the band may grow
+};
+
+ChipBox chipBox(const theme::State& theme) {
+    const theme::State::Notification& n = theme.notification;
+    return {.dotRadius = static_cast<double>(n.chipDotRadius),
+            .dotGap = static_cast<double>(n.chipDotGap),
+            .padX = static_cast<double>(n.chipPadX),
+            .padY = static_cast<double>(n.chipPadY),
+            .gap = static_cast<double>(n.chipGap),
+            .radius = static_cast<double>(n.chipRadius),
+            .dismissSize = static_cast<double>(n.chipDismissSize),
+            .rows = static_cast<size_t>(n.chipRows)};
+}
 
 TextStyle labelStyle(const theme::State& theme) {
     return {theme.font.family, kLabelSize, PANGO_WEIGHT_MEDIUM, theme.colors.text, kLabelTracking};
@@ -142,15 +155,17 @@ NotificationView::ChipText NotificationView::chipText(const Card& c, Painter& p)
 }
 
 double NotificationView::chipWidth(const ChipText& text, double progress) const {
-    const double lineW = (kDotRadius * 2) + kDotGap + text.labelSize.w + 6 + text.valueSize.w;
-    const double bodyW = (kDotRadius * 2) + kDotGap + text.bodySize.w;
+    const ChipBox box = chipBox(theme());
+    const double lineW = (box.dotRadius * 2) + box.dotGap + text.labelSize.w + 6 + text.valueSize.w;
+    const double bodyW = (box.dotRadius * 2) + box.dotGap + text.bodySize.w;
     const double contentW = std::max(lineW, bodyW * progress);
-    return (kChipPadX * 2) + contentW;
+    return (box.padX * 2) + contentW;
 }
 
 double NotificationView::chipHeight(const ChipText& text, double progress) const {
+    const ChipBox box = chipBox(theme());
     const double lineH = std::max(text.labelSize.h, text.valueSize.h);
-    return (kChipPadY * 2) + lineH + (2.0 + text.bodySize.h) * progress;
+    return (box.padY * 2) + lineH + (2.0 + text.bodySize.h) * progress;
 }
 
 void NotificationView::drawChip(const Card& c, const ChipText& text, Painter& p, int64_t now,
@@ -158,21 +173,23 @@ void NotificationView::drawChip(const Card& c, const ChipText& text, Painter& p,
     const theme::State& t = theme();
     const double progress = clamp01(c.expandProgress.value(now));
 
+    const ChipBox box = chipBox(t);
+
     // Surface: the chip's own hairline and a whisper of fill. Hovering lifts
     // the border to the notification's accent, the way the mock does.
     const Color border = c.hovered ? c.note.accent.withAlpha(0.45) : t.colors.glassBorder;
     const Color fill = c.hovered ? c.note.accent.withAlpha(0.06) : t.colors.surface.withAlpha(0.22);
-    p.fillRoundedRect(r, kChipRadius, fill);
-    p.strokeRoundedRect(r, kChipRadius, border, 1);
+    p.fillRoundedRect(r, box.radius, fill);
+    p.strokeRoundedRect(r, box.radius, border, 1);
 
-    const double contentX = r.x + kChipPadX;
-    const double cy = r.y + kChipPadY + (std::max(text.labelSize.h, text.valueSize.h) / 2.0);
+    const double contentX = r.x + box.padX;
+    const double cy = r.y + box.padY + (std::max(text.labelSize.h, text.valueSize.h) / 2.0);
 
     // Status dot.
-    p.fillCircle(contentX + kDotRadius, cy, kDotRadius, c.note.accent);
+    p.fillCircle(contentX + box.dotRadius, cy, box.dotRadius, c.note.accent);
 
     // Identity line: label, then the value in the accent colour.
-    const double labelX = contentX + (kDotRadius * 2) + kDotGap;
+    const double labelX = contentX + (box.dotRadius * 2) + box.dotGap;
     p.drawText(labelX, cy - (text.labelSize.h / 2.0), text.label, labelStyle(t), HAlign::Left);
     p.drawText(labelX + text.labelSize.w + 6, cy - (text.valueSize.h / 2.0), text.value,
                valueStyle(t, c.note.accent), HAlign::Left);
@@ -180,7 +197,7 @@ void NotificationView::drawChip(const Card& c, const ChipText& text, Painter& p,
     // Body line: only an expanded chip shows it, and it is what makes the
     // chip grow upwards out of the foot line.
     if (progress > 0.01) {
-        const double bodyY = r.y + kChipPadY + std::max(text.labelSize.h, text.valueSize.h) + 2.0;
+        const double bodyY = r.y + box.padY + std::max(text.labelSize.h, text.valueSize.h) + 2.0;
         p.pushGroup();
         p.drawText(labelX, bodyY, text.body, bodyStyle(t), HAlign::Left);
         p.popGroupWithAlpha(progress);
@@ -190,7 +207,7 @@ void NotificationView::drawChip(const Card& c, const ChipText& text, Painter& p,
     if (c.hovered) {
         const TextStyle style = dismissStyle(t, c.closeHovered);
         const Size size = p.measureText("×", style);
-        p.drawText(r.x + r.w - kChipPadX - size.w, cy - (size.h / 2.0), "×", style, HAlign::Left);
+        p.drawText(r.x + r.w - box.padX - size.w, cy - (size.h / 2.0), "×", style, HAlign::Left);
     }
 }
 
@@ -203,14 +220,19 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
     const size_t count = cards_.size() - start;
 
     // Measure every chip, then pack them into rows that fit `maxWidth`.
-    std::vector<ChipText> texts;
-    std::vector<double> widths;
-    std::vector<double> heights;
-    texts.reserve(count);
-    widths.reserve(count);
-    heights.reserve(count);
+    // Each row carries the chips it placed together with their own
+    // measurements: a chip dropped as overflow must never shift the chips
+    // behind it, so the data travels with the chip instead of in parallel
+    // arrays indexed by a position that no longer matches.
+    struct Placed {
+        size_t card = 0;  // index into cards_
+        ChipText text;
+        double w = 0.0;
+        double h = 0.0;
+    };
 
-    std::vector<std::vector<size_t>> rows;
+    const ChipBox box = chipBox(theme());
+    std::vector<std::vector<Placed>> rows;
     std::vector<double> rowHeights;
     double rowWidth = 0.0;
     size_t overflow = 0;
@@ -225,7 +247,7 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
         // The band is two rows deep; anything that does not fit becomes the
         // overflow count rather than a third row.
         if (!rows.empty() && (rowWidth + w) > maxWidth) {
-            if (rows.size() >= kMaxRows) {
+            if (rows.size() >= box.rows) {
                 ++overflow;
                 continue;
             }
@@ -237,18 +259,15 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
             rows.emplace_back();
             rowHeights.push_back(0.0);
         }
-        rows.back().push_back(i);
+        rows.back().push_back({.card = start + i, .text = text, .w = w, .h = h});
         rowHeights.back() = std::max(rowHeights.back(), h);
-        rowWidth += w + kChipGap;
-        texts.push_back(text);
-        widths.push_back(w);
-        heights.push_back(h);
+        rowWidth += w + box.gap;
     }
 
     // The block is bottom-anchored: the last row sits on the foot line and
     // any wrapped row grows upwards from it.
     double total = std::accumulate(rowHeights.begin(), rowHeights.end(), 0.0);
-    if (rows.size() > 1) { total += kChipGap * static_cast<double>(rows.size() - 1); }
+    if (rows.size() > 1) { total += box.gap * static_cast<double>(rows.size() - 1); }
 
     double rowTop = bottom - total;
     for (size_t r = 0; r < rows.size(); ++r) {
@@ -256,35 +275,33 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
         const double rowBottom = rowTop + rowH;
         double x = left;
 
-        for (const size_t i : rows[r]) {
-            const size_t idx = start + i;
-            const Card& c = cards_.at(idx);
+        for (const Placed& placed : rows[r]) {
+            const Card& c = cards_.at(placed.card);
             const double appear = clamp01(c.appear.value(now));
 
             // A new chip slides in from the left while it fades.
-            const Rect chip{x - ((1.0 - appear) * 12.0), rowBottom - heights.at(i), widths.at(i),
-                            heights.at(i)};
+            const Rect chip{x - ((1.0 - appear) * 12.0), rowBottom - placed.h, placed.w, placed.h};
 
             if (appear <= 0.01) {
-                x += widths.at(i) + kChipGap;
+                x += placed.w + box.gap;
                 continue;
             }
 
             p.pushGroup();
-            drawChip(c, texts.at(i), p, now, chip);
+            drawChip(c, placed.text, p, now, chip);
             p.popGroupWithAlpha(appear);
 
-            HitBox box;
-            box.index = idx;
-            box.chip = chip;
-            const Rect dismiss{chip.x + chip.w - kChipPadX - kDismissSize, chip.y + kChipPadY,
-                               kDismissSize, kDismissSize};
-            box.dismiss = dismiss;
-            layout_.push_back(box);
+            HitBox hit;
+            hit.index = placed.card;
+            hit.chip = chip;
+            const Rect dismiss{chip.x + chip.w - box.padX - box.dismissSize, chip.y + box.padY,
+                               box.dismissSize, box.dismissSize};
+            hit.dismiss = dismiss;
+            layout_.push_back(hit);
 
-            x += widths.at(i) + kChipGap;
+            x += placed.w + box.gap;
         }
-        rowTop += rowH + kChipGap;
+        rowTop += rowH + box.gap;
     }
 
     // Overflow: a trailing chip that counts what did not fit.
@@ -293,11 +310,11 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
         const TextStyle style{theme().font.monoFamily, kValueSize, PANGO_WEIGHT_NORMAL,
                               theme().colors.textMuted, kValueTracking};
         const Size size = p.measureText(label, style);
-        const double w = (kChipPadX * 2) + size.w;
-        const double h = (kChipPadY * 2) + size.h;
+        const double w = (box.padX * 2) + size.w;
+        const double h = (box.padY * 2) + size.h;
         const Rect chip{left, bottom - h, w, h};
-        p.fillRoundedRect(chip, kChipRadius, theme().colors.surface.withAlpha(0.22));
-        p.strokeRoundedRect(chip, kChipRadius, theme().colors.glassBorder, 1);
+        p.fillRoundedRect(chip, box.radius, theme().colors.surface.withAlpha(0.22));
+        p.strokeRoundedRect(chip, box.radius, theme().colors.glassBorder, 1);
         p.drawText(chip.cx() - (size.w / 2.0), chip.cy() - (size.h / 2.0), label, style,
                    HAlign::Left);
     }

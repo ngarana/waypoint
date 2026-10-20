@@ -1,9 +1,11 @@
-// Notification.hpp - Windows 11-style lock-screen notification cards.
+// Notification.hpp - The lock screen's notification chips.
 //
 // Pure view + interaction: holds the current set of notifications and paints
-// them as a stack of glass cards anchored bottom-left. The data is pushed in
-// via update() (live: NotificationMonitor; previews: demoNotifications());
-// this class never fetches it.
+// them as a band of small chips along the bottom of the screen — a status
+// dot, the app identity and the headline, in the manner of the redesign
+// mock (docs/mock/code.html). The data is pushed in via update() (live:
+// NotificationMonitor; previews: demoNotifications()); this class never
+// fetches it.
 
 #pragma once
 

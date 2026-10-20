@@ -336,6 +336,38 @@ TEST(IndicatorsDenyByDefaultOnLockScreen) {
 
 // QL-1: the Bluetooth pairing agent must be off while the session is locked.
 
+// The chip band packs chips into at most two rows; whatever does not fit
+// becomes the overflow count. A chip that is dropped must not shift the
+// chips behind it: the band indexes the placed chips by their own position.
+TEST(NotificationChipBandSurvivesOverflow) {
+    qypr::NotificationView view;
+    const std::string longTitle = "A very long notification headline that overflows";
+    std::vector<qypr::Notification> notes;
+    for (uint64_t i = 0; i < 3; ++i) {
+        qypr::Notification n;
+        n.id = i + 1;
+        n.app = "Mail";
+        n.title = longTitle;
+        notes.push_back(n);
+    }
+    // A short chip behind the overflowing ones still has to be placed.
+    qypr::Notification shortNote;
+    shortNote.id = 4;
+    shortNote.app = "Mail";
+    shortNote.title = "Hi";
+    notes.push_back(shortNote);
+    view.update(notes);
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 400);
+    cairo_t* cr = cairo_create(surf);
+    qypr::Painter p(cr);
+    view.draw(p, qypr::nowMs(), 0.0, 400.0, 540.0);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+
+    EXPECT_TRUE(view.active());
+}
+
 // I1 allow-list (maintainer decision, INTEGRATION.md §9 Q2): while locked,
 // exactly these interactions stay live — volume/brightness scroll, media
 // transport, and notification expand/collapse + dismiss. Everything else is

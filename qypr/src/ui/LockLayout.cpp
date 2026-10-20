@@ -41,13 +41,13 @@ double LockLayout::notificationZoneWidth(int width) const {
 }
 
 double LockLayout::notificationZoneHeight(int height) const {
-    // The notification chips are a footer band: one line of chips, plus one
-    // wrapped line for the narrowest outputs. The view never lays out more
-    // rows than this — overflow becomes a "+N" chip instead.
-    constexpr double kChipHeight = 26.0;
-    constexpr double kRowGap = 12.0;
-    constexpr int kMaxRows = 2;
-    const double zone = (kMaxRows * kChipHeight) + kRowGap;
+    // The notification chips are a footer band: a row of chips, plus one
+    // wrapped row for the narrowest outputs. The band never grows past the
+    // rows the theme allows — what does not fit becomes a "+N" chip — so the
+    // reserved height is exact.
+    const theme::State::Notification& n = theme().notification;
+    const double rows = static_cast<double>(std::max(1, n.chipRows));
+    const double zone = (rows * n.chipHeight) + ((rows - 1.0) * n.chipGap);
     // On short outputs the band may take more than the screen can spare.
     return std::min(zone, static_cast<double>(height) * 0.12);
 }
