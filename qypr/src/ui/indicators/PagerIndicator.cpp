@@ -58,7 +58,7 @@ std::string PagerIndicator::tooltip() const {
         }
     };
     for (const auto& c : v.clusters) {
-        if (!tip.empty()) { tip += "\n"; }
+        if (!tip.empty()) { tip += '\n'; }
         tip += c.name + ": ";
         if (c.windows.empty()) {
             tip += "empty";
@@ -68,7 +68,7 @@ std::string PagerIndicator::tooltip() const {
         }
     }
     if (!v.unassigned.empty()) {
-        if (!tip.empty()) { tip += "\n"; }
+        if (!tip.empty()) { tip += '\n'; }
         tip += "· ";
         addApps(v.unassigned);
     }

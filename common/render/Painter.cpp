@@ -144,6 +144,16 @@ void Painter::verticalGradient(int w, int h, const Color& top, const Color& mid,
     cairo_pattern_destroy(g);
 }
 
+void Painter::horizontalGradient(const Rect& r, const Color& from, const Color& to) {
+    cairo_pattern_t* g = cairo_pattern_create_linear(r.x, 0, r.x + r.w, 0);
+    cairo_pattern_add_color_stop_rgba(g, 0.0, from.r, from.g, from.b, from.a);
+    cairo_pattern_add_color_stop_rgba(g, 1.0, to.r, to.g, to.b, to.a);
+    cairo_rectangle(cr_, r.x, r.y, r.w, r.h);
+    cairo_set_source(cr_, g);
+    cairo_fill(cr_);
+    cairo_pattern_destroy(g);
+}
+
 void Painter::drawSurface(cairo_surface_t* surface, const Rect& dest) {
     if (surface == nullptr) { return; }
     int const sw = cairo_image_surface_get_width(surface);
@@ -203,6 +213,14 @@ PangoLayout* Painter::makeLayout(const std::string& text, const TextStyle& style
     pango_font_description_free(desc);
 
     pango_layout_set_text(layout, text.c_str(), -1);
+    if (style.letterSpacing > 0.0) {
+        // Pango measures letter spacing in 1/1024 pt units; a pixel of
+        // tracking is one PANGO_SCALE of them.
+        PangoAttrList* attrs = pango_attr_list_new();
+        pango_attr_list_insert(attrs, pango_attr_letter_spacing_new(
+                                         static_cast<int>(style.letterSpacing * PANGO_SCALE)));
+        pango_layout_set_attributes(layout, attrs);  // the layout owns the list
+    }
     if (maxWidth > 0) {
         pango_layout_set_width(layout, static_cast<int>(maxWidth) * PANGO_SCALE);
         if (ellipsize) {

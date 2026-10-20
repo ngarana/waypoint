@@ -106,27 +106,174 @@ TEST(LockScreenWipesPasswordAfterSubmit) {
     EXPECT_TRUE(secret.empty());
 }
 
-TEST(LockLayoutGeometryMultipleSizes) {
-    const qypr::LockLayout layout;
-    const qypr::Size clock{.w = 300.0, .h = 100.0};
-    const qypr::Size status{.w = 160.0, .h = 20.0};
+// The redesigned lock screen: the auth card's inline UNLOCK affordance is
+// hit-testable and submits the password like the Enter key does.
+TEST(AuthPanelUnlockAffordanceSubmits) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        int unlocks = 0;
+        void invalidate() override {}
+        void requestUnlock() override { ++unlocks; }
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power);
+
+    mock_pam_reset();
+    mock_pam_set_expected_password("open-sesame");
+
+    // Typing wakes the screen; the auth card fades in with the reveal.
+    screen.handleTextInput("open-sesame");
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1920, 1080);
+    cairo_t* cr = cairo_create(surf);
+    screen.draw(cr, 1920, 1080, 1);
+
+    const qypr::Rect button = screen.renderer_.auth().unlockButton();
+    EXPECT_TRUE(button.w > 0);
+    EXPECT_TRUE(button.h > 0);
+    EXPECT_TRUE(screen.renderer_.auth().unlockHit(button.cx(), button.cy()));
+    // The affordance lives inside the card.
+    EXPECT_TRUE(button.x >= screen.renderer_.auth().bounds.x);
+    EXPECT_TRUE(button.x + button.w <=
+                screen.renderer_.auth().bounds.x + screen.renderer_.auth().bounds.w);
+
+    screen.handlePointerButton(1920, 1080, button.cx(), button.cy(), 0x110, true);
+    while (pam.busy()) {}
+    loop.dispatchPosted();
+
+    EXPECT_EQ(host.unlocks, 1);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+}
+
+// The lock screen draws its whole composition at every supported size: the
+// chronometer lockup, the facts line and the auth card.
+TEST(LockScreenComposesAtEverySize) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        void invalidate() override {}
+        void requestUnlock() override {}
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power);
 
     for (const auto [width, height] :
          {std::pair{800, 600}, std::pair{1920, 1080}, std::pair{3440, 1440}}) {
-        const auto result = layout.compute(width, height, clock, status);
+        cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        cairo_t* cr = cairo_create(surf);
+        screen.draw(cr, width, height, 1);
+
+        const auto& renderer = screen.renderer_;
+        EXPECT_TRUE(renderer.clock_.bounds.w > 0);
+        EXPECT_TRUE(renderer.clock_.bounds.h > 0);
+        EXPECT_TRUE(renderer.facts_.bounds.h > 0);
+        EXPECT_TRUE(renderer.auth_.bounds.w > 0);
+        // The clock column stays inside the output.
+        EXPECT_TRUE(renderer.clock_.bounds.x + renderer.clock_.bounds.w <= width);
+        EXPECT_TRUE(renderer.clock_.bounds.y >= 0);
+        EXPECT_TRUE(renderer.clock_.bounds.y + renderer.clock_.bounds.h <= height);
+
+        cairo_destroy(cr);
+        cairo_surface_destroy(surf);
+    }
+}
+
+// The facts line reports the session's real state, not decoration.
+TEST(LockFactsRowReportsSessionState) {
+    qypr::EventLoop loop;
+    struct SpyHost : qypr::RenderHost {
+        void invalidate() override {}
+        void requestUnlock() override {}
+    } host;
+    qypr::PamAuthenticator pam(loop);
+    qypr::SystemActions power(loop);
+    qypr::LockScreen screen(loop, host, pam, power);
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1920, 1080);
+    cairo_t* cr = cairo_create(surf);
+    screen.draw(cr, 1920, 1080, 1);
+
+    const auto& items = screen.renderer_.facts_.items;
+    EXPECT_TRUE(items.size() >= 2);
+    EXPECT_EQ(items.at(0).label, std::string("FINGERPRINT"));
+    EXPECT_EQ(items.at(1).label, std::string("PAM"));
+    // The PAM stack is whatever the authenticator guards the session with.
+    EXPECT_EQ(items.at(1).value, screen.controller_.pamService());
+    EXPECT_TRUE(!items.at(1).value.empty());
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+}
+
+TEST(LockLayoutGeometryMultipleSizes) {
+    const qypr::LockLayout layout;
+    const qypr::Size clock{.w = 300.0, .h = 100.0};
+    const qypr::Size facts{.w = 200.0, .h = 14.0};
+    const qypr::Size auth{.w = 420.0, .h = 210.0};
+    const qypr::Size media{.w = 420.0, .h = 260.0};
+
+    for (const auto [width, height] :
+         {std::pair{800, 600}, std::pair{1920, 1080}, std::pair{3440, 1440}}) {
+        const auto result = layout.compute(width, height, clock, facts, auth, media);
         const auto row = layout.powerRowRect(width, height);
         const auto anchor = layout.powerAnchorRect(width, height);
 
         EXPECT_NEAR(row.x + row.w, width - layout.theme().spacing.xlarge, 0.001);
         EXPECT_NEAR(row.y + row.h, height - layout.theme().spacing.xlarge, 0.001);
         EXPECT_TRUE(anchor.y > row.y);
-        EXPECT_NEAR(result.password.w, layout.centerColumnWidth(width), 0.001);
-        EXPECT_TRUE(result.clockTop >= layout.theme().statusbar.topMargin +
-                                           layout.theme().statusbar.height +
-                                           layout.theme().spacing.small);
-        EXPECT_NEAR(result.audioTop, result.statusTop + status.h + layout.theme().spacing.small,
+
+        // The auth card owns the right column.
+        EXPECT_NEAR(result.auth.w, layout.authColumnWidth(width), 0.001);
+        EXPECT_TRUE(result.auth.x + result.auth.w <= width - layout.theme().spacing.xlarge);
+
+        // The media card sits directly above the auth card.
+        EXPECT_NEAR(result.media.y + result.media.h + layout.theme().spacing.medium, result.auth.y,
                     0.001);
+        EXPECT_NEAR(result.media.x, result.auth.x, 0.001);
+
+        // Both columns share one baseline, above the notification cards.
+        const double baseline = result.facts.y + result.facts.h;
+        EXPECT_NEAR(baseline, result.auth.y + result.auth.h, 0.001);
+        EXPECT_TRUE(baseline <=
+                    height - layout.theme().spacing.xlarge - layout.notificationZoneHeight(height));
+
+        // The clock column starts below the status bar.
+        EXPECT_TRUE(result.clock.y >= layout.theme().statusbar.topMargin +
+                                          layout.theme().statusbar.height +
+                                          layout.theme().spacing.small);
+        // The facts line hangs under the lockup.
+        EXPECT_NEAR(result.facts.y, result.clock.y + result.clock.h + layout.theme().spacing.large,
+                    0.001);
+
+        // The two columns never overlap.
+        EXPECT_TRUE(result.clock.x + result.clock.w <= result.auth.x);
     }
+}
+
+// Without a media panel the right column holds only the auth card.
+TEST(LockLayoutWithoutMediaKeepsAuthColumn) {
+    const qypr::LockLayout layout;
+    const qypr::Size clock{.w = 300.0, .h = 100.0};
+    const qypr::Size facts{.w = 200.0, .h = 14.0};
+    const qypr::Size auth{.w = 420.0, .h = 210.0};
+
+    const auto result = layout.compute(1920, 1080, clock, facts, auth, qypr::Size{0, 0});
+    EXPECT_NEAR(result.media.h, 0.0, 0.001);
+    EXPECT_NEAR(result.auth.w, layout.authColumnWidth(1920), 0.001);
+    // The auth card shares the baseline with the facts line.
+    EXPECT_NEAR(result.auth.y + result.auth.h, result.facts.y + result.facts.h, 0.001);
+}
+
+// The oversized clock scales with the output but stays inside sane bounds.
+TEST(LockClockFontSizeIsResponsive) {
+    const qypr::LockLayout layout;
+    EXPECT_TRUE(layout.clockFontSize(1920, 1080) > layout.clockFontSize(1280, 720));
+    EXPECT_TRUE(layout.clockFontSize(800, 600) >= 56.0);
+    EXPECT_TRUE(layout.clockFontSize(7680, 4320) <= 208.0);
 }
 
 TEST(PowerMenuRequiresExplicitConfirmation) {
@@ -205,7 +352,7 @@ TEST(LockInteractionAllowList) {
     EXPECT_FALSE(qypr::LauncherIndicator(backends).lockInteractive());
     EXPECT_FALSE(qypr::PowerMenuIndicator(backends).lockInteractive());
 
-    // Notification cards: body press expands (consumed), × dismisses.
+    // Notification chips: body press expands (consumed), × dismisses.
     qypr::Notification note;
     note.id = 7;
     note.app = "Mail";
@@ -220,26 +367,40 @@ TEST(LockInteractionAllowList) {
     cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 400);
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
-    const int64_t now = 1'000'000;
-    view.draw(p, now, 0.0, 400.0, 360.0);
+    // The chips fade in: the first frame starts the animation, the second
+    // (after it finished) lays out the hit-test boxes.
+    view.draw(p, qypr::nowMs(), 0.0, 400.0, 360.0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    view.draw(p, qypr::nowMs(), 0.0, 400.0, 360.0);
 
-    // Body press is consumed (expand toggle).
-    EXPECT_TRUE(view.handlePress(10.0, 390.0, now));
+    // Body press is consumed (expand toggle). The chip band is bottom
+    // anchored, so the press lands on its last row.
+    bool expanded = false;
+    for (int yi = 0; yi <= 30 && !expanded; ++yi) {
+        for (int xi = 0; xi <= 350 && !expanded; ++xi) {
+            const double x = 2.0 + (xi * 2.0);
+            const double y = 398.0 - (yi * 2.0);
+            expanded = view.handlePress(x, y, qypr::nowMs());
+        }
+    }
+    EXPECT_TRUE(expanded);
     EXPECT_TRUE(view.active());
     // Empty space is not.
-    EXPECT_FALSE(view.handlePress(395.0, 5.0, now));
+    EXPECT_FALSE(view.handlePress(395.0, 5.0, qypr::nowMs()));
 
-    // Sweep the card's top-right corner for the ×; it must dismiss. Grid
-    // covers the 24x24 button wherever padding puts it (integer steps —
-    // float induction would accumulate error and could skip the button).
+    // Re-draw so the hit-test boxes match the expanded chip, then sweep the
+    // band for the ×; it must dismiss. Grid covers the 16x16 button wherever
+    // padding puts it (integer steps — float induction would accumulate
+    // error and could skip the button).
+    view.draw(p, qypr::nowMs(), 0.0, 400.0, 360.0);
     bool dismissed = false;
-    for (int yi = 0; yi <= 60 && !dismissed; ++yi) {
-        for (int xi = 0; xi <= 15 && !dismissed; ++xi) {
-            const double x = 300.0 + (xi * 4.0);
-            const double y = 395.0 - (yi * 4.0);
-            if (view.handlePress(x, y, now)) {
+    for (int yi = 0; yi <= 30 && !dismissed; ++yi) {
+        for (int xi = 0; xi <= 360 && !dismissed; ++xi) {
+            const double x = 360.0 - (xi * 1.0);
+            const double y = 400.0 - (yi * 1.0);
+            if (view.handlePress(x, y, qypr::nowMs())) {
                 // Body presses also consume (expand toggle); only the ×
-                // removes the card.
+                // removes the chip.
                 dismissed = !view.active();
             }
         }

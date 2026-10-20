@@ -119,7 +119,6 @@ TEST(BluetoothReducerOpLifecycle) {
 namespace {
 
 struct FakeBluez : qypr::BluezCommandPort {
-    using Reply = qypr::BluezCommandPort::Reply;
     bool up = true;
     std::string adapter = "/a/0";
     std::vector<std::string> calls;

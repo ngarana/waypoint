@@ -18,13 +18,17 @@ and an optional **video wallpaper** via **libmpv**.
 ### Lock screen (`qypr-lock`)
 
 - Session lock via `ext-session-lock-v1` (covers every output).
-- Clock + date, glassmorphic password field (PAM `login`), status feedback.
-- Reveal-on-interaction: idle shows clock + a standby power button; any key or
-  mouse movement reveals the password field, power menu, and audio panel.
+- Redesigned HUD composition (see [docs/LOCK_SCREEN.md](docs/LOCK_SCREEN.md)):
+  an oversized monospace chronometer with a facts line in the left column, a
+  glass authentication card in the right column, and a notification chip band
+  along the bottom — the redesign mock rendered in qypr's glassmorphic theme.
+- Reveal-on-interaction: idle shows the clock, the facts line and a standby
+  power button; any key or mouse movement reveals the password field, power
+  menu, and audio panel.
 - Power menu: suspend / hibernate / reboot / shutdown (via `systemctl`).
 - MPRIS audio panel: metadata, progress/LIVE, transport, volume slider.
-- Lock-screen notifications: glass cards (app tile, title, body) bottom-left
-  that fade in and dismiss on click, fed by the real
+- Lock-screen notifications: glass chips (status dot, app, headline) along the
+  bottom that expand on click and dismiss on hover, fed by the real
   `org.freedesktop.Notifications` traffic of whatever daemon is running (SwayNC,
   dunst, mako, ...) via a spec-correct D-Bus monitor connection.
 - Video wallpaper: a shuffled, time-of-day playlist decoded by libmpv (falls
@@ -229,9 +233,9 @@ src/
   wayland/    WaylandDisplay, LockSession, BarDisplay, BarWindow, Output,
               Seat, ShmBuffer, Cursor
   render/     Painter (cairo + pango helpers)
-  ui/         Theme, Widget, LockScreen, Clock, PasswordField, StatusMessage,
-              ActionButton, ConfirmPopover, AudioController, Notification,
-              Shell, IconResolver
+  ui/         Theme, Widget, LockScreen, Clock, AuthPanel, LockFactsRow,
+              StatusMessage, ActionButton, ConfirmPopover, AudioController,
+              Notification, Shell, IconResolver
   ui/statusbar/  StatusBar, StatusIndicator, IndicatorRegistry, QSTile,
               QuickSettingsPanel, PopoverManager, DetailedPopover
   ui/indicators/ BatteryIndicator, BluetoothIndicator, BrightnessIndicator,

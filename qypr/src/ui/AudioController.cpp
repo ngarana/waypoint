@@ -77,29 +77,31 @@ void AudioController::refresh() {
     mpris_.refresh();
 }
 
-void AudioController::draw(Painter& p, int64_t now, double centerX, double topY, double maxWidth) {
-    const double panelW = std::clamp(maxWidth, static_cast<double>(theme().audio.minWidth),
-                                     static_cast<double>(theme().audio.maxWidth));
+AudioController::Metrics AudioController::metrics(Painter& p, double maxWidth) const {
+    Metrics m;
     const double pad = theme().audio.panelPadding;
     const double sp = theme().audio.spacing;
-    const double cw = panelW - 2 * pad;
 
-    const bool hasDuration = mpris_.durationSeconds() > 0;
-    const std::string source = mpris_.sourceLabel();
-    const std::string title = mpris_.title().empty() ? "Unknown Track" : mpris_.title();
-    const std::string sub = formatArtistAlbum(mpris_.artist(), mpris_.album());
-    const bool showVolume = mpris_.canSetVolume();
+    m.panelW = std::clamp(maxWidth, static_cast<double>(theme().audio.minWidth),
+                          static_cast<double>(theme().audio.maxWidth));
+    const double cw = m.panelW - 2 * pad;
+
+    m.hasDuration = mpris_.durationSeconds() > 0;
+    m.source = mpris_.sourceLabel();
+    m.title = mpris_.title().empty() ? "Unknown Track" : mpris_.title();
+    m.sub = formatArtistAlbum(mpris_.artist(), mpris_.album());
+    m.showVolume = mpris_.canSetVolume();
 
     // Measure block heights to size the panel before painting its background.
-    double hSource = source.empty() ? 0 : p.measureText(source, smallMuted(theme())).h;
-    double hNow = p.measureText("Now Playing", smallMuted(theme())).h;
-    double hTitle = p.measureText(title, titleStyle(theme()), cw).h;
-    double hSub = p.measureText(sub, subtitleStyle(theme()), cw).h;
-    double hTime = p.measureText("0:00", smallMuted(theme())).h;
-    double hProgress = hasDuration ? (theme().audio.progressHeight + theme().spacing.small + hTime)
-                                   : p.measureText("LIVE", smallMuted(theme())).h;
-    double hTransport = theme().audio.buttonSize;
-    double hVolume = showVolume ? std::max(p.measureText("Vol", smallMuted(theme())).h, 12.0) : 0;
+    m.hSource = m.source.empty() ? 0 : p.measureText(m.source, smallMuted(theme())).h;
+    m.hNow = p.measureText("Now Playing", smallMuted(theme())).h;
+    m.hTitle = p.measureText(m.title, titleStyle(theme()), cw).h;
+    m.hSub = p.measureText(m.sub, subtitleStyle(theme()), cw).h;
+    m.hProgress = m.hasDuration ? (theme().audio.progressHeight + theme().spacing.small +
+                                   p.measureText("0:00", smallMuted(theme())).h)
+                                : p.measureText("LIVE", smallMuted(theme())).h;
+    m.hTransport = theme().audio.buttonSize;
+    m.hVolume = m.showVolume ? std::max(p.measureText("Vol", smallMuted(theme())).h, 12.0) : 0;
 
     int blocks = 0;
     double content = 0;
@@ -108,16 +110,32 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
         content += h;
         ++blocks;
     };
-    addBlock(hSource, !source.empty());
-    addBlock(hNow);
-    addBlock(hTitle);
-    addBlock(hSub);
-    addBlock(hProgress);
-    addBlock(hTransport);
-    addBlock(hVolume, showVolume);
+    addBlock(m.hSource, !m.source.empty());
+    addBlock(m.hNow);
+    addBlock(m.hTitle);
+    addBlock(m.hSub);
+    addBlock(m.hProgress);
+    addBlock(m.hTransport);
+    addBlock(m.hVolume, m.showVolume);
     content += sp * std::max(0, blocks - 1);
 
-    const double panelH = content + 2 * pad;
+    m.panelH = content + 2 * pad;
+    return m;
+}
+
+Size AudioController::measure(Painter& p, double maxWidth) const {
+    const Metrics m = metrics(p, maxWidth);
+    return {m.panelW, m.panelH};
+}
+
+void AudioController::draw(Painter& p, int64_t now, double centerX, double topY, double maxWidth) {
+    const double pad = theme().audio.panelPadding;
+    const double sp = theme().audio.spacing;
+    const Metrics m = metrics(p, maxWidth);
+    const double panelW = m.panelW;
+    const double cw = panelW - 2 * pad;
+
+    const double panelH = m.panelH;
     const double panelX = centerX - panelW / 2.0;
     Rect panel{panelX, topY, panelW, panelH};
     p.fillRoundedRect(panel, theme().radius.large, theme().colors.glass);
@@ -129,19 +147,19 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
         y += h + sp;
     };
 
-    if (!source.empty()) {
-        p.drawText(cx0, y, source, smallMuted(theme()), HAlign::Left, cw);
-        advance(hSource);
+    if (!m.source.empty()) {
+        p.drawText(cx0, y, m.source, smallMuted(theme()), HAlign::Left, cw);
+        advance(m.hSource);
     }
     p.drawText(cx0, y, "Now Playing", smallMuted(theme()), HAlign::Left, cw);
-    advance(hNow);
-    p.drawText(cx0, y, title, titleStyle(theme()), HAlign::Left, cw);
-    advance(hTitle);
-    p.drawText(cx0, y, sub, subtitleStyle(theme()), HAlign::Left, cw);
-    advance(hSub);
+    advance(m.hNow);
+    p.drawText(cx0, y, m.title, titleStyle(theme()), HAlign::Left, cw);
+    advance(m.hTitle);
+    p.drawText(cx0, y, m.sub, subtitleStyle(theme()), HAlign::Left, cw);
+    advance(m.hSub);
 
     // Progress bar + times, or a LIVE indicator.
-    if (hasDuration) {
+    if (m.hasDuration) {
         Rect track{cx0, y, cw, static_cast<double>(theme().audio.progressHeight)};
         p.fillRoundedRect(track, track.h / 2, theme().colors.glassBorder);
         double ratio = clamp01(mpris_.positionSeconds() / mpris_.durationSeconds());
@@ -154,11 +172,11 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
         p.drawText(cx0 + cw, ty, formatTime(mpris_.durationSeconds()), smallMuted(theme()),
                    HAlign::Right);
     } else {
-        p.fillCircle(cx0 + 4, y + hProgress / 2, 4, theme().colors.error);
+        p.fillCircle(cx0 + 4, y + m.hProgress / 2, 4, theme().colors.error);
         TextStyle live{theme().font.family, 11.0, PANGO_WEIGHT_BOLD, theme().colors.error};
         p.drawText(cx0 + 14, y, "LIVE", live, HAlign::Left);
     }
-    advance(hProgress);
+    advance(m.hProgress);
 
     // Transport row (centred).
     playPause_.icon = mpris_.playing() ? "⏸" : "▶";  // ⏸ / ▶
@@ -177,10 +195,10 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
         b->draw(p, now);
         bx += bd + sp;
     }
-    advance(hTransport);
+    advance(m.hTransport);
 
     // Volume row.
-    if (showVolume) {
+    if (m.showVolume) {
         TextStyle lbl = smallMuted(theme());
         Size volLbl = p.measureText("Vol", lbl);
         std::string pct =
@@ -188,7 +206,7 @@ void AudioController::draw(Painter& p, int64_t now, double centerX, double topY,
         Size pctSz = p.measureText(pct, lbl);
         double sliderMax = cw - volLbl.w - pctSz.w - 2 * theme().spacing.small;
         double sliderW = std::min(static_cast<double>(theme().audio.volumeSliderWidth), sliderMax);
-        double rowMid = y + hVolume / 2.0;
+        double rowMid = y + m.hVolume / 2.0;
 
         p.drawText(cx0, rowMid - volLbl.h / 2.0, "Vol", lbl, HAlign::Left);
         double trackX = cx0 + volLbl.w + theme().spacing.small;

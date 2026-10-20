@@ -26,6 +26,17 @@
 #   (`a * b + c`) is readable; mandatory parens everywhere are noise.
 # - readability-convert-member-functions-to-static: Runtime/controller methods
 #   stay instance methods for interface uniformity after the decomposition.
+# - readability-trailing-comma: the codebase's initializer lists deliberately
+#   omit the trailing comma. LLVM 23's check flags every multi-element list
+#   in the tree (~2000 findings on untouched files), so enforcing it would be
+#   a tree-wide reformat that buries real changes. Same rationale as the
+#   other style disables above.
+# - readability-redundant-lambda-parameter-list: the codebase writes the
+#   explicit `[]() { ... }` form for every lambda, including the empty one.
+#   Same style rationale as above.
+# - bugprone-signed-bitwise: POSIX/int-based mask APIs (mode bits, protocol
+#   flags) are int-based; the unsigned casts are noise on the call sites.
+#   Twin of the already-disabled hicpp-signed-bitwise.
 # - misc-const-correctness: suggests `const` on every test local, by-value
 #   parameter and lambda capture; const-by-value churn, no safety gain.
 # - misc-unused-parameters: C callbacks, PAM conversation functions and
@@ -51,6 +62,7 @@ Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
+  -bugprone-signed-bitwise,
 
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-magic-numbers,
@@ -79,6 +91,8 @@ Checks: >
   -readability-implicit-bool-conversion,
   -readability-math-missing-parentheses,
   -readability-convert-member-functions-to-static,
+  -readability-trailing-comma,
+  -readability-redundant-lambda-parameter-list,
 
   misc-*,
   -misc-non-private-member-variables-in-classes,

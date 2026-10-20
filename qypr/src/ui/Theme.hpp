@@ -69,7 +69,7 @@ struct AutoPalette {
     int effectiveSunriseHour() const;
     int effectiveSunsetHour() const;
     // Pure helper: "light" when sunrise <= hour < sunset, else "dark".
-    static std::string resolveFor(int hour, int sunriseHour, int sunsetHour);
+    static std::string_view resolveFor(int hour, int sunriseHour, int sunsetHour);
     // Re-resolve against hour; true on flip. No-op unless mode == "auto".
     bool tick(int hour);
     // Cache a solar sunrise/sunset window (minutes since local midnight, as
@@ -148,6 +148,9 @@ struct State {
         int sizeClock = 96;
         int sizeDate = 18;
         std::string family = "Inter";
+        // Monospaced companion of `family`: the lock screen's chronometer and
+        // technical micro-labels use it so digits keep their column.
+        std::string monoFamily = "JetBrains Mono";
         std::string iconFamily = "CaskaydiaCove Nerd Font";
     };
     struct Spacing {
@@ -199,6 +202,10 @@ struct State {
         int bodySize = 13;
         int maxVisible = 4;
         int radius = 12;
+        // Height the notification band reserves at the bottom of the screen.
+        // The view draws its chips bottom-anchored inside this band; the lock
+        // layout keeps the clock column clear of it.
+        int bandHeight = 80;
     };
     struct Statusbar {
         double height = 36.0;

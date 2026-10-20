@@ -1,42 +1,104 @@
+// Notification.cpp - The lock screen's notification chips.
+//
+// The chips follow the redesign mock (docs/mock/code.html): a footer band of
+// small telemetry chips along the bottom-left, each one a status dot, an
+// identity label and a value. They replace the old stack of glass cards —
+// the row costs one line of height instead of four, and the chips read as
+// part of the instrument panel instead of as a column of stickers.
+
 #include "ui/Notification.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <numeric>
 
-#include "render/Painter.hpp"
 #include "render/IconResolver.hpp"
+#include "render/Painter.hpp"
 #include "ui/Theme.hpp"
 
 namespace qypr {
 
 namespace {
-TextStyle titleStyle(const theme::State& theme) {
-    return TextStyle{.family = theme.font.family,
-                     .size = static_cast<double>(theme.notification.titleSize),
-                     .weight = PANGO_WEIGHT_BOLD,
-                     .color = theme.colors.text};
-}
-TextStyle bodyStyle(const theme::State& theme) {
-    return TextStyle{.family = theme.font.family,
-                     .size = static_cast<double>(theme.notification.bodySize),
-                     .weight = PANGO_WEIGHT_NORMAL,
-                     .color = theme.colors.textSubtle};
-}
-TextStyle iconStyle(const theme::State& theme, double tile) {
-    return TextStyle{.family = theme.font.family,
-                     .size = tile * 0.5,
-                     .weight = PANGO_WEIGHT_BOLD,
-                     .color = theme.colors.text};
+
+// The chip's metrics, in the mock's units: a 6px dot, 12px of horizontal
+// padding, 6px of vertical padding, 12px between chips.
+constexpr double kDotRadius = 3.0;
+constexpr double kDotGap = 8.0;
+constexpr double kChipPadX = 12.0;
+constexpr double kChipPadY = 6.0;
+constexpr double kChipGap = 12.0;
+constexpr double kChipRadius = 4.0;
+constexpr double kDismissSize = 16.0;
+
+constexpr double kLabelSize = 11.0;
+constexpr double kValueSize = 10.0;
+constexpr double kBodySize = 10.0;
+
+// The chip band is two rows deep; the rest of the notifications become the
+// overflow count.
+constexpr size_t kMaxRows = 2;
+
+constexpr double kLabelTracking = 1.4;
+constexpr double kValueTracking = 0.8;
+
+TextStyle labelStyle(const theme::State& theme) {
+    return {theme.font.family, kLabelSize, PANGO_WEIGHT_MEDIUM, theme.colors.text, kLabelTracking};
 }
 
-// First printable character of `s`, uppercased — the tile fallback glyph.
-std::string tileGlyph(const std::string& s) {
-    for (const unsigned char c : s) {
-        if (std::isspace(c) == 0) { return std::string{1, static_cast<char>(std::toupper(c))}; }
-    }
-    return "?";
+TextStyle valueStyle(const theme::State& theme, const Color& accent) {
+    return {theme.font.monoFamily, kValueSize, PANGO_WEIGHT_NORMAL, accent, kValueTracking};
 }
+
+TextStyle bodyStyle(const theme::State& theme) {
+    return {theme.font.monoFamily, kBodySize, PANGO_WEIGHT_NORMAL, theme.colors.textMuted, 0.6};
+}
+
+TextStyle dismissStyle(const theme::State& theme, bool hovered) {
+    return {theme.font.family, 13.0, PANGO_WEIGHT_NORMAL,
+            hovered ? theme.colors.text : theme.colors.textMuted.withAlpha(0.7)};
+}
+
+std::string uppercase(std::string text) {
+    for (char& c : text) {
+        if (c >= 'a' && c <= 'z') { c = static_cast<char>(c - 'a' + 'A'); }
+    }
+    return text;
+}
+
+// The label is an identifier, not a sentence: spaces become underscores so
+// "Claude Code" reads as CLAUDE_CODE, the way the mock names its daemons.
+std::string identifier(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        if (c == ' ') {
+            out.push_back('_');
+        } else if (static_cast<unsigned char>(c) < 0x20) {
+            continue;
+        } else {
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        }
+    }
+    return out;
+}
+
 }  // namespace
+
+std::string NotificationView::chipLabel(const Notification& note) {
+    if (note.sensitive) { return "NOTIFICATION:"; }
+    const std::string id = identifier(note.app.empty() ? std::string("ALERT") : note.app);
+    return id + ":";
+}
+
+std::string NotificationView::chipValue(const Notification& note) {
+    if (note.sensitive) { return "MASKED"; }
+    return uppercase(note.title.empty() ? std::string("NO SUBJECT") : note.title);
+}
+
+std::string NotificationView::chipBody(const Notification& note) {
+    if (note.sensitive) { return "CONTENTS HIDDEN"; }
+    return note.body;
+}
 
 void NotificationView::update(std::vector<Notification> notes) {
     std::unordered_set<uint64_t> incomingIds;
@@ -51,7 +113,7 @@ void NotificationView::update(std::vector<Notification> notes) {
         auto it = std::ranges::find_if(cards_, [&](const Card& c) { return c.note.id == n.id; });
         if (it != cards_.end()) {
             Card c = *it;           // keep its animation state (no re-fade)
-            c.note = std::move(n);  // refresh text/icon/accent
+            c.note = std::move(n);  // refresh text/colour
             next.push_back(std::move(c));
         } else {
             Card c{.note = std::move(n),
@@ -65,194 +127,219 @@ void NotificationView::update(std::vector<Notification> notes) {
         }
     }
     cards_ = std::move(next);
-    layout_.clear();
 }
 
-double NotificationView::cardHeight(const theme::State& theme, const Card& c, Painter& p, double w,
-                                    int64_t now) {
-    const double pad = theme.notification.padding;
-    const double icon = theme.notification.iconSize;
-    const double textW = w - (2 * pad) - icon - pad;
-    std::string head = "New Notification";
-    if (!c.note.sensitive) { head = c.note.title.empty() ? c.note.app : c.note.title; }
-    const std::string body = c.note.sensitive ? "Contents hidden" : c.note.body;
-
-    const double titleW = textW - 24;  // reserve space for close button
-    const double titleH = p.measureText(head, titleStyle(theme), titleW).h;
-
-    const double collapsedTextH = titleH;
-    const double bodyH = p.measureText(body, bodyStyle(theme), textW).h;
-    const double expandedTextH = titleH + theme.spacing.small + bodyH;
-
-    const double progress = clamp01(c.expandProgress.value(now));
-    const double textH = collapsedTextH + ((expandedTextH - collapsedTextH) * progress);
-
-    return (2 * pad) + std::max(icon, textH);
+NotificationView::ChipText NotificationView::chipText(const Card& c, Painter& p) const {
+    const theme::State& t = theme();
+    ChipText text;
+    text.label = chipLabel(c.note);
+    text.value = chipValue(c.note);
+    text.body = chipBody(c.note);
+    text.labelSize = p.measureText(text.label, labelStyle(t));
+    text.valueSize = p.measureText(text.value, valueStyle(t, c.note.accent));
+    text.bodySize = p.measureText(text.body, bodyStyle(t));
+    return text;
 }
 
-void NotificationView::drawCard(const theme::State& theme, Card& c, Painter& p, int64_t now,
+double NotificationView::chipWidth(const ChipText& text, double progress) const {
+    const double lineW = (kDotRadius * 2) + kDotGap + text.labelSize.w + 6 + text.valueSize.w;
+    const double bodyW = (kDotRadius * 2) + kDotGap + text.bodySize.w;
+    const double contentW = std::max(lineW, bodyW * progress);
+    return (kChipPadX * 2) + contentW;
+}
+
+double NotificationView::chipHeight(const ChipText& text, double progress) const {
+    const double lineH = std::max(text.labelSize.h, text.valueSize.h);
+    return (kChipPadY * 2) + lineH + (2.0 + text.bodySize.h) * progress;
+}
+
+void NotificationView::drawChip(const Card& c, const ChipText& text, Painter& p, int64_t now,
                                 const Rect& r) {
-    const double a = clamp01(c.appear.value(now));
-    if (a <= 0.01) { return; }
+    const theme::State& t = theme();
+    const double progress = clamp01(c.expandProgress.value(now));
 
-    const double pad = theme.notification.padding;
-    const double icon = theme.notification.iconSize;
-    const double textW = r.w - (2 * pad) - icon - pad;
-    std::string head = "New Notification";
-    if (!c.note.sensitive) { head = c.note.title.empty() ? c.note.app : c.note.title; }
-    const std::string body = c.note.sensitive ? "Contents hidden" : c.note.body;
+    // Surface: the chip's own hairline and a whisper of fill. Hovering lifts
+    // the border to the notification's accent, the way the mock does.
+    const Color border = c.hovered ? c.note.accent.withAlpha(0.45) : t.colors.glassBorder;
+    const Color fill = c.hovered ? c.note.accent.withAlpha(0.06) : t.colors.surface.withAlpha(0.22);
+    p.fillRoundedRect(r, kChipRadius, fill);
+    p.strokeRoundedRect(r, kChipRadius, border, 1);
 
-    auto paint = [&] {
-        const Color fill = c.hovered ? theme.colors.glassHover : theme.colors.glass;
-        const Color border = c.hovered ? theme.colors.primary : theme.colors.glassBorder;
-        p.fillRoundedRect(r, theme.notification.radius, fill);
-        p.strokeRoundedRect(r, theme.notification.radius, border, 1);
+    const double contentX = r.x + kChipPadX;
+    const double cy = r.y + kChipPadY + (std::max(text.labelSize.h, text.valueSize.h) / 2.0);
 
-        // App tile (coloured square with a glyph).
-        const Rect tile{.x = r.x + pad, .y = r.y + pad, .w = icon, .h = icon};
-        p.fillRoundedRect(tile, theme.radius.medium, c.note.accent.withAlpha(0.9));
-        // Never reveal the real app icon for a sensitive notification — the
-        // icon alone would disclose which app it came from. Otherwise try the
-        // notification's own icon hint first, then fall back to the app name
-        // (e.g. blueman sends "audio-card" as its hint, which isn't a shipped
-        // PNG, but "blueman" resolves to blueman.png).
-        cairo_surface_t* iconSurf = nullptr;
-        if (!c.note.sensitive) {
-            iconSurf = IconResolver::instance().get(c.note.icon);
-            if (iconSurf == nullptr) { iconSurf = IconResolver::instance().get(c.note.app); }
-        }
-        if (iconSurf != nullptr) {
-            const Rect iconDest{.x = tile.x + 2, .y = tile.y + 2, .w = tile.w - 4, .h = tile.h - 4};
-            p.drawSurface(iconSurf, iconDest);
-        } else {
-            const std::string glyph = tileGlyph(c.note.app);
-            const TextStyle is = iconStyle(theme, icon);
-            const Size gs = p.measureText(glyph, is);
-            p.drawText(tile.cx() - (gs.w / 2.0), tile.cy() - (gs.h / 2.0), glyph, is, HAlign::Left);
-        }
+    // Status dot.
+    p.fillCircle(contentX + kDotRadius, cy, kDotRadius, c.note.accent);
 
-        // Text block, vertically centred against the tile dynamically based on expandProgress.
-        const double titleW = textW - 24;  // reserve space for close button
-        const Size ts = p.measureText(head, titleStyle(theme), titleW);
-        const Size bs = p.measureText(body, bodyStyle(theme), textW);
+    // Identity line: label, then the value in the accent colour.
+    const double labelX = contentX + (kDotRadius * 2) + kDotGap;
+    p.drawText(labelX, cy - (text.labelSize.h / 2.0), text.label, labelStyle(t), HAlign::Left);
+    p.drawText(labelX + text.labelSize.w + 6, cy - (text.valueSize.h / 2.0), text.value,
+               valueStyle(t, c.note.accent), HAlign::Left);
 
-        const double progress = clamp01(c.expandProgress.value(now));
-        const double textH = ts.h + ((theme.spacing.small + bs.h) * progress);
-        const double ty = r.y + pad + std::max(0.0, (icon - textH) / 2.0);
-        const double tx = r.x + pad + icon + pad;
-
-        p.drawText(tx, ty, head, titleStyle(theme), HAlign::Left, titleW);
-        if (progress > 0.01) {
-            p.pushGroup();
-            p.drawText(tx, ty + ts.h + theme.spacing.small, body, bodyStyle(theme), HAlign::Left,
-                       textW);
-            p.popGroupWithAlpha(progress);
-        }
-
-        // Close button (×) on hover.
-        if (c.hovered) {
-            const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
-            if (c.closeHovered) {
-                p.fillRoundedRect(closeRect, theme.radius.small,
-                                  theme.colors.surfaceHover.withAlpha(0.5));
-            }
-            const TextStyle cs{.family = theme.font.family,
-                               .size = 12,
-                               .weight = PANGO_WEIGHT_BOLD,
-                               .color =
-                                   c.closeHovered ? theme.colors.error : theme.colors.textMuted};
-            const std::string closeGlyph = "×";
-            const Size gs = p.measureText(closeGlyph, cs);
-            p.drawText(closeRect.cx() - (gs.w / 2.0), closeRect.cy() - (gs.h / 2.0) - 1.0,
-                       closeGlyph, cs, HAlign::Left);
-        }
-    };
-
-    if (a >= 0.999) {
-        paint();
-        return;
+    // Body line: only an expanded chip shows it, and it is what makes the
+    // chip grow upwards out of the foot line.
+    if (progress > 0.01) {
+        const double bodyY = r.y + kChipPadY + std::max(text.labelSize.h, text.valueSize.h) + 2.0;
+        p.pushGroup();
+        p.drawText(labelX, bodyY, text.body, bodyStyle(t), HAlign::Left);
+        p.popGroupWithAlpha(progress);
     }
-    p.pushGroup();
-    paint();
-    p.popGroupWithAlpha(a);
+
+    // Dismiss affordance: a small × at the chip's right edge, on hover only.
+    if (c.hovered) {
+        const TextStyle style = dismissStyle(t, c.closeHovered);
+        const Size size = p.measureText("×", style);
+        p.drawText(r.x + r.w - kChipPadX - size.w, cy - (size.h / 2.0), "×", style, HAlign::Left);
+    }
 }
 
 void NotificationView::draw(Painter& p, int64_t now, double left, double bottom, double maxWidth) {
     layout_.clear();
     if (cards_.empty()) { return; }
 
-    const auto w = std::min(maxWidth, static_cast<double>(theme().notification.cardWidth));
-    const double gap = theme().notification.gap;
     const auto maxVisible = static_cast<size_t>(theme().notification.maxVisible);
-    const size_t start =
-        cards_.size() > maxVisible ? cards_.size() - maxVisible : static_cast<size_t>(0);
+    const size_t start = cards_.size() > maxVisible ? cards_.size() - maxVisible : 0;
+    const size_t count = cards_.size() - start;
 
-    // Visible slice, oldest card at the top, newest at the bottom.
+    // Measure every chip, then pack them into rows that fit `maxWidth`.
+    std::vector<ChipText> texts;
+    std::vector<double> widths;
     std::vector<double> heights;
-    for (size_t i = start; i < cards_.size(); ++i) {
-        heights.push_back(cardHeight(theme(), cards_.at(i), p, w, now));
-    }
-    double total = std::accumulate(heights.begin(), heights.end(), 0.0);
-    if (heights.size() > 1) { total += gap * static_cast<double>(heights.size() - 1); }
+    texts.reserve(count);
+    widths.reserve(count);
+    heights.reserve(count);
 
-    double y = bottom - total;
-    for (size_t k = 0; k < heights.size(); ++k) {
-        const size_t idx = start + k;
-        const double h = heights.at(k);
-        const Rect r{.x = left, .y = y, .w = w, .h = h};
-        layout_.emplace_back(idx, r);
-        drawCard(theme(), cards_.at(idx), p, now, r);
-        y += h + gap;
+    std::vector<std::vector<size_t>> rows;
+    std::vector<double> rowHeights;
+    double rowWidth = 0.0;
+    size_t overflow = 0;
+
+    for (size_t i = 0; i < count; ++i) {
+        const Card& c = cards_.at(start + i);
+        const ChipText text = chipText(c, p);
+        const double progress = clamp01(c.expandProgress.value(now));
+        const double w = chipWidth(text, progress);
+        const double h = chipHeight(text, progress);
+
+        // The band is two rows deep; anything that does not fit becomes the
+        // overflow count rather than a third row.
+        if (!rows.empty() && (rowWidth + w) > maxWidth) {
+            if (rows.size() >= kMaxRows) {
+                ++overflow;
+                continue;
+            }
+            rows.emplace_back();
+            rowHeights.push_back(0.0);
+            rowWidth = 0.0;
+        }
+        if (rows.empty()) {
+            rows.emplace_back();
+            rowHeights.push_back(0.0);
+        }
+        rows.back().push_back(i);
+        rowHeights.back() = std::max(rowHeights.back(), h);
+        rowWidth += w + kChipGap;
+        texts.push_back(text);
+        widths.push_back(w);
+        heights.push_back(h);
+    }
+
+    // The block is bottom-anchored: the last row sits on the foot line and
+    // any wrapped row grows upwards from it.
+    double total = std::accumulate(rowHeights.begin(), rowHeights.end(), 0.0);
+    if (rows.size() > 1) { total += kChipGap * static_cast<double>(rows.size() - 1); }
+
+    double rowTop = bottom - total;
+    for (size_t r = 0; r < rows.size(); ++r) {
+        const double rowH = rowHeights[r];
+        const double rowBottom = rowTop + rowH;
+        double x = left;
+
+        for (const size_t i : rows[r]) {
+            const size_t idx = start + i;
+            const Card& c = cards_.at(idx);
+            const double appear = clamp01(c.appear.value(now));
+
+            // A new chip slides in from the left while it fades.
+            const Rect chip{x - ((1.0 - appear) * 12.0), rowBottom - heights.at(i), widths.at(i),
+                            heights.at(i)};
+
+            if (appear <= 0.01) {
+                x += widths.at(i) + kChipGap;
+                continue;
+            }
+
+            p.pushGroup();
+            drawChip(c, texts.at(i), p, now, chip);
+            p.popGroupWithAlpha(appear);
+
+            HitBox box;
+            box.index = idx;
+            box.chip = chip;
+            const Rect dismiss{chip.x + chip.w - kChipPadX - kDismissSize, chip.y + kChipPadY,
+                               kDismissSize, kDismissSize};
+            box.dismiss = dismiss;
+            layout_.push_back(box);
+
+            x += widths.at(i) + kChipGap;
+        }
+        rowTop += rowH + kChipGap;
+    }
+
+    // Overflow: a trailing chip that counts what did not fit.
+    if (overflow > 0) {
+        const std::string label = "+" + std::to_string(overflow);
+        const TextStyle style{theme().font.monoFamily, kValueSize, PANGO_WEIGHT_NORMAL,
+                              theme().colors.textMuted, kValueTracking};
+        const Size size = p.measureText(label, style);
+        const double w = (kChipPadX * 2) + size.w;
+        const double h = (kChipPadY * 2) + size.h;
+        const Rect chip{left, bottom - h, w, h};
+        p.fillRoundedRect(chip, kChipRadius, theme().colors.surface.withAlpha(0.22));
+        p.strokeRoundedRect(chip, kChipRadius, theme().colors.glassBorder, 1);
+        p.drawText(chip.cx() - (size.w / 2.0), chip.cy() - (size.h / 2.0), label, style,
+                   HAlign::Left);
     }
 }
 
 bool NotificationView::handlePress(double x, double y, int64_t now) {
-    for (const auto& [idx, r] : layout_) {
-        if (r.contains(x, y) && idx < cards_.size()) {
-            const double pad = theme().notification.padding;
-            const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
-            if (closeRect.contains(x, y)) {
-                const Notification dismissed = cards_.at(idx).note;
-                dismissedIds_.insert(dismissed.id);
-                cards_.erase(cards_.begin() + static_cast<std::vector<Card>::difference_type>(idx));
-                layout_.clear();
-                if (onDismiss_) { onDismiss_(dismissed); }
-                return true;
-            }
+    for (const auto& box : layout_) {
+        if (!box.chip.contains(x, y) || box.index >= cards_.size()) { continue; }
 
-            // Keep the stack readable: only one notification may be expanded
-            // at a time. Collapsing siblings also animates their height back
-            // before the next draw rebuilds the hit-test layout.
-            for (size_t i = 0; i < cards_.size(); ++i) {
-                if (i != idx && cards_.at(i).expanded) {
-                    cards_.at(i).expanded = false;
-                    cards_.at(i).expandProgress.animateTo(0.0, theme().anim.medium,
-                                                          ease::inOutQuad);
-                }
-            }
-            Card& c = cards_.at(idx);
-            c.expanded = !c.expanded;
-            const double target = c.expanded ? 1.0 : 0.0;
-            c.expandProgress.animateTo(target, theme().anim.medium, ease::inOutQuad);
+        if (box.dismiss.contains(x, y)) {
+            const Notification dismissed = cards_.at(box.index).note;
+            dismissedIds_.insert(dismissed.id);
+            cards_.erase(cards_.begin() +
+                         static_cast<std::vector<Card>::difference_type>(box.index));
+            layout_.clear();
+            if (onDismiss_) { onDismiss_(dismissed); }
             return true;
         }
+
+        // Keep the row readable: only one chip may be expanded at a time.
+        for (size_t i = 0; i < cards_.size(); ++i) {
+            if (i != box.index && cards_.at(i).expanded) {
+                cards_.at(i).expanded = false;
+                cards_.at(i).expandProgress.animateTo(0.0, theme().anim.medium, ease::inOutQuad);
+            }
+        }
+        Card& c = cards_.at(box.index);
+        c.expanded = !c.expanded;
+        const double target = c.expanded ? 1.0 : 0.0;
+        c.expandProgress.animateTo(target, theme().anim.medium, ease::inOutQuad);
+        return true;
     }
     return false;
 }
 
 void NotificationView::updateHover(double x, double y, int64_t now) {
     (void)now;
-    for (const auto& [idx, r] : layout_) {
-        if (idx < cards_.size()) {
-            cards_.at(idx).hovered = r.contains(x, y);
-            if (cards_.at(idx).hovered) {
-                const double pad = theme().notification.padding;
-                const Rect closeRect{.x = r.x + r.w - pad - 24, .y = r.y + pad, .w = 24, .h = 24};
-                cards_.at(idx).closeHovered = closeRect.contains(x, y);
-            } else {
-                cards_.at(idx).closeHovered = false;
-            }
-        }
+    for (const auto& box : layout_) {
+        if (box.index >= cards_.size()) { continue; }
+        cards_.at(box.index).hovered = box.chip.contains(x, y);
+        cards_.at(box.index).closeHovered =
+            cards_.at(box.index).hovered && box.dismiss.contains(x, y);
     }
 }
 
@@ -274,35 +361,32 @@ std::vector<Notification> demoNotifications() {
     return {
         Notification{.id = 1,
                      .postedAt = 0,
-                     .app = "Calendar",
-                     .title = "Team Standup",
-                     .body = "10:30 AM — Daily sync in Meeting Room B",
+                     .app = "Claude Code",
+                     .title = "Task active // running tests",
+                     .body = "",
                      .icon = "",
-                     .accent = theme::kDefaultState.colors.blue},
+                     .accent = theme::kDefaultState.colors.pink},
         Notification{.id = 2,
                      .postedAt = 0,
-                     .app = "Mail",
-                     .title = "New message from Priya",
-                     .body = "Re: Q3 roadmap — please review the attached draft",
+                     .app = "SSH Tokyo-01",
+                     .title = "Connected [42ms]",
+                     .body = "",
                      .icon = "",
-                     .accent = theme::kDefaultState.colors.green,
-                     .daemonId = 0,
-                     .urgency = 1,
-                     .sensitive = true},
+                     .accent = theme::kDefaultState.colors.green},
         Notification{.id = 3,
                      .postedAt = 0,
-                     .app = "System",
-                     .title = "Update available",
-                     .body = "Hyprland 0.41.0 can be installed",
+                     .app = "Calendar",
+                     .title = "Team standup 10:30",
+                     .body = "",
                      .icon = "",
-                     .accent = theme::kDefaultState.colors.mauve},
+                     .accent = theme::kDefaultState.colors.blue},
         Notification{.id = 4,
                      .postedAt = 0,
-                     .app = "Weather",
-                     .title = "Rain expected",
-                     .body = "Showers this afternoon, high of 18°C",
+                     .app = "Daemon",
+                     .title = "PID 4910 idle",
+                     .body = "",
                      .icon = "",
-                     .accent = theme::kDefaultState.colors.yellow},
+                     .accent = theme::kDefaultState.colors.textMuted},
     };
 }
 

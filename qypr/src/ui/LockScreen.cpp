@@ -13,7 +13,7 @@ LockScreen::LockScreen(EventLoop& loop, RenderHost& host, PamAuthenticator& pam,
       controller_(loop, host, pam, fp),
       power_(host, power, layout_),
       renderer_(controller_, layout_, power_),
-      input_(controller_, power_, renderer_.notifications(), host) {
+      input_(controller_, power_, renderer_.notifications(), renderer_.auth(), host) {
     controller_.setOnTick([this] {
         if (audio_ != nullptr) { audio_->refresh(); }
     });

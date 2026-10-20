@@ -345,7 +345,7 @@ void WifiBackend::publish() {
     fetch.networks = netResults_;
     WifiSnapshot next = reducePublished(fetch);
     if (ready_ && next == snap_) { return; }  // no change: skip repaint
-    snap_ = next;
+    snap_ = std::move(next);
     notifyReady();
 }
 
@@ -555,7 +555,7 @@ void WifiBackend::netStepAp(sd_bus_message* reply) {
     if (!ssid.empty()) {
         const bool secured =
             (flags & NetworkManagerClient::kApFlagPrivacy) != 0U || wpa != 0U || rsn != 0U;
-        const bool active = netAps_.at(static_cast<size_t>(netIndex_ - 1)) == netActiveAp_;
+        const bool active = netAps_.at(netIndex_ - 1) == netActiveAp_;
         netResults_ =
             mergeApReading(std::move(netResults_), {.ssid = ssid,
                                                     .strength = static_cast<int>(strength),

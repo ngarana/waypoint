@@ -22,10 +22,10 @@ struct TextStyle {
     double size = 16;
     PangoWeight weight = PANGO_WEIGHT_NORMAL;
     Color color = {1, 1, 1, 1};
-};
-
-struct Size {
-    double w = 0, h = 0;
+    // Extra tracking between glyphs, in pixels. 0 (the default) leaves the
+    // text untouched; wide tracking is how the lock screen's technical
+    // micro-labels read as a HUD instead of as prose.
+    double letterSpacing = 0.0;
 };
 
 class Painter {
@@ -65,6 +65,9 @@ public:
 
     // Full-cover vertical 3-stop gradient (the lock background).
     void verticalGradient(int w, int h, const Color& top, const Color& mid, const Color& bottom);
+    // Horizontal 2-stop gradient inside a rect: the fading hairline rules
+    // that separate the lock screen's typographic zones.
+    void horizontalGradient(const Rect& r, const Color& from, const Color& to);
 
     // Image
     void drawSurface(cairo_surface_t* surface, const Rect& dest);

@@ -2,46 +2,99 @@
 
 #include <algorithm>
 
-#include "ui/PasswordField.hpp"
-
 namespace qypr {
 
-LockLayout::Result LockLayout::compute(int width, int height, const Size& clockSize,
-                                       const Size& statusSize) const {
-    Result result;
-    result.centerX = width / 2.0;
+namespace {
+constexpr double kMaxAuthColumnWidth = 480.0;
+constexpr double kMinAuthColumnWidth = 260.0;
+constexpr double kMaxClockColumnWidth = 720.0;
+constexpr double kMinClockFontSize = 56.0;
+constexpr double kMaxClockFontSize = 208.0;
+}  // namespace
 
-    // Keep the auth stack clear of the chromeless status bar. The preferred
-    // position retains the established visual balance on normal displays,
-    // while the clamp prevents the clock from drifting under the bar on short
-    // laptop or portrait outputs.
-    const double topInset =
-        theme().statusbar.topMargin + theme().statusbar.height + theme().spacing.small;
-    const double bottomInset = theme().spacing.xlarge;
-    const double stackHeight = clockSize.h + theme().spacing.xlarge + PasswordField::kHeight +
-                               theme().spacing.small + statusSize.h;
-    const double preferredTop = height * 0.18;
-    const double latestTop =
-        std::max(topInset, static_cast<double>(height) - bottomInset - stackHeight);
-    result.clockTop = std::clamp(preferredTop, topInset, latestTop);
-
-    const double clockBottom = result.clockTop + clockSize.h;
-    result.columnWidth = centerColumnWidth(width);
-    const double passwordTop = clockBottom + theme().spacing.xlarge;
-    result.password = {.x = result.centerX - (result.columnWidth / 2.0),
-                       .y = passwordTop,
-                       .w = result.columnWidth,
-                       .h = PasswordField::kHeight};
-    result.statusTop = result.password.y + result.password.h + theme().spacing.small;
-    result.audioTop = result.statusTop + statusSize.h + theme().spacing.small;
-
-    return result;
+double LockLayout::clockFontSize(int width, int height) const {
+    const double byWidth = static_cast<double>(width) * 0.09;
+    const double byHeight = static_cast<double>(height) * 0.19;
+    return std::clamp(std::min(byWidth, byHeight), kMinClockFontSize, kMaxClockFontSize);
 }
 
-double LockLayout::centerColumnWidth(int width) const {
-    const double horizontalMargin = theme().spacing.large;
-    return std::max(
-        0.0, std::min(static_cast<double>(width) - (horizontalMargin * 2.0), kMaxColumnWidth));
+double LockLayout::authColumnWidth(int width) const {
+    const double byWidth = static_cast<double>(width) * 0.32;
+    return std::clamp(std::min(byWidth, kMaxAuthColumnWidth), kMinAuthColumnWidth,
+                      kMaxAuthColumnWidth);
+}
+
+double LockLayout::clockColumnWidth(int width) const {
+    // The clock column stops short of the auth column so the two never
+    // collide on narrow outputs.
+    const double margin = theme().spacing.xlarge;
+    const double columnRight = static_cast<double>(width) - margin - powerColumnReserve();
+    const double columnLeft = std::max(margin, columnRight - authColumnWidth(width));
+    const double available = std::max(margin, columnLeft - margin - theme().spacing.xlarge);
+    return std::min({static_cast<double>(width) * 0.45, kMaxClockColumnWidth, available});
+}
+
+double LockLayout::notificationZoneWidth(int width) const {
+    // The chip row shares the left column's width: it sits under the
+    // chronometer, and stops short of the authentication card.
+    return clockColumnWidth(width);
+}
+
+double LockLayout::notificationZoneHeight(int height) const {
+    // The notification chips are a footer band: one line of chips, plus one
+    // wrapped line for the narrowest outputs. The view never lays out more
+    // rows than this — overflow becomes a "+N" chip instead.
+    constexpr double kChipHeight = 26.0;
+    constexpr double kRowGap = 12.0;
+    constexpr int kMaxRows = 2;
+    const double zone = (kMaxRows * kChipHeight) + kRowGap;
+    // On short outputs the band may take more than the screen can spare.
+    return std::min(zone, static_cast<double>(height) * 0.12);
+}
+
+double LockLayout::powerColumnReserve() const {
+    return kButtonDiameter + (2 * kPillPad) + theme().spacing.medium;
+}
+
+LockLayout::Result LockLayout::compute(int width, int height, const Size& clockSize,
+                                       const Size& factsSize, const Size& authSize,
+                                       const Size& mediaSize) const {
+    Result result;
+    const double margin = theme().spacing.xlarge;
+    const double topInset =
+        theme().statusbar.topMargin + theme().statusbar.height + theme().spacing.small;
+
+    // Right-hand column: the auth card and the media card above it, kept
+    // clear of the power pill's column on the far right.
+    const double columnWidth = authColumnWidth(width);
+    const double columnRight = static_cast<double>(width) - margin - powerColumnReserve();
+    const double columnLeft = std::max(margin, columnRight - columnWidth);
+
+    // The content band: both columns share one baseline, the way the mock
+    // aligns its typographic lockup with the authentication block. The
+    // baseline sits above the notification cards' zone.
+    const double zoneTop = static_cast<double>(height) - margin - notificationZoneHeight(height);
+    const double baseline = zoneTop - theme().spacing.large;
+
+    result.auth = {columnLeft, baseline - authSize.h, columnWidth, authSize.h};
+    if (mediaSize.h > 0) {
+        result.media = {columnLeft, result.auth.y - theme().spacing.medium - mediaSize.h,
+                        columnWidth, mediaSize.h};
+    }
+
+    // Left-hand column: the chronometer lockup with the facts line under
+    // it, sharing the baseline with the auth card.
+    const double clockWidth = clockColumnWidth(width);
+    double factsTop = baseline - factsSize.h;
+    double clockTop = factsTop - theme().spacing.large - clockSize.h;
+    if (clockTop < topInset) {
+        clockTop = topInset;
+        factsTop = clockTop + clockSize.h + theme().spacing.large;
+    }
+
+    result.clock = {margin, clockTop, clockWidth, clockSize.h};
+    result.facts = {margin, factsTop, clockWidth, factsSize.h};
+    return result;
 }
 
 Rect LockLayout::powerRowRect(int width, int height) const {

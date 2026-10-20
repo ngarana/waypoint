@@ -54,6 +54,10 @@ public:
     bool unlocking() const { return unlocking_; }
     bool hasError() const { return hasError_; }
     size_t passwordLength() const { return password_.size(); }
+    // The PAM stack the password is checked against ("qypr-lock", "login").
+    // The auth card names it so the user can see which stack guards the
+    // session.
+    const std::string& pamService() const { return pam_.service(); }
     double reveal(int64_t now) const { return revealAnim_.value(now); }
     bool animating(int64_t now) const { return revealAnim_.active(now); }
     LockSnapshot snapshot(int64_t now) const;

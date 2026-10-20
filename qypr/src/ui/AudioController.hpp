@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/Types.hpp"
+#include "render/Painter.hpp"
 #include "ui/ActionButton.hpp"
 #include "ui/Theme.hpp"
 
@@ -19,6 +20,10 @@ public:
 
     bool active() const;
     void refresh();  // poll MPRIS (called from the 1s tick)
+
+    // Size of the panel. The lock layout places the card before drawing it,
+    // so the renderer can measure it without painting.
+    Size measure(Painter& p, double maxWidth) const;
 
     // Draw the panel centred on centerX with its top at topY.
     void draw(Painter& p, int64_t now, double centerX, double topY, double maxWidth);
@@ -36,6 +41,27 @@ public:
     bool animating(int64_t now) const;
 
 private:
+    // The panel's measured rows: everything the draw pass needs, computed
+    // once so measure() and draw() cannot drift apart.
+    struct Metrics {
+        double panelW = 0.0;
+        double panelH = 0.0;
+        double hSource = 0.0;
+        double hNow = 0.0;
+        double hTitle = 0.0;
+        double hSub = 0.0;
+        double hProgress = 0.0;
+        double hTransport = 0.0;
+        double hVolume = 0.0;
+        bool showVolume = false;
+        bool hasDuration = false;
+        std::string source;
+        std::string title;
+        std::string sub;
+    };
+
+    Metrics metrics(Painter& p, double maxWidth) const;
+
     MprisController& mpris_;
     ActionButton prev_, playPause_, next_;
     Rect volumeTrack_;

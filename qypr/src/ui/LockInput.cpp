@@ -4,6 +4,7 @@
 
 #include "core/Interfaces.hpp"
 #include "ui/AudioController.hpp"
+#include "ui/AuthPanel.hpp"
 #include "ui/LockController.hpp"
 #include "ui/Notification.hpp"
 #include "ui/PowerMenuController.hpp"
@@ -16,10 +17,11 @@ constexpr uint32_t kBtnLeft = 0x110;
 }
 
 LockInput::LockInput(LockController& controller, PowerMenuController& power,
-                     NotificationView& notifications, Invalidator& host)
+                     NotificationView& notifications, AuthPanel& auth, Invalidator& host)
     : controller_(controller),
       power_(power),
       notifications_(notifications),
+      auth_(auth),
       host_(host) {}
 
 void LockInput::handleTextInput(const std::string& utf8) {
@@ -71,6 +73,7 @@ void LockInput::handlePointerMotion(int width, int height, double x, double y) {
     controller_.wake();
     if (pointerDown_ && audio_ != nullptr) { audio_->handleDrag(x, y); }
     if (notifications_.active()) { notifications_.updateHover(x, y, nowMs()); }
+    auth_.setUnlockHovered(auth_.unlockHit(x, y));
     power_.handleMotion(x, y, nowMs());
     if (audio_ != nullptr && controller_.revealed() && audio_->active()) {
         audio_->updateHover(x, y, nowMs());
@@ -108,6 +111,13 @@ void LockInput::handlePointerButton(int width, int height, double x, double y, u
     }
     if (!wasRevealed) { return; }
 
+    // The auth card's inline unlock affordance.
+    if (auth_.unlockHit(x, y)) {
+        controller_.submitPassword();
+        host_.invalidate();
+        return;
+    }
+
     if (audio_ != nullptr && audio_->handlePress(x, y, nowMs())) {
         host_.invalidate();
         return;
@@ -120,6 +130,7 @@ void LockInput::handlePointerLeave() {
     power_.handleLeave(now);
     if (audio_ != nullptr) { audio_->clearHover(now); }
     notifications_.clearHover(now);
+    auth_.setUnlockHovered(false);
     host_.invalidate();
 }
 

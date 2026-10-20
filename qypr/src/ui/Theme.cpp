@@ -61,6 +61,7 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     state.colors.warning = Color::fromHex("#fab387");  // canonical: waylaunch peach (Stage 1.4)
 
     state.font.family = "Inter";
+    state.font.monoFamily = "JetBrains Mono";
     state.font.iconFamily = "CaskaydiaCove Nerd Font";
     state.font.size = 16;
     state.font.sizeLarge = 22;
@@ -145,6 +146,9 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
 
     // ─── Fonts ───────────────────────────────────────────────────────
     if (cfg.has(kS, "font-family")) { state.font.family = cfg.getString(kS, "font-family", ""); }
+    if (cfg.has(kS, "font-family-mono")) {
+        state.font.monoFamily = cfg.getString(kS, "font-family-mono", "");
+    }
     if (cfg.has(kS, "icon-family")) {
         state.font.iconFamily = cfg.getString(kS, "icon-family", "");
     }
@@ -290,7 +294,7 @@ AutoPalette AutoPalette::fromConfig(const Config& cfg, int hourNow) {
     return palette;
 }
 
-std::string AutoPalette::resolveFor(int hour, int sunriseHour, int sunsetHour) {
+std::string_view AutoPalette::resolveFor(int hour, int sunriseHour, int sunsetHour) {
     return (hour >= sunriseHour && hour < sunsetHour) ? "light" : "dark";
 }
 
@@ -322,7 +326,7 @@ int AutoPalette::effectiveSunsetHour() const {
 
 bool AutoPalette::tick(int hour) {
     if (mode != "auto") { return false; }
-    const std::string want = resolveFor(hour, effectiveSunriseHour(), effectiveSunsetHour());
+    const std::string want(resolveFor(hour, effectiveSunriseHour(), effectiveSunsetHour()));
     if (want == resolved) { return false; }
     resolved = want;
     std::fprintf(stderr, "qypr: theme: auto palette switched to %s\n", want.c_str());

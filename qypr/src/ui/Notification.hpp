@@ -47,17 +47,21 @@ class NotificationView : public theme::ThemeAware {
 public:
     using DismissHandler = std::function<void(const Notification&)>;
 
-    // Reconcile the visible set with `notes` by id: keep existing cards (no
+    // Reconcile the visible set with `notes` by id: keep existing chips (no
     // re-animation), fade in new ones, drop the rest.
     void update(std::vector<Notification> notes);
     bool active() const { return !cards_.empty(); }
+    // Number of cards currently shown (the facts line counts the alerts).
+    size_t count() const { return cards_.size(); }
     void setOnDismiss(DismissHandler handler) { onDismiss_ = std::move(handler); }
 
-    // Paint the stack so its bottom edge sits at `bottom`, left edge at `left`.
+    // Paint the chip row: the chips flow left to right from `left`, wrapping
+    // at `maxWidth`, and the whole block is bottom-anchored at `bottom` — the
+    // footer band of the lock screen.
     void draw(Painter& p, int64_t now, double left, double bottom, double maxWidth);
 
-    // Click a card to expand/collapse it; the close affordance dismisses it.
-    // Returns true if a card consumed the press.
+    // Click a chip to expand/collapse it; the close affordance dismisses it.
+    // Returns true if a chip consumed the press.
     bool handlePress(double x, double y, int64_t now);
     void updateHover(double x, double y, int64_t now);
     void clearHover(int64_t now);
@@ -73,11 +77,26 @@ private:
         bool expanded = false;
     };
 
-    // Per-card height at a given width (text may wrap to one line only).
-    static double cardHeight(const theme::State& theme, const Card& c, Painter& p, double w,
-                             int64_t now);
-    static void drawCard(const theme::State& theme, Card& c, Painter& p, int64_t now,
-                         const Rect& r);
+    // The chip's two lines: the identity line (dot, label, value) and the
+    // body line that only an expanded chip shows.
+    struct ChipText {
+        std::string label;
+        std::string value;
+        std::string body;
+        Size labelSize;
+        Size valueSize;
+        Size bodySize;
+    };
+
+    static std::string chipLabel(const Notification& note);
+    static std::string chipValue(const Notification& note);
+    static std::string chipBody(const Notification& note);
+
+    // Measure one chip at the current expansion.
+    ChipText chipText(const Card& c, Painter& p) const;
+    double chipWidth(const ChipText& text, double progress) const;
+    double chipHeight(const ChipText& text, double progress) const;
+    void drawChip(const Card& c, const ChipText& text, Painter& p, int64_t now, const Rect& r);
 
     std::vector<Card> cards_;
     // A local dismissal is held until the source removes the id. This closes
@@ -86,7 +105,12 @@ private:
     std::unordered_set<uint64_t> dismissedIds_;
     DismissHandler onDismiss_;
     // Hit-test cache rebuilt each draw (pointer handlers have no Painter).
-    std::vector<std::pair<size_t, Rect>> layout_;
+    struct HitBox {
+        size_t index = 0;
+        Rect chip;
+        Rect dismiss;
+    };
+    std::vector<HitBox> layout_;
 };
 
 // Sample cards for --preview renders only; the real lock screen shows live

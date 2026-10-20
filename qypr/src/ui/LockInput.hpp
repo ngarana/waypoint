@@ -8,6 +8,7 @@
 namespace qypr {
 
 class AudioController;
+class AuthPanel;
 class Invalidator;
 class LockController;
 class NotificationView;
@@ -19,7 +20,7 @@ class PowerMenuController;
 class LockInput {
 public:
     LockInput(LockController& controller, PowerMenuController& power,
-              NotificationView& notifications, Invalidator& host);
+              NotificationView& notifications, AuthPanel& auth, Invalidator& host);
 
     void setAudioController(AudioController* audio) { audio_ = audio; }
 
@@ -34,6 +35,7 @@ private:
     LockController& controller_;
     PowerMenuController& power_;
     NotificationView& notifications_;
+    AuthPanel& auth_;
     Invalidator& host_;
     AudioController* audio_ = nullptr;
     bool pointerDown_ = false;

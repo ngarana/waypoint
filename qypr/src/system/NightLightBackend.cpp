@@ -99,11 +99,9 @@ void fillRampForTemperature(uint16_t* dst, uint32_t size, uint32_t kelvin) {
 // Create an anonymous memfd the compositor can read via set_gamma(fd).
 int createGammaFd(const char* name, size_t len) {
     int fd = static_cast<int>(syscall(SYS_memfd_create, name, 0));
-    if (fd >= 0) {
-        if (ftruncate(fd, static_cast<off_t>(len)) < 0) {
-            close(fd);
-            return -1;
-        }
+    if (fd >= 0 && ftruncate(fd, static_cast<off_t>(len)) < 0) {
+        close(fd);
+        return -1;
     }
     return fd;
 }

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <string_view>
 #include <vector>
 
 #include "render/Painter.hpp"
@@ -55,7 +56,7 @@ const char* batteryThemedIcon(int percentage, bool charging, bool full) {
     return "battery-empty-symbolic";
 }
 
-std::string stateString(BatterySnapshot::State state) {
+std::string_view stateString(BatterySnapshot::State state) {
     switch (state) {
         case BatterySnapshot::Charging:
             return "Charging";
@@ -192,7 +193,7 @@ public:
             p.drawText(x, y, buf.data(), line);
             y += 20.0;
         }
-        p.drawText(x, y, "State: " + stateString(snap_->state), line);
+        p.drawText(x, y, "State: " + std::string(stateString(snap_->state)), line);
     }
 
     bool handleClick(double x, double y) override {
@@ -297,8 +298,8 @@ std::string BatteryIndicator::label() const {
 }
 
 std::string BatteryIndicator::tooltip() const {
-    std::string tip =
-        "Battery " + std::to_string(lastSnap_.percentage) + "% — " + stateString(lastSnap_.state);
+    std::string tip = "Battery " + std::to_string(lastSnap_.percentage) + "% — " +
+                      std::string(stateString(lastSnap_.state));
     return tip;
 }
 
@@ -330,7 +331,7 @@ std::unique_ptr<QSTile> BatteryIndicator::createTile() {
     return std::make_unique<QSInfoTile>(
         "Battery", icon(), [snap]() { return snap->percentage / 100.0; },
         [snap]() {
-            std::string info = stateString(snap->state);
+            std::string info(stateString(snap->state));
             if (snap->state == BatterySnapshot::Discharging && snap->timeToEmpty > 0) {
                 info += " — " + formatTime(snap->timeToEmpty) + " remaining";
             } else if (snap->state == BatterySnapshot::Charging && snap->timeToFull > 0) {

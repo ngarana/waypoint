@@ -1,4 +1,5 @@
 #include "video/VideoPlayer.hpp"
+#include <string_view>
 
 #include <cairo/cairo.h>
 
@@ -14,7 +15,7 @@ namespace {
 
 // The playlists live next to the binary's project root; entries are relative
 // to the playlist file, so we only need to locate the playlists directory.
-std::string resolvePlaylistDir() {
+std::string_view resolvePlaylistDir() {
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
     if (FILE* f = std::fopen("playlists/day.m3u", "r")) {
         // NOLINTNEXTLINE(cppcoreguidelines-owning-memory) // libc C boundary owns handle
@@ -83,7 +84,7 @@ bool VideoPlayer::init(const std::string& playlistDir) {
     mpv_set_wakeup_callback(mpv_, onWakeup, this);
     mpv_request_log_messages(mpv_, "error");
 
-    std::string dir = playlistDir.empty() ? resolvePlaylistDir() : playlistDir;
+    const std::string dir = playlistDir.empty() ? std::string(resolvePlaylistDir()) : playlistDir;
     std::string file = dir + "/" + playlistFile();
     std::fprintf(stderr, "qypr-lock: loading playlist %s\n", file.c_str());
     loadPlaylist(file);

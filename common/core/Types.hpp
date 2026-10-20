@@ -69,6 +69,12 @@ struct Rect {
     bool valid() const { return w > 0 && h > 0; }
 };
 
+// A measured extent (text, surface). It lives here, next to Rect, because
+// view headers need it without dragging in the pango-dependent Painter.
+struct Size {
+    double w = 0, h = 0;
+};
+
 // -----------------------------------------------------------------------------
 // Interpolation & easing
 // -----------------------------------------------------------------------------

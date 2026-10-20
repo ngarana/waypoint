@@ -263,10 +263,11 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/core/LockRuntime.cpp
     src/ui/AudioController.cpp
     src/ui/ActionButton.cpp
-    src/ui/PasswordField.cpp
+    src/ui/AuthPanel.cpp
     src/ui/Clock.cpp
     src/ui/ConfirmPopover.cpp
     src/ui/LockController.cpp
+    src/ui/LockFactsRow.cpp
     src/ui/LockInput.cpp
     src/ui/LockLayout.cpp
     src/ui/LockRenderer.cpp

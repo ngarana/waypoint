@@ -4,10 +4,11 @@
 
 #include <functional>
 
+#include "ui/AuthPanel.hpp"
 #include "ui/Clock.hpp"
+#include "ui/LockController.hpp"
+#include "ui/LockFactsRow.hpp"
 #include "ui/Notification.hpp"
-#include "ui/PasswordField.hpp"
-#include "ui/StatusMessage.hpp"
 #include "ui/Theme.hpp"
 
 namespace qypr {
@@ -27,18 +28,24 @@ public:
     void setNotificationDismissHandler(std::function<void(const Notification&)> handler);
 
     NotificationView& notifications() { return notifications_; }
+    // The auth card, so the input layer can hit-test its unlock affordance.
+    AuthPanel& auth() { return auth_; }
     void draw(cairo_t* cr, int width, int height, int scale);
     bool animating() const;
 
 private:
+    // The facts line under the clock: what the lock screen actually knows
+    // about the session it guards.
+    void updateFacts(const LockSnapshot& state);
+
     LockController& controller_;
     LockLayout& layout_;
     PowerMenuController& power_;
     AudioController* audio_ = nullptr;
 
     Clock clock_;
-    PasswordField passwordField_;
-    StatusMessage status_;
+    LockFactsRow facts_;
+    AuthPanel auth_;
     NotificationView notifications_;
 };
 
