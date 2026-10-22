@@ -14,3 +14,5 @@ src/search/search_manager.cpp
 # CONTENT_SEARCH.md: OOXML member paths inside office zip archives.
 word/document.xml
 xl/sharedStrings.xml
+# FINGERPRINT.md: SDDM's PAM backend (external project, not this repo).
+src/helper/backend/PamBackend.cpp
