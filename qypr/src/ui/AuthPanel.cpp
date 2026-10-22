@@ -21,19 +21,9 @@ TextStyle headerStyle(const theme::State& theme) {
             theme.colors.primary, 1.4};
 }
 
-TextStyle microStyle(const theme::State& theme) {
-    return {theme.font.family, static_cast<double>(theme.font.sizeMicro), PANGO_WEIGHT_MEDIUM,
-            theme.colors.textMuted, 1.6};
-}
-
 TextStyle nameStyle(const theme::State& theme) {
     return {theme.font.family, static_cast<double>(theme.font.sizeLarge), PANGO_WEIGHT_MEDIUM,
             theme.colors.text};
-}
-
-TextStyle subStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, static_cast<double>(theme.font.sizeSmall), PANGO_WEIGHT_NORMAL,
-            theme.colors.textMuted, 1.2};
 }
 
 TextStyle promptStyle(const theme::State& theme) {
@@ -56,18 +46,6 @@ TextStyle buttonStyle(const theme::State& theme, bool hovered) {
             hovered ? theme.colors.primary : theme.colors.textSubtle, 1.4};
 }
 
-TextStyle footerStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, static_cast<double>(theme.font.sizeMicro), PANGO_WEIGHT_NORMAL,
-            theme.colors.textMuted, 1.2};
-}
-
-std::string upper(std::string text) {
-    for (char& c : text) {
-        if (c >= 'a' && c <= 'z') { c = static_cast<char>(c - 'a' + 'A'); }
-    }
-    return text;
-}
-
 // The biometric tile's colour follows the fingerprint worker: the error
 // colour when the reader complained, the accent while it waits, muted when
 // there is no reader at all.
@@ -86,15 +64,12 @@ Size AuthPanel::measure(Painter& p, double width) const {
     const double innerW = width - (2 * pad);
 
     const Size header = p.measureText("[ AUTH // PASSWORD ]", headerStyle(t));
-    const Size operatorLabel = p.measureText("OPERATOR", microStyle(t));
-    const Size name = p.measureText(operatorId.empty() ? "—" : operatorId, nameStyle(t),
-                                    innerW - a.tileSize - t.spacing.large);
-    const Size subSize = p.measureText(node, subStyle(t), innerW);
+    const std::string identity = node.empty() ? "—" : node;
+    const Size name = p.measureText(identity, nameStyle(t), innerW - a.tileSize - t.spacing.large);
 
-    const double height = (2 * pad) + header.h + t.spacing.small + 1.0 + t.spacing.small +
-                          operatorLabel.h + a.lineGap + name.h + a.lineGap +
-                          (node.empty() ? 0.0 : subSize.h) + t.spacing.medium + a.inputHeight +
-                          t.spacing.small + footerStyle(t).size;
+    double height = (2 * pad) + header.h + t.spacing.small + 1.0 + t.spacing.small +
+                    std::max(name.h, a.tileSize) + t.spacing.medium + a.inputHeight;
+    if (!status.message.empty()) { height += t.spacing.small + status.measure(p).h; }
     return {width, height};
 }
 
@@ -106,15 +81,14 @@ void AuthPanel::draw(Painter& p, int64_t now) {
     const double innerW = bounds.w - (2 * pad);
     const double nameMaxW = innerW - a.tileSize - t.spacing.large;
 
-    // Card surface: the shared glass treatment (translucent fill, top
-    // sheen, hairline border), so the card reads like every other qypr
-    // surface instead of a foreign panel.
-    p.fillGlass(bounds, t.radius.large, t.colors.glass, t.colors.glassBorder,
-                t.style.mode == "solid");
+    // The auth block is an overlay, not a card: the chronometer and the
+    // player sit directly on the wallpaper, so this does too. A hairline
+    // groups the header, identity and field without adding a solid surface.
+    p.strokeRoundedRect(bounds, t.radius.large, t.colors.glassBorder.withAlpha(0.25), 1);
 
     double y = bounds.y + pad;
 
-    // Header: the auth request on the left, the session state on the right.
+    // Header: the auth request.
     const std::string header = "[ AUTH // PASSWORD ]";
     const Size headerSize = p.measureText(header, headerStyle(t));
     p.drawText(x0, y, header, headerStyle(t), HAlign::Left);
@@ -124,24 +98,14 @@ void AuthPanel::draw(Painter& p, int64_t now) {
                          t.colors.glassBorder.withAlpha(0.0));
     y += 1.0 + t.spacing.small;
 
-    // Operator identity, with the biometric tile on the right.
-    const double operatorTop = y;
-    const Size operatorLabel = p.measureText("OPERATOR", microStyle(t));
-    p.drawText(x0, y, "OPERATOR", microStyle(t), HAlign::Left);
-    y += operatorLabel.h + a.lineGap;
+    // Identity: the hostname alone, with the biometric tile on the right.
+    const double identityTop = y;
+    const std::string identity = node.empty() ? "—" : node;
+    const Size nameSize = p.measureText(identity, nameStyle(t), nameMaxW);
+    p.drawText(x0, identityTop + ((a.tileSize - nameSize.h) / 2.0), identity, nameStyle(t),
+               HAlign::Left, nameMaxW);
 
-    const std::string name = operatorId.empty() ? std::string("—") : operatorId;
-    const Size nameSize = p.measureText(name, nameStyle(t), nameMaxW);
-    p.drawText(x0, y, name, nameStyle(t), HAlign::Left, nameMaxW);
-    y += nameSize.h + a.lineGap;
-
-    if (!node.empty()) {
-        const Size subSize = p.measureText(node, subStyle(t), innerW);
-        p.drawText(x0, y, node, subStyle(t), HAlign::Left, innerW);
-        y += subSize.h;
-    }
-
-    const Rect tile{bounds.x + bounds.w - pad - a.tileSize, operatorTop, a.tileSize, a.tileSize};
+    const Rect tile{bounds.x + bounds.w - pad - a.tileSize, identityTop, a.tileSize, a.tileSize};
     const Color tileColor = biometricColor(t, fingerprintActive, fingerprintError);
     p.fillRoundedRect(tile, t.radius.medium, t.colors.surface.withAlpha(0.35));
     p.strokeRoundedRect(tile, t.radius.medium, tileColor, 1);
@@ -152,7 +116,7 @@ void AuthPanel::draw(Painter& p, int64_t now) {
     p.drawText(tile.cx() - (glyphSize.w / 2.0), tile.cy() - (glyphSize.h / 2.0), glyph, glyphStyle,
                HAlign::Left);
 
-    y += t.spacing.medium;
+    y += std::max(nameSize.h, a.tileSize) + t.spacing.medium;
 
     // Input field: a contained row with a prompt, the masked input, a
     // blinking cursor and the inline unlock affordance.
@@ -201,15 +165,9 @@ void AuthPanel::draw(Painter& p, int64_t now) {
     p.drawText(unlock_.cx() - (labelSize.w / 2.0), unlock_.cy() - (labelSize.h / 2.0), label,
                buttonStyle(t, unlockHovered_), HAlign::Left);
 
-    // Footer: the PAM stack in use, plus the status line.
-    const double footerY = inputBottom + t.spacing.small;
-    const std::string pam = "PAM " + (pamService.empty() ? std::string("login") : pamService);
-    const double footerMid = footerY + (footerStyle(t).size / 2.0);
-    p.fillCircle(x0 + a.footerDotRadius, footerMid, a.footerDotRadius, t.colors.textMuted);
-    p.drawText(x0 + a.footerTextGap, footerY, upper(pam), footerStyle(t), HAlign::Left);
-
+    // Status line: password errors only.
     if (!status.message.empty()) {
-        status.draw(p, bounds.x + bounds.w - pad, footerY, HAlign::Right);
+        status.draw(p, bounds.x + bounds.w - pad, inputBottom + t.spacing.small, HAlign::Right);
     }
 }
 

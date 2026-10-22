@@ -264,12 +264,9 @@ struct State {
             double buttonHeight = 32.0;
             double buttonWidth = 96.0;
             double fieldPadX = 12.0;
-            double lineGap = 2.0;
             double cursorWidth = 2.0;
             double cursorHeight = 16.0;
             double cursorGap = 4.0;
-            double footerDotRadius = 3.0;
-            double footerTextGap = 12.0;
         };
         struct Confirm {
             double cardW = 260.0;

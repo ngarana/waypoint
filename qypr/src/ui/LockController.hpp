@@ -28,7 +28,6 @@ struct LockSnapshot {
     std::string statusMessage;
     double reveal = 0.0;
     FingerprintState fingerprint = FingerprintState::Disabled;
-    std::string fingerprintMessage;
 };
 
 // Owns the lock policy and authentication state. It deliberately exposes no
@@ -115,7 +114,6 @@ private:
     std::string statusMessage_;
     bool hasError_ = false;
     FingerprintState fingerprint_ = FingerprintState::Disabled;
-    std::string fingerprintMessage_;
     bool fingerprintError_ = false;
     Animated revealAnim_{0};
 };

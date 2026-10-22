@@ -150,7 +150,7 @@ TEST(AuthPanelUnlockAffordanceSubmits) {
 }
 
 // The lock screen draws its whole composition at every supported size: the
-// chronometer lockup, the facts line and the auth card.
+// chronometer lockup and the auth card.
 TEST(LockScreenComposesAtEverySize) {
     qypr::EventLoop loop;
     struct SpyHost : qypr::RenderHost {
@@ -170,7 +170,6 @@ TEST(LockScreenComposesAtEverySize) {
         const auto& renderer = screen.renderer_;
         EXPECT_TRUE(renderer.clock_.bounds.w > 0);
         EXPECT_TRUE(renderer.clock_.bounds.h > 0);
-        EXPECT_TRUE(renderer.facts_.bounds.h > 0);
         EXPECT_TRUE(renderer.auth_.bounds.w > 0);
         // The clock column stays inside the output.
         EXPECT_TRUE(renderer.clock_.bounds.x + renderer.clock_.bounds.w <= width);
@@ -182,8 +181,9 @@ TEST(LockScreenComposesAtEverySize) {
     }
 }
 
-// The facts line reports the session's real state, not decoration.
-TEST(LockFactsRowReportsSessionState) {
+// The facts line stays empty: the fingerprint state lives on the auth tile
+// and the PAM stack is no longer repeated as text.
+TEST(LockFactsRowIsEmpty) {
     qypr::EventLoop loop;
     struct SpyHost : qypr::RenderHost {
         void invalidate() override {}
@@ -197,12 +197,7 @@ TEST(LockFactsRowReportsSessionState) {
     cairo_t* cr = cairo_create(surf);
     screen.draw(cr, 1920, 1080, 1);
 
-    const auto& items = screen.renderer_.facts_.items;
-    EXPECT_TRUE(!items.empty());
-    EXPECT_EQ(items.at(0).label, std::string("FINGERPRINT"));
-    // The PAM stack is shown once, in the auth card's footer, not duplicated
-    // in the facts line.
-    EXPECT_TRUE(items.size() == 1);
+    EXPECT_TRUE(screen.renderer_.facts_.items.empty());
 
     cairo_destroy(cr);
     cairo_surface_destroy(surf);

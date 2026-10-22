@@ -67,7 +67,6 @@ LockSnapshot LockController::snapshot(int64_t now) const {
         .statusMessage = statusMessage_,
         .reveal = clamp01(revealAnim_.value(now)),
         .fingerprint = fingerprint_,
-        .fingerprintMessage = fingerprintMessage_,
     };
 }
 
@@ -136,7 +135,6 @@ void LockController::startFingerprint() {
     if (fp_ == nullptr || !fingerprintEnabled_) { return; }
     if (fp_->running()) { return; }
     fingerprint_ = FingerprintState::Waiting;
-    fingerprintMessage_.clear();
     fingerprintError_ = false;
     fp_->start(
         [this](FingerprintAuthenticator::Result result, const std::string& message) {
@@ -149,7 +147,6 @@ void LockController::stopFingerprint() {
     if (fp_ != nullptr) { fp_->stop(); }
     if (fingerprint_ != FingerprintState::Disabled) {
         fingerprint_ = FingerprintState::Disabled;
-        fingerprintMessage_.clear();
         fingerprintError_ = false;
     }
 }
@@ -172,7 +169,6 @@ void LockController::onFingerprintResult(FingerprintAuthenticator::Result result
             break;
         case FingerprintAuthenticator::Result::Unavailable:
             fingerprint_ = FingerprintState::Disabled;
-            fingerprintMessage_.clear();
             fingerprintError_ = false;
             // Only clear the status line if it was showing the finger prompt;
             // a password error or "Authenticating..." takes precedence.
@@ -186,17 +182,13 @@ void LockController::onFingerprintResult(FingerprintAuthenticator::Result result
     host_.invalidate();
 }
 
-void LockController::onFingerprintInfo(const std::string& message, bool isError) {
+void LockController::onFingerprintInfo(const std::string& /*message*/, bool isError) {
     if (fingerprint_ == FingerprintState::Disabled) { return; }
     fingerprint_ = FingerprintState::Prompting;
-    fingerprintMessage_ = message;
     fingerprintError_ = isError;
-    // The finger prompt is a hint, not an override: while the user is typing
-    // or a password attempt is in flight, keep the password status.
-    if (!pam_.busy() && password_.empty() && !unlocking_) {
-        statusMessage_ = message;
-        hasError_ = isError;
-    }
+    // The reader's "place your finger" chatter is not surfaced: the tile
+    // already shows the fingerprint state, and the card's status line is
+    // reserved for password errors.
     host_.invalidate();
 }
 

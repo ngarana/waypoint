@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -18,24 +17,12 @@ namespace qypr {
 
 namespace {
 
-// Who is locked out, and on which node. Resolved once: the values cannot
+// The node name is the only identity the card shows. Resolved once: it cannot
 // change while the session is locked, and the lock screen redraws often.
-std::string resolveOperatorId() {
-    const char* user = std::getenv("USER");
-    if (user == nullptr || *user == '\0') { user = std::getenv("LOGNAME"); }
-    if (user == nullptr || *user == '\0') { return "operator"; }
-    return user;
-}
-
 std::string resolveNode() {
     std::array<char, 64> buffer{};
     if (::gethostname(buffer.data(), buffer.size() - 1) != 0) { return {}; }
     return buffer.data();
-}
-
-const std::string& operatorId() {
-    static const std::string id = resolveOperatorId();
-    return id;
 }
 
 const std::string& nodeName() {
@@ -68,23 +55,6 @@ void LockRenderer::setTheme(const theme::State& state) {
     if (audio_ != nullptr) { audio_->setTheme(state); }
 }
 
-void LockRenderer::updateFacts(const LockSnapshot& state) {
-    facts_.items.clear();
-
-    // The fingerprint worker's state: the user needs to know whether a
-    // finger is still being waited for.
-    const char* fingerprint = "OFF";
-    Color dot = theme().colors.textMuted;
-    if (state.fingerprint == FingerprintState::Waiting) {
-        fingerprint = "READY";
-        dot = theme().colors.primary;
-    } else if (state.fingerprint == FingerprintState::Prompting) {
-        fingerprint = "PROMPTING";
-        dot = theme().colors.warning;
-    }
-    facts_.items.push_back({.label = "FINGERPRINT", .value = fingerprint, .dot = dot});
-}
-
 void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     Painter p(cr);
     const int64_t now = nowMs();
@@ -94,10 +64,6 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     // baseline the layout scales from.
     clock_.fontSize = layout_.clockFontSize(width, height);
     clock_.maxWidth = layout_.clockColumnWidth(width);
-
-    // The facts line is filled before the layout measures it, so the row
-    // never pops in one frame after the lock screen appears.
-    updateFacts(state);
 
     const double columnWidth = layout_.authColumnWidth(width);
     const Size clockSize = clock_.measure(p);
@@ -112,9 +78,7 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     facts_.bounds = geometry.facts;
 
     auth_.bounds = geometry.auth;
-    auth_.operatorId = operatorId();
     auth_.node = nodeName();
-    auth_.pamService = controller_.pamService();
     auth_.charCount = static_cast<int>(controller_.passwordLength());
     auth_.fingerprintActive = state.fingerprint == FingerprintState::Waiting ||
                               state.fingerprint == FingerprintState::Prompting;

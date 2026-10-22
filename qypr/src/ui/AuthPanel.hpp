@@ -22,12 +22,8 @@ class Painter;
 
 class AuthPanel : public Widget {
 public:
-    // Identity shown in the card.
-    std::string operatorId;
+    // The hostname is the only identity shown in the card.
     std::string node;
-
-    // The PAM stack the password is checked against ("qypr-lock", "login").
-    std::string pamService;
 
     // Biometric state: the tile mirrors the fingerprint worker.
     bool fingerprintActive = false;

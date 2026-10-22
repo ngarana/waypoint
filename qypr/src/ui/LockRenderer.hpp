@@ -36,7 +36,6 @@ public:
 private:
     // The facts line under the clock: what the lock screen actually knows
     // about the session it guards.
-    void updateFacts(const LockSnapshot& state);
 
     LockController& controller_;
     LockLayout& layout_;
