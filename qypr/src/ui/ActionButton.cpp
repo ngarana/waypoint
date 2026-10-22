@@ -43,11 +43,13 @@ void ActionButton::draw(Painter& p, int64_t now) {
 
     // Tooltip above the button while hovered.
     if (hovered_ && !label.empty()) {
-        TextStyle ts{theme().font.family, 12, PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
+        TextStyle ts{theme().font.family, static_cast<double>(theme().font.sizeMeta),
+                     PANGO_WEIGHT_NORMAL, theme().colors.textSubtle};
         Size ls = p.measureText(label, ts);
         double padW = theme().spacing.medium;
         double padH = theme().spacing.small;
-        Rect tip{cx - (ls.w + padW) / 2.0, bounds.y - (ls.h + padH) - 8, ls.w + padW, ls.h + padH};
+        Rect tip{cx - (ls.w + padW) / 2.0, bounds.y - (ls.h + padH) - theme().lock.tooltip.gap,
+                 ls.w + padW, ls.h + padH};
         p.fillRoundedRect(tip, theme().radius.medium, theme().colors.glass);
         p.strokeRoundedRect(tip, theme().radius.medium, theme().colors.glassBorder, 1);
         p.drawText(tip.cx(), tip.cy() - ls.h / 2.0, label, ts, HAlign::Center);

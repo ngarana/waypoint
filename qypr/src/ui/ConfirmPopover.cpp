@@ -18,34 +18,35 @@ namespace qypr {
 // We clamp so it never goes above the top of the screen.
 namespace {
 
-Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h) {
-    constexpr double kCardW = ConfirmPopover::kCardW;
-    constexpr double kCardH = ConfirmPopover::kCardH;
-    constexpr double kGap = 10.0;  // gap between card right edge and pill left edge
-    double x = anchoredX - kCardW - kGap;
-    double y = anchoredY - kCardH / 2.0;
+Rect makeCardRect(double anchoredX, double anchoredY, int /*w*/, int h, const theme::State& theme) {
+    const auto& c = theme.lock.confirm;
+    double x = anchoredX - c.cardW - c.anchorGap;
+    double y = anchoredY - c.cardH / 2.0;
     // Keep card on screen vertically.
-    y = std::max(y, 8.0);
-    if (y + kCardH > h - 8.0) y = h - 8.0 - kCardH;
-    return {x, y, kCardW, kCardH};
+    y = std::max(y, c.edgeInset);
+    if (y + c.cardH > h - c.edgeInset) y = h - c.edgeInset - c.cardH;
+    return {x, y, c.cardW, c.cardH};
 }
 
 }  // namespace
 
 Rect ConfirmPopover::cancelBtnRect(const Rect& card) const {
-    const double btnW = (card.w - kPad * 2.0 - 8.0) / 2.0;
-    return {card.x + kPad, card.y + card.h - kPad - kBtnH, btnW, kBtnH};
+    const auto& c = theme().lock.confirm;
+    const double btnW = (card.w - (c.pad * 2.0) - c.buttonGap) / 2.0;
+    return {card.x + c.pad, card.y + card.h - c.pad - c.buttonHeight, btnW, c.buttonHeight};
 }
 
 Rect ConfirmPopover::confirmBtnRect(const Rect& card) const {
-    Rect c = cancelBtnRect(card);
-    return {c.x + c.w + 8.0, c.y, c.w, kBtnH};
+    const auto& c = theme().lock.confirm;
+    Rect cancel = cancelBtnRect(card);
+    return {cancel.x + cancel.w + c.buttonGap, cancel.y, cancel.w, c.buttonHeight};
 }
 
 Rect ConfirmPopover::barRect(const Rect& card) const {
     // Bar sits just above the button row.
-    Rect c = cancelBtnRect(card);
-    return {card.x + kPad, c.y - kBarH - 6.0, card.w - kPad * 2.0, kBarH};
+    const auto& c = theme().lock.confirm;
+    Rect cancel = cancelBtnRect(card);
+    return {card.x + c.pad, cancel.y - c.barHeight - c.barGap, card.w - (c.pad * 2.0), c.barHeight};
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,8 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
     p.pushGroup();
 
     // ── Card ─────────────────────────────────────────────────────────────
-    Rect card = makeCardRect(anchoredX_, anchoredY_, w, h);
+    const auto& c = theme().lock.confirm;
+    Rect card = makeCardRect(anchoredX_, anchoredY_, w, h, theme());
     cardBounds_ = card;
 
     // Glass card — no backdrop scrim, floats above the lock screen.
@@ -165,15 +167,17 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
 
     // ── Header: icon + title on one line ─────────────────────────────────
     {
-        const double lineY = card.y + kPad;
-        const double iconSz = 15.0;
+        const double lineY = card.y + c.pad;
+        const auto iconSz = static_cast<double>(theme().font.size);
         TextStyle is{theme().font.iconFamily, iconSz, PANGO_WEIGHT_NORMAL, theme().colors.primary};
         Size iconSzM = p.measureText(icon_, is);
-        p.drawText(card.x + kPad, lineY, icon_, is, HAlign::Left);
+        p.drawText(card.x + c.pad, lineY, icon_, is, HAlign::Left);
 
-        TextStyle ts{theme().font.family, 13.0, PANGO_WEIGHT_SEMIBOLD, theme().colors.text};
-        double titleX = card.x + kPad + iconSzM.w + 7.0;
-        p.drawText(titleX, lineY, title_, ts, HAlign::Left, card.w - kPad * 2.0 - iconSzM.w - 7.0);
+        TextStyle ts{theme().font.family, static_cast<double>(theme().font.sizeBody),
+                     PANGO_WEIGHT_SEMIBOLD, theme().colors.text};
+        double titleX = card.x + c.pad + iconSzM.w + c.titleGap;
+        p.drawText(titleX, lineY, title_, ts, HAlign::Left,
+                   card.w - (c.pad * 2.0) - iconSzM.w - c.titleGap);
     }
 
     // ── Countdown bar ────────────────────────────────────────────────────
@@ -216,7 +220,8 @@ void ConfirmPopover::draw(Painter& p, int w, int h, int64_t now) {
         p.fillRoundedRect(sr, theme().radius.medium, bg);
         p.strokeRoundedRect(sr, theme().radius.medium, border, 1.0);
 
-        TextStyle ls{theme().font.family, 12.0, PANGO_WEIGHT_SEMIBOLD, fg};
+        TextStyle ls{theme().font.family, static_cast<double>(theme().font.sizeMeta),
+                     PANGO_WEIGHT_SEMIBOLD, fg};
         Size lsz = p.measureText(label, ls);
         p.drawText(sr.cx() - lsz.w / 2.0, sr.cy() - lsz.h / 2.0, label, ls, HAlign::Left);
     };

@@ -126,7 +126,7 @@ public:
     virtual std::string tooltip() const = 0;
     virtual Color iconColor() const;
     // Point size of the label text; text-only indicators bump this up.
-    virtual double labelFontSize() const { return 13.0; }
+    virtual double labelFontSize() const { return static_cast<double>(theme().font.sizeBody); }
 
     // Measure indicator width based on current icon/label/etc.
     virtual double measureWidth(Painter& p);

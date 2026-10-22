@@ -65,7 +65,6 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     state.font.iconFamily = "CaskaydiaCove Nerd Font";
     state.font.size = 16;
     state.font.sizeLarge = 22;
-    state.font.sizeClock = 96;
     state.font.sizeDate = 18;
 
     // Menu-bar backdrop resets to compiled-in alpha/enabled defaults; the tint
@@ -154,8 +153,13 @@ State loadThemeState(const Config& cfg, const AutoPalette& palette) {
     }
     overrideInt(state.font.size, cfg, kS, "font-size");
     overrideInt(state.font.sizeLarge, cfg, kS, "font-size-large");
-    overrideInt(state.font.sizeClock, cfg, kS, "font-size-clock");
     overrideInt(state.font.sizeDate, cfg, kS, "font-size-date");
+    overrideInt(state.font.sizeMicro, cfg, kS, "font-size-micro");
+    overrideInt(state.font.sizeSmall, cfg, kS, "font-size-small");
+    overrideInt(state.font.sizeMeta, cfg, kS, "font-size-meta");
+    overrideInt(state.font.sizeBody, cfg, kS, "font-size-body");
+    overrideInt(state.font.sizeTitle, cfg, kS, "font-size-title");
+    overrideInt(state.font.sizeIcon, cfg, kS, "font-size-icon");
 
     // ─── Spacing ─────────────────────────────────────────────────────
     overrideInt(state.spacing.small, cfg, kS, "spacing-small");

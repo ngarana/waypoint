@@ -12,22 +12,16 @@ namespace qypr {
 
 namespace {
 
-// The lockup's typographic scale, in points. The oversized time is the only
-// size the layout drives; the rest follow the theme's spacing scale.
-constexpr double kIndexSize = 12.0;
-constexpr double kDateSize = 12.0;
-constexpr double kStackSize = 12.0;
-constexpr double kStackLabelSize = 10.0;
-constexpr double kSecondsSize = 11.0;
-constexpr double kSlashRatio = 0.42;  // slash size relative to the time size
-constexpr double kRuleWidth = 560.0;  // the hairline never runs the full column
-
+// The oversized time is the only size the layout drives; the rest follow the
+// theme's type scale and tracking.
 TextStyle indexStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, kIndexSize, PANGO_WEIGHT_BOLD, theme.colors.primary, 1.6};
+    return {theme.font.monoFamily, static_cast<double>(theme.font.sizeDate), PANGO_WEIGHT_BOLD,
+            theme.colors.primary, theme.lock.clock.indexTracking};
 }
 
 TextStyle dateStyle(const theme::State& theme) {
-    return {theme.font.family, kDateSize, PANGO_WEIGHT_MEDIUM, theme.colors.textSubtle, 1.8};
+    return {theme.font.family, static_cast<double>(theme.font.sizeDate), PANGO_WEIGHT_MEDIUM,
+            theme.colors.textSubtle, theme.lock.clock.dateTracking};
 }
 
 TextStyle timeStyle(const theme::State& theme, double size) {
@@ -35,19 +29,23 @@ TextStyle timeStyle(const theme::State& theme, double size) {
 }
 
 TextStyle slashStyle(const theme::State& theme, double size) {
-    return {theme.font.monoFamily, size * kSlashRatio, PANGO_WEIGHT_LIGHT, theme.colors.primary};
+    return {theme.font.monoFamily, size * theme.lock.clock.slashRatio, PANGO_WEIGHT_LIGHT,
+            theme.colors.primary};
 }
 
 TextStyle zoneStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, kStackSize, PANGO_WEIGHT_BOLD, theme.colors.primary, 1.2};
+    return {theme.font.monoFamily, static_cast<double>(theme.font.sizeMeta), PANGO_WEIGHT_BOLD,
+            theme.colors.primary, theme.lock.clock.stackTracking};
 }
 
 TextStyle zoneLabelStyle(const theme::State& theme) {
-    return {theme.font.family, kStackLabelSize, PANGO_WEIGHT_MEDIUM, theme.colors.textMuted, 1.6};
+    return {theme.font.family, static_cast<double>(theme.font.sizeMicro), PANGO_WEIGHT_MEDIUM,
+            theme.colors.textMuted, theme.lock.clock.labelTracking};
 }
 
 TextStyle secondsStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, kSecondsSize, PANGO_WEIGHT_NORMAL, theme.colors.textSubtle, 1.0};
+    return {theme.font.monoFamily, static_cast<double>(theme.font.sizeSmall), PANGO_WEIGHT_NORMAL,
+            theme.colors.textSubtle, theme.lock.clock.secondsTracking};
 }
 
 std::string formatNow(const char* fmt) {
@@ -91,7 +89,7 @@ std::string Clock::secondsString() {
 Clock::Metrics Clock::metrics(Painter& p) const {
     const theme::State& t = theme();
     Metrics m;
-    m.index = p.measureText("// 01", indexStyle(t));
+    m.index = p.measureText("//", indexStyle(t));
     m.date = p.measureText(dateString(), dateStyle(t));
     m.hours = p.measureText(formatNow("%H"), timeStyle(t, fontSize));
     m.minutes = p.measureText(formatNow("%M"), timeStyle(t, fontSize));
@@ -133,15 +131,14 @@ void Clock::draw(Painter& p, int64_t /*now*/) {
     double y = bounds.y;
 
     // Index + date line: the block's only "caption" row.
-    p.drawTextShadowed(bounds.x, y, "// 01", indexStyle(t), HAlign::Left, shadowAlpha,
-                       shadowOffset);
+    p.drawTextShadowed(bounds.x, y, "//", indexStyle(t), HAlign::Left, shadowAlpha, shadowOffset);
     p.drawTextShadowed(bounds.x + m.index.w + gap, y, dateString(), dateStyle(t), HAlign::Left,
                        shadowAlpha, shadowOffset);
     y += m.index.h + t.spacing.small;
 
     // Fading hairline: the architectural divider of the mock, drawn as a
     // gradient so it dissolves instead of cutting the column in two.
-    const double ruleW = std::min(bounds.w, kRuleWidth);
+    const double ruleW = std::min(bounds.w, t.lock.clock.ruleWidth);
     p.horizontalGradient({bounds.x, y, ruleW, 1.0}, t.colors.primary.withAlpha(0.55),
                          t.colors.primary.withAlpha(0.0));
     y += 1.0 + t.spacing.medium;

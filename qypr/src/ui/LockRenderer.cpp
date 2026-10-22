@@ -83,18 +83,6 @@ void LockRenderer::updateFacts(const LockSnapshot& state) {
         dot = theme().colors.warning;
     }
     facts_.items.push_back({.label = "FINGERPRINT", .value = fingerprint, .dot = dot});
-
-    // The PAM stack that guards the session.
-    facts_.items.push_back({.label = "PAM",
-                            .value = controller_.pamService(),
-                            .dot = theme().colors.textMuted.withAlpha(0.6)});
-
-    // Pending notifications.
-    const size_t alerts = notifications_.count();
-    if (alerts > 0) {
-        facts_.items.push_back(
-            {.label = "ALERTS", .value = std::to_string(alerts), .dot = theme().colors.warning});
-    }
 }
 
 void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
@@ -116,10 +104,9 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     const Size factsSize = facts_.measure(p);
     const Size authSize = auth_.measure(p, columnWidth);
     const bool hasMedia = audio_ != nullptr && audio_->active();
-    const Size mediaSize = hasMedia ? audio_->measure(p, columnWidth) : Size{0, 0};
 
     const LockLayout::Result geometry =
-        layout_.compute(width, height, clockSize, factsSize, authSize, mediaSize);
+        layout_.compute(width, height, clockSize, factsSize, authSize, hasMedia);
 
     clock_.bounds = geometry.clock;
     facts_.bounds = geometry.facts;
@@ -127,7 +114,6 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     auth_.bounds = geometry.auth;
     auth_.operatorId = operatorId();
     auth_.node = nodeName();
-    auth_.sessionLabel = "LOCAL SESSION";
     auth_.pamService = controller_.pamService();
     auth_.charCount = static_cast<int>(controller_.passwordLength());
     auth_.fingerprintActive = state.fingerprint == FingerprintState::Waiting ||
@@ -137,7 +123,7 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
     auth_.status.compact = true;
 
     // The clock and its facts line are always visible; the auth card and
-    // the media card fade in with the reveal, so an idle screen shows no
+    // the media strip fade in with the reveal, so an idle screen shows no
     // input affordance at all.
     clock_.draw(p, now);
     facts_.draw(p, now);
@@ -155,9 +141,7 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
 
     withAlpha(state.reveal, [&] { auth_.draw(p, now); });
     if (hasMedia) {
-        withAlpha(state.reveal, [&] {
-            audio_->draw(p, now, geometry.media.cx(), geometry.media.y, columnWidth);
-        });
+        withAlpha(state.reveal, [&] { audio_->draw(p, now, geometry.media); });
     }
 
     power_.layout(width, height);
@@ -165,7 +149,7 @@ void LockRenderer::draw(cairo_t* cr, int width, int height, int /*scale*/) {
 
     // The notification chips form the footer band at the bottom-left, under
     // the chronometer column.
-    const double left = theme().spacing.xlarge;
+    const double left = layout_.contentMargin();
     const double bottom = height - theme().spacing.xlarge;
     notifications_.draw(p, now, left, bottom, layout_.notificationZoneWidth(width));
 }

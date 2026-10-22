@@ -121,7 +121,7 @@ LayoutResult computeStatusBarLayout(const LayoutRequest& req) {
 
     r.contentBounds = r.bounds;
     const double innerW = req.screenW - (2 * side);
-    if (contentW > 0 && contentW < static_cast<int>(innerW)) {
+    if (req.centerContent && contentW > 0 && contentW < static_cast<int>(innerW)) {
         const double offset = (innerW - contentW) / 2.0;
         r.contentBounds = {
             .x = r.bounds.x + offset, .y = y, .w = static_cast<double>(contentW), .h = barH};

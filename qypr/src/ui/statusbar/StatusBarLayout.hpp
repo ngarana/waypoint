@@ -35,6 +35,9 @@ struct LayoutRequest {
     double spacing = 0.0;  // theme().statusbar.iconSpacing
     int screenW = 0;
     int screenH = 0;
+    // Center the visible content inside the strip. The standalone bar wants
+    // that; the lock screen anchors its remaining indicators to the edges.
+    bool centerContent = true;
     std::vector<LayoutItem> left;
     std::vector<LayoutItem> center;
     std::vector<LayoutItem> right;

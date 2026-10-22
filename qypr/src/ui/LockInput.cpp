@@ -71,7 +71,6 @@ void LockInput::handlePointerMotion(int width, int height, double x, double y) {
     }
 
     controller_.wake();
-    if (pointerDown_ && audio_ != nullptr) { audio_->handleDrag(x, y); }
     if (notifications_.active()) { notifications_.updateHover(x, y, nowMs()); }
     auth_.setUnlockHovered(auth_.unlockHit(x, y));
     power_.handleMotion(x, y, nowMs());
@@ -88,18 +87,13 @@ void LockInput::handlePointerButton(int width, int height, double x, double y, u
     if (button != kBtnLeft) { return; }
     power_.layout(width, height);
 
-    if (!pressed) {
-        pointerDown_ = false;
-        if (audio_ != nullptr) { audio_->handleRelease(); }
-        return;
-    }
+    if (!pressed) { return; }
 
     if (power_.modalActive()) {
         power_.handleModalPress(x, y, nowMs());
         return;
     }
 
-    pointerDown_ = true;
     const bool wasRevealed = controller_.revealed();
     controller_.wake();
 

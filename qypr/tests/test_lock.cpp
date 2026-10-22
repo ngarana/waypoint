@@ -198,12 +198,11 @@ TEST(LockFactsRowReportsSessionState) {
     screen.draw(cr, 1920, 1080, 1);
 
     const auto& items = screen.renderer_.facts_.items;
-    EXPECT_TRUE(items.size() >= 2);
+    EXPECT_TRUE(!items.empty());
     EXPECT_EQ(items.at(0).label, std::string("FINGERPRINT"));
-    EXPECT_EQ(items.at(1).label, std::string("PAM"));
-    // The PAM stack is whatever the authenticator guards the session with.
-    EXPECT_EQ(items.at(1).value, screen.controller_.pamService());
-    EXPECT_TRUE(!items.at(1).value.empty());
+    // The PAM stack is shown once, in the auth card's footer, not duplicated
+    // in the facts line.
+    EXPECT_TRUE(items.size() == 1);
 
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
@@ -211,14 +210,13 @@ TEST(LockFactsRowReportsSessionState) {
 
 TEST(LockLayoutGeometryMultipleSizes) {
     const qypr::LockLayout layout;
-    const qypr::Size clock{.w = 300.0, .h = 100.0};
+    const qypr::Size clock{.w = 300.0, .h = 260.0};
     const qypr::Size facts{.w = 200.0, .h = 14.0};
     const qypr::Size auth{.w = 420.0, .h = 210.0};
-    const qypr::Size media{.w = 420.0, .h = 260.0};
 
     for (const auto [width, height] :
          {std::pair{800, 600}, std::pair{1920, 1080}, std::pair{3440, 1440}}) {
-        const auto result = layout.compute(width, height, clock, facts, auth, media);
+        const auto result = layout.compute(width, height, clock, facts, auth, true);
         const auto row = layout.powerRowRect(width, height);
         const auto anchor = layout.powerAnchorRect(width, height);
 
@@ -226,20 +224,29 @@ TEST(LockLayoutGeometryMultipleSizes) {
         EXPECT_NEAR(row.y + row.h, height - layout.theme().spacing.xlarge, 0.001);
         EXPECT_TRUE(anchor.y > row.y);
 
-        // The auth card owns the right column.
+        // The lock's text aligns with the status bar's label inset.
+        EXPECT_NEAR(result.clock.x, layout.contentMargin(), 0.001);
+        EXPECT_NEAR(result.facts.x, layout.contentMargin(), 0.001);
+
+        // The auth card owns the right column and is bottom-anchored to the
+        // content baseline.
         EXPECT_NEAR(result.auth.w, layout.authColumnWidth(width), 0.001);
         EXPECT_TRUE(result.auth.x + result.auth.w <= width - layout.theme().spacing.xlarge);
-
-        // The media card sits directly above the auth card.
-        EXPECT_NEAR(result.media.y + result.media.h + layout.theme().spacing.medium, result.auth.y,
-                    0.001);
-        EXPECT_NEAR(result.media.x, result.auth.x, 0.001);
-
-        // Both columns share one baseline, above the notification cards.
         const double baseline = result.facts.y + result.facts.h;
-        EXPECT_NEAR(baseline, result.auth.y + result.auth.h, 0.001);
+        EXPECT_NEAR(result.auth.y + result.auth.h, baseline, 0.001);
         EXPECT_TRUE(baseline <=
                     height - layout.theme().spacing.xlarge - layout.notificationZoneHeight(height));
+
+        // The player is a footer strip sharing the auth column's edges and
+        // the notification chips' bottom line, clear of both the chips and
+        // the power column.
+        EXPECT_NEAR(result.media.x, result.auth.x, 0.001);
+        EXPECT_NEAR(result.media.w, result.auth.w, 0.001);
+        EXPECT_NEAR(result.media.h, layout.theme().audio.compactHeight, 0.001);
+        EXPECT_NEAR(result.media.y + result.media.h, height - layout.theme().spacing.xlarge, 0.001);
+        EXPECT_TRUE(result.media.x >= result.clock.x + result.clock.w);
+        EXPECT_TRUE(result.media.x + result.media.w <= row.x);
+        EXPECT_TRUE(result.media.y >= result.auth.y + result.auth.h);
 
         // The clock column starts below the status bar.
         EXPECT_TRUE(result.clock.y >= layout.theme().statusbar.topMargin +
@@ -254,17 +261,17 @@ TEST(LockLayoutGeometryMultipleSizes) {
     }
 }
 
-// Without a media panel the right column holds only the auth card.
+// Without media the right column holds only the auth card.
 TEST(LockLayoutWithoutMediaKeepsAuthColumn) {
     const qypr::LockLayout layout;
-    const qypr::Size clock{.w = 300.0, .h = 100.0};
+    const qypr::Size clock{.w = 300.0, .h = 260.0};
     const qypr::Size facts{.w = 200.0, .h = 14.0};
     const qypr::Size auth{.w = 420.0, .h = 210.0};
 
-    const auto result = layout.compute(1920, 1080, clock, facts, auth, qypr::Size{0, 0});
+    const auto result = layout.compute(1920, 1080, clock, facts, auth, false);
     EXPECT_NEAR(result.media.h, 0.0, 0.001);
     EXPECT_NEAR(result.auth.w, layout.authColumnWidth(1920), 0.001);
-    // The auth card shares the baseline with the facts line.
+    // The auth card keeps the content baseline without the player.
     EXPECT_NEAR(result.auth.y + result.auth.h, result.facts.y + result.facts.h, 0.001);
 }
 
@@ -274,6 +281,16 @@ TEST(LockClockFontSizeIsResponsive) {
     EXPECT_TRUE(layout.clockFontSize(1920, 1080) > layout.clockFontSize(1280, 720));
     EXPECT_TRUE(layout.clockFontSize(800, 600) >= 56.0);
     EXPECT_TRUE(layout.clockFontSize(7680, 4320) <= 208.0);
+}
+
+// The clock's responsive size is still driven by the theme's scale.
+TEST(LockClockScaleComesFromTheme) {
+    qypr::LockLayout layout;
+    const double base = layout.clockFontSize(1920, 1080);
+    auto scaled = layout.theme();
+    scaled.lock.clock.scale = 0.5;
+    layout.setTheme(scaled);
+    EXPECT_NEAR(layout.clockFontSize(1920, 1080), base * 0.5, 0.001);
 }
 
 TEST(PowerMenuRequiresExplicitConfirmation) {

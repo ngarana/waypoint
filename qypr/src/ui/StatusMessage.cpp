@@ -7,8 +7,9 @@ namespace qypr {
 namespace {
 TextStyle style(const theme::State& theme, bool isError, bool compact) {
     if (compact) {
-        return {theme.font.monoFamily, 11.0, PANGO_WEIGHT_BOLD,
-                isError ? theme.colors.error : theme.colors.textSubtle, 1.2};
+        return {theme.font.monoFamily, static_cast<double>(theme.font.sizeSmall), PANGO_WEIGHT_BOLD,
+                isError ? theme.colors.error : theme.colors.textSubtle,
+                theme.lock.message.tracking};
     }
     return {theme.font.family, static_cast<double>(theme.font.size), PANGO_WEIGHT_MEDIUM,
             isError ? theme.colors.error : theme.colors.textSubtle};

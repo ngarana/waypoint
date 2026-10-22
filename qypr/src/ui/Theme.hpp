@@ -145,8 +145,15 @@ struct State {
     struct Fonts {
         int size = 16;
         int sizeLarge = 22;
-        int sizeClock = 96;
         int sizeDate = 18;
+        // The lock screen's type scale. Every widget reads these instead of
+        // carrying its own point sizes, so a theme change reaches all of it.
+        int sizeMicro = 10;
+        int sizeSmall = 11;
+        int sizeMeta = 12;
+        int sizeBody = 13;
+        int sizeTitle = 14;
+        int sizeIcon = 18;
         std::string family = "Inter";
         // Monospaced companion of `family`: the lock screen's chronometer and
         // technical micro-labels use it so digits keep their column.
@@ -192,6 +199,14 @@ struct State {
         int volumeSliderWidth = 150;
         int spacing = 12;
         int panelPadding = 16;
+        // Footer strip controls and typography.
+        int compactButtonSize = 32;
+        int compactIconSize = 16;
+        int compactHeight = 56;
+        int compactTitleSize = 14;
+        int compactSubSize = 11;
+        int compactTimeSize = 11;
+        int compactLiveSize = 11;
     };
     struct Notification {
         int cardWidth = 360;
@@ -214,7 +229,75 @@ struct State {
         int chipDotRadius = 3;
         int chipDotGap = 8;
         int chipDismissSize = 16;
+        int chipDismissFontSize = 13;
+        int chipLabelSize = 11;
+        int chipValueSize = 10;
+        int chipBodySize = 10;
+        double chipLabelTracking = 1.4;
+        double chipValueTracking = 0.8;
+        double chipBodyTracking = 0.6;
     };
+    // Lock-screen widget metrics: every visual constant the views draw with
+    // lives here, so re-theming reaches the whole screen.
+    struct Lock {
+        struct Clock {
+            double scale = 1.0;
+            double slashRatio = 0.42;
+            double ruleWidth = 560.0;
+            double indexTracking = 1.6;
+            double dateTracking = 1.8;
+            double stackTracking = 1.2;
+            double labelTracking = 1.6;
+            double secondsTracking = 1.0;
+        };
+        struct Facts {
+            double dotRadius = 3.0;
+            double dotGap = 8.0;
+            double itemGap = 14.0;
+            double labelGap = 6.0;
+            double tracking = 1.4;
+            double separatorAlpha = 0.45;
+        };
+        struct Auth {
+            double tileSize = 44.0;
+            double inputHeight = 48.0;
+            double buttonHeight = 32.0;
+            double buttonWidth = 96.0;
+            double fieldPadX = 12.0;
+            double lineGap = 2.0;
+            double cursorWidth = 2.0;
+            double cursorHeight = 16.0;
+            double cursorGap = 4.0;
+            double footerDotRadius = 3.0;
+            double footerTextGap = 12.0;
+        };
+        struct Confirm {
+            double cardW = 260.0;
+            double cardH = 104.0;
+            double pad = 14.0;
+            double buttonHeight = 32.0;
+            double buttonGap = 8.0;
+            double barHeight = 3.0;
+            double barGap = 6.0;
+            double titleGap = 7.0;
+            double edgeInset = 8.0;
+            double anchorGap = 10.0;
+        };
+        struct Message {
+            double tracking = 1.2;
+        };
+        struct Tooltip {
+            double gap = 8.0;
+        };
+
+        Clock clock;
+        Facts facts;
+        Auth auth;
+        Confirm confirm;
+        Message message;
+        Tooltip tooltip;
+    };
+
     struct Statusbar {
         double height = 36.0;
         double topMargin = 24.0;
@@ -225,6 +308,9 @@ struct State {
         double symbolicIconSize = 18.0;
         double iconSpacing = 18.0;
         double padding = 14.0;
+        // Hitbox padding around an indicator's content. The lock screen uses
+        // it to align its text with the bar's labels.
+        double labelInset = 8.0;
         double separatorWidth = 1.0;
         double qsPanelWidth = 380.0;
         double qsTileSize = 110.0;
@@ -255,6 +341,7 @@ struct State {
     Icons icons;
     Audio audio;
     Notification notification;
+    Lock lock;
     Statusbar statusbar;
 
     // Derived surfaces (were statusbar::panelSurface() etc.): the tint colors

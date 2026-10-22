@@ -682,6 +682,25 @@ TEST(StatusBarLayoutMultipleWidthsAndEdges) {
     }
 }
 
+// The lock screen hides the bar clock and opts out of content centering, so
+// the remaining indicators stay anchored to the strip's right edge.
+TEST(StatusBarLayoutCanKeepContentUncentered) {
+    qypr::LayoutRequest req;
+    req.geom.height = 36.0;
+    req.geom.edgeMargin = 24.0;
+    req.geom.sideMargin = 48.0;
+    req.pad = 14.0;
+    req.spacing = 18.0;
+    req.screenW = 1920;
+    req.screenH = 1080;
+    req.centerContent = false;
+    req.right = {{.width = 30.0, .shown = true}, {.width = 40.0, .shown = true}};
+
+    auto const res = qypr::computeStatusBarLayout(req);
+    EXPECT_NEAR(res.right[1].x + res.right[1].w, 1920.0 - 48.0 - 14.0, 0.001);
+    EXPECT_NEAR(res.contentBounds.x, res.bounds.x, 0.001);
+}
+
 // -----------------------------------------------------------------------------
 // Pure hit-test and lock-interactivity tests (QYPR_DECOMPOSITION_PLAN step 5)
 // -----------------------------------------------------------------------------

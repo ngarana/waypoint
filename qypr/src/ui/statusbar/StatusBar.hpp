@@ -76,6 +76,14 @@ public:
     // hidden while locked; the standalone (unlocked) bar turns it on.
     void setSessionContentVisible(bool v);
 
+    // Hide a single indicator by id. The lock screen hides the bar clock: its
+    // chronometer already carries the time and date.
+    void setIndicatorVisible(const std::string& id, bool visible);
+
+    // Whether the visible content is centered in the strip. The lock screen
+    // turns this off so the remaining indicators hug the right edge.
+    void setCenterContent(bool centered) { centerContent_ = centered; }
+
     // True while Quick Settings or a popover is open (or animating closed).
     bool hasOpenOverlay() const;
 
@@ -151,6 +159,7 @@ private:
 
     bool sessionContentVisible_ = false;
     bool sessionSurface_ = false;
+    bool centerContent_ = true;
     bool backdrop_ = false;
     double backdropAlpha_ = -1.0;
 

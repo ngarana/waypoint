@@ -21,6 +21,11 @@ Shell::Shell(EventLoop& loop, RenderHost& host, PamAuthenticator& pam, SystemAct
       lockScreen_(loop, host, pam, power, fp),
       statusBar_(loop, host, backends),
       dnd_(backends.dnd) {
+    // The chronometer is the lock screen's only time/date readout; the bar
+    // clock would state the same thing twice. Without it, keep the remaining
+    // indicators anchored to the right instead of centering the strip.
+    statusBar_.setIndicatorVisible("clock", false);
+    statusBar_.setCenterContent(false);
     if (dnd_) {
         dnd_->addListener([this] { applyNotificationFilter(); });
     }

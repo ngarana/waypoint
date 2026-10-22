@@ -25,7 +25,6 @@ public:
     // Identity shown in the card.
     std::string operatorId;
     std::string node;
-    std::string sessionLabel;
 
     // The PAM stack the password is checked against ("qypr-lock", "login").
     std::string pamService;

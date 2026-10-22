@@ -59,16 +59,7 @@ public:
     // Fail-closed countdown in ms: expiry dismisses WITHOUT acting. 0 = disabled.
     int autoDismissMs = 8000;
 
-    // Exposed so the .cpp helper can reference them without a full include cycle.
-    static constexpr double kCardW = 260.0;
-    static constexpr double kCardH = 104.0;
-
 private:
-    // Fixed card dimensions (kCardW/kCardH are public above).
-    static constexpr double kBtnH = 32.0;
-    static constexpr double kBarH = 3.0;
-    static constexpr double kPad = 14.0;
-
     Rect cancelBtnRect(const Rect& card) const;
     Rect confirmBtnRect(const Rect& card) const;
     Rect barRect(const Rect& card) const;

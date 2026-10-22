@@ -138,6 +138,12 @@ void StatusBar::cascadeTheme() {
     qsPanel_.setTheme(theme_);
 }
 
+void StatusBar::setIndicatorVisible(const std::string& id, bool visible) {
+    indicators_.forEach([&](StatusIndicator& ind) {
+        if (ind.id() == id) { ind.visible = visible; }
+    });
+}
+
 void StatusBar::applyBackdropAlpha() {
     theme_.statusbar.panelSurfaceAlpha =
         backdrop_ ? clamp01(backdropAlpha_ >= 0.0 ? backdropAlpha_ : theme_.statusbar.barTintAlpha)
@@ -186,6 +192,7 @@ void StatusBar::layout(int screenW, int screenH) {
     req.spacing = sp;
     req.screenW = screenW;
     req.screenH = screenH;
+    req.centerContent = centerContent_;
     req.left = measureZone(indicators_.left());
     req.center = measureZone(indicators_.center());
     req.right = measureZone(indicators_.right());

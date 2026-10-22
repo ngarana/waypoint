@@ -7,8 +7,6 @@
 namespace qypr {
 
 namespace {
-constexpr double kContentGap = 8.0;  // between icon and label
-constexpr double kSidePad = 8.0;     // hover-zone padding each side
 // Symbolic-theme icon rasters are square; the on-strip render size comes from
 // theme().statusbar.symbolicIconSize (bar.conf: bar-symbolic-icon-size) so it can
 // be tuned independently of the bar height and the Nerd Font glyph size.
@@ -85,10 +83,10 @@ double StatusIndicator::measureWidth(Painter& p) {
                                    .size = labelFontSize(),
                                    .weight = PANGO_WEIGHT_NORMAL,
                                    .color = iconColor()};
-        if (w > 0) { w += kContentGap; }
+        if (w > 0) { w += theme().spacing.small; }
         w += p.measureText(lbl, labelStyle).w;
     }
-    return w + (2 * kSidePad);
+    return w + (2 * theme().statusbar.labelInset);
 }
 
 void StatusIndicator::draw(Painter& p, int64_t now) {
@@ -103,7 +101,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         Rect hoverRect = bounds;
         hoverRect.y += 2.0;
         hoverRect.h -= 4.0;
-        p.fillRoundedRect(hoverRect, 8.0, bg);
+        p.fillRoundedRect(hoverRect, theme().radius.medium, bg);
     }
 
     // 2. Focus ring
@@ -111,7 +109,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         Rect focusRect = bounds;
         focusRect.y += 1.0;
         focusRect.h -= 2.0;
-        p.strokeRoundedRect(focusRect, 8.0, theme().colors.primary, 1.5);
+        p.strokeRoundedRect(focusRect, theme().radius.medium, theme().colors.primary, 1.5);
     }
 
     // 3. Content: optional icon + optional label, centered in bounds.
@@ -169,7 +167,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
         contentW += iconSz.w;
     }
     if (!lbl.empty()) {
-        if (contentW > 0) { contentW += kContentGap; }
+        if (contentW > 0) { contentW += theme().spacing.small; }
         contentW += labelSz.w;
     }
 
@@ -191,7 +189,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
             p.drawSurfaceTinted(themedSurf, Rect{.x = x, .y = iconY, .w = iconPx, .h = iconPx},
                                 fade);
         }
-        x += iconPx + (lbl.empty() ? 0.0 : kContentGap);
+        x += iconPx + (lbl.empty() ? 0.0 : theme().spacing.small);
     } else if (!ic.empty()) {
         TextStyle iconStyle{.family = theme().font.iconFamily,
                             .size = theme().statusbar.iconSize,
@@ -209,7 +207,7 @@ void StatusIndicator::draw(Painter& p, int64_t now) {
             prevStyle.color = iconColor().withAlpha((1.0 - t) * iconColor().a);
             p.drawText(x, bounds.y + ((bounds.h - iconSz.h) / 2.0), prevDrawnIcon_, prevStyle);
         }
-        x += iconSz.w + (lbl.empty() ? 0.0 : kContentGap);
+        x += iconSz.w + (lbl.empty() ? 0.0 : theme().spacing.small);
     }
     if (!lbl.empty()) {
         p.drawTextShadowed(x, bounds.y + ((bounds.h - labelSz.h) / 2.0), lbl, labelStyle,

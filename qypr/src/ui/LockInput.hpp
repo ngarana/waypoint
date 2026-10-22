@@ -38,7 +38,6 @@ private:
     AuthPanel& auth_;
     Invalidator& host_;
     AudioController* audio_ = nullptr;
-    bool pointerDown_ = false;
 };
 
 }  // namespace qypr

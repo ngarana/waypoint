@@ -23,12 +23,6 @@ namespace {
 // The chip's box metrics live in the theme: the view draws the chips and
 // the lock layout reserves the room they claim, so both read the same
 // numbers (theme().notification.chip*).
-constexpr double kLabelSize = 11.0;
-constexpr double kValueSize = 10.0;
-constexpr double kBodySize = 10.0;
-
-constexpr double kLabelTracking = 1.4;
-constexpr double kValueTracking = 0.8;
 
 // The chip's box, read from the theme.
 struct ChipBox {
@@ -55,19 +49,23 @@ ChipBox chipBox(const theme::State& theme) {
 }
 
 TextStyle labelStyle(const theme::State& theme) {
-    return {theme.font.family, kLabelSize, PANGO_WEIGHT_MEDIUM, theme.colors.text, kLabelTracking};
+    return {theme.font.family, static_cast<double>(theme.notification.chipLabelSize),
+            PANGO_WEIGHT_MEDIUM, theme.colors.text, theme.notification.chipLabelTracking};
 }
 
 TextStyle valueStyle(const theme::State& theme, const Color& accent) {
-    return {theme.font.monoFamily, kValueSize, PANGO_WEIGHT_NORMAL, accent, kValueTracking};
+    return {theme.font.monoFamily, static_cast<double>(theme.notification.chipValueSize),
+            PANGO_WEIGHT_NORMAL, accent, theme.notification.chipValueTracking};
 }
 
 TextStyle bodyStyle(const theme::State& theme) {
-    return {theme.font.monoFamily, kBodySize, PANGO_WEIGHT_NORMAL, theme.colors.textMuted, 0.6};
+    return {theme.font.monoFamily, static_cast<double>(theme.notification.chipBodySize),
+            PANGO_WEIGHT_NORMAL, theme.colors.textMuted, theme.notification.chipBodyTracking};
 }
 
 TextStyle dismissStyle(const theme::State& theme, bool hovered) {
-    return {theme.font.family, 13.0, PANGO_WEIGHT_NORMAL,
+    return {theme.font.family, static_cast<double>(theme.notification.chipDismissFontSize),
+            PANGO_WEIGHT_NORMAL,
             hovered ? theme.colors.text : theme.colors.textMuted.withAlpha(0.7)};
 }
 
@@ -307,8 +305,9 @@ void NotificationView::draw(Painter& p, int64_t now, double left, double bottom,
     // Overflow: a trailing chip that counts what did not fit.
     if (overflow > 0) {
         const std::string label = "+" + std::to_string(overflow);
-        const TextStyle style{theme().font.monoFamily, kValueSize, PANGO_WEIGHT_NORMAL,
-                              theme().colors.textMuted, kValueTracking};
+        const TextStyle style{
+            theme().font.monoFamily, static_cast<double>(theme().notification.chipValueSize),
+            PANGO_WEIGHT_NORMAL, theme().colors.textMuted, theme().notification.chipValueTracking};
         const Size size = p.measureText(label, style);
         const double w = (box.padX * 2) + size.w;
         const double h = (box.padY * 2) + size.h;
