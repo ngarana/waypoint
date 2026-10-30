@@ -8,6 +8,7 @@ namespace qypr {
 class EmailIndicator : public SimpleIconIndicator {
 public:
     explicit EmailIndicator(const SystemBackends& backends);
+    std::string icon() const override;
     bool onClick(double x, double y) override;
     std::string label() const override;
 };

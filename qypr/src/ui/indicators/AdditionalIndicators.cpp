@@ -84,6 +84,10 @@ WhatsappIndicator::WhatsappIndicator(const SystemBackends& backends)
     : SimpleIconIndicator(backends, "whatsapp", Zone::Right, 264, "󰖣", "WhatsApp",
                           "whatsapp-symbolic") {}
 
+std::string WhatsappIndicator::icon() const {
+    return countMatchingNotifications(backends_, {"whatsapp", "whats"}) > 0 ? "󰖣" : "󰖥";
+}
+
 std::string WhatsappIndicator::label() const {
     const int n = countMatchingNotifications(backends_, {"whatsapp", "whats"});
     return n > 0 ? std::to_string(n) : std::string{};
@@ -97,6 +101,12 @@ bool WhatsappIndicator::onClick(double, double) {
 EmailIndicator::EmailIndicator(const SystemBackends& backends)
     : SimpleIconIndicator(backends, "email", Zone::Right, 265, "󰇰", "Email",
                           "mail-unread-symbolic") {}
+
+std::string EmailIndicator::icon() const {
+    return countMatchingNotifications(backends_, {"mail", "thunderbird", "evolution", "geary"}) > 0
+               ? "󰇰"
+               : "󰇮";
+}
 
 std::string EmailIndicator::label() const {
     const int n =
@@ -112,6 +122,12 @@ bool EmailIndicator::onClick(double, double) {
 MailIndicator::MailIndicator(const SystemBackends& backends)
     : SimpleIconIndicator(backends, "mail", Zone::Right, 266, "󰇰", "Mail",
                           "mail-unread-symbolic") {}
+
+std::string MailIndicator::icon() const {
+    return countMatchingNotifications(backends_, {"mail", "thunderbird", "evolution", "geary"}) > 0
+               ? "󰇰"
+               : "󰇮";
+}
 
 std::string MailIndicator::label() const {
     const int n =
