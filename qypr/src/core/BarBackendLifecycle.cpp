@@ -55,6 +55,11 @@ void BarBackendLifecycle::startPreview() const {
     if (backends_.wifi) backends_.wifi->start();
     if (backends_.bluetooth) backends_.bluetooth->start();
     if (backends_.volume) backends_.volume->start();
+
+    if (backends_.notifications) {
+        backends_.notifications->setOnChange([this] { invalidator_.invalidate(); });
+        backends_.notifications->start(/*seedFromLog=*/false);
+    }
 }
 
 }  // namespace qypr

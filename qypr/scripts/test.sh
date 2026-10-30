@@ -27,11 +27,19 @@ echo "=== Smoke Tests ==="
 BIN="$ROOT/build/qypr-lock"
 check "binary exists" test -x "$BIN"
 
+BAR="$ROOT/build/qypr-bar"
+check "bar binary exists" test -x "$BAR"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 "$BIN" --preview "$TMP/frame.png" >/dev/null 2>&1 || true
 check "preview (revealed) rendered" test -s "$TMP/frame.png"
 check "preview (idle) rendered" test -s "$TMP/frame-idle.png"
+
+"$BAR" --preview "$TMP/bar.png" >/dev/null 2>&1 || true
+check "bar preview (idle) rendered" test -s "$TMP/bar.png"
+check "bar preview (qs) rendered" test -s "$TMP/bar-qs.png"
+check "bar preview (notif) rendered" test -s "$TMP/bar-notif.png"
 
 echo ""
 echo "========================================"
