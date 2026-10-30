@@ -156,6 +156,7 @@ extern int g_tests_failed;
 #include "core/Process.hpp"  // QL-5/QL-6 spawn regressions
 #include "ui/indicators/ClockIndicator.hpp"
 #include "ui/indicators/NotificationIndicator.hpp"
+#include "ui/indicators/NotificationAppsIndicator.hpp"
 #include "ui/indicators/PowerMenuIndicator.hpp"
 #include "ui/indicators/BatteryIndicator.hpp"
 #include "system/BatteryBackend.hpp"

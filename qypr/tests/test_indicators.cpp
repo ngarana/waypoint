@@ -1253,3 +1253,41 @@ TEST(KeyboardLayoutGating) {
 // in the test environment and leaves the connection null — exactly what we want
 // here, since none of this touches the bus.
 // -----------------------------------------------------------------------------
+
+TEST(NotificationAppsIndicatorDynamic) {
+    qypr::EventLoop loop;
+    qypr::NotificationMonitor mon(loop);
+    qypr::Notification n1;
+    n1.app = "Mail";
+    n1.icon = "󰇰";
+    qypr::Notification n2;
+    n2.app = "Mail";
+    n2.icon = "󰇰";
+    qypr::Notification n3;
+    n3.app = "Chat";
+    n3.icon = "󰖣";
+    mon.testNotes().push_back(n1);
+    mon.testNotes().push_back(n2);
+    mon.testNotes().push_back(n3);
+
+    qypr::SystemBackends b{};
+    b.notifications = &mon;
+    qypr::NotificationAppsIndicator ind(b);
+    ind.onBackendUpdate();
+    EXPECT_TRUE(ind.visible);
+    EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos || !ind.tooltip().empty());
+
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 200, 60);
+    cairo_t* cr = cairo_create(surf);
+    qypr::Painter p(cr);
+    EXPECT_TRUE(ind.measureWidth(p) > 0);
+    ind.bounds = {.x = 0, .y = 0, .w = ind.measureWidth(p), .h = 36};
+    ind.draw(p, qypr::nowMs());
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+
+    // No notifications → hidden
+    mon.testNotes().clear();
+    ind.onBackendUpdate();
+    EXPECT_FALSE(ind.visible);
+}
