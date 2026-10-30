@@ -13,6 +13,7 @@ public:
     explicit NotificationAppsIndicator(const SystemBackends& backends);
 
     std::string icon() const override { return ""; }
+    bool sensitive() const override { return true; }
     std::string tooltip() const override;
     double measureWidth(Painter& p) override;
     void draw(Painter& p, int64_t now) override;
