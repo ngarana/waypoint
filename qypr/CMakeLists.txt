@@ -201,6 +201,8 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/PagerIndicator.cpp
     src/ui/indicators/PowerMenuIndicator.cpp
     src/ui/indicators/SNITrayHost.cpp
+    src/ui/indicators/SimpleIconIndicator.cpp
+    src/ui/indicators/AdditionalIndicators.cpp
     src/ui/indicators/SystemMonitorIndicator.cpp
     src/ui/indicators/TaskbarIndicator.cpp
     src/ui/indicators/VolumeIndicator.cpp
