@@ -153,10 +153,12 @@ void wl_delete(Fts5Tokenizer* p) {
 int wl_tokenize(Fts5Tokenizer* p, void* pCtx, int flags, const char* pText, int nText,
                 int (*xToken)(void*, int, const char*, int, int, int)) {
     WlTok* w = reinterpret_cast<WlTok*>(p);
-    Tramp t{.pCtx = pCtx,
-            .xToken = xToken,
-            .pText = pText,
-            .query = (flags & FTS5_TOKENIZE_QUERY) != 0};
+    Tramp t{
+        .pCtx = pCtx,
+        .xToken = xToken,
+        .pText = pText,
+        .query = (static_cast<unsigned>(flags) & static_cast<unsigned>(FTS5_TOKENIZE_QUERY)) != 0,
+    };
     return w->parent.xTokenize(w->parent_inst, &t, flags, pText, nText, wl_trampoline);
 }
 
@@ -310,20 +312,57 @@ const std::vector<std::string>* kind_globs(const std::string& kind) {
         {"audio", {"audio/*"}},
         {"video", {"video/*"}},
         {"text", {"text/*"}},
-        {"code",
-         {"text/x-*", "application/json", "application/javascript", "application/xml",
-          "application/x-shellscript"}},
-        {"archive",
-         {"application/zip", "application/x-tar", "application/gzip", "application/x-7z-compressed",
-          "application/x-bzip2", "application/x-xz", "application/vnd.rar",
-          "application/x-rar-compressed"}},
-        {"spreadsheet",
-         {"*spreadsheetml*", "*opendocument.spreadsheet*", "text/csv", "application/vnd.ms-excel"}},
-        {"presentation",
-         {"*presentationml*", "*opendocument.presentation*", "application/vnd.ms-powerpoint"}},
-        {"doc",
-         {"*wordprocessingml*", "*opendocument.text*", "application/pdf", "application/rtf",
-          "application/epub+zip", "text/markdown"}},
+        {
+            "code",
+            {
+                "text/x-*",
+                "application/json",
+                "application/javascript",
+                "application/xml",
+                "application/x-shellscript",
+            },
+        },
+        {
+            "archive",
+            {
+                "application/zip",
+                "application/x-tar",
+                "application/gzip",
+                "application/x-7z-compressed",
+                "application/x-bzip2",
+                "application/x-xz",
+                "application/vnd.rar",
+                "application/x-rar-compressed",
+            },
+        },
+        {
+            "spreadsheet",
+            {
+                "*spreadsheetml*",
+                "*opendocument.spreadsheet*",
+                "text/csv",
+                "application/vnd.ms-excel",
+            },
+        },
+        {
+            "presentation",
+            {
+                "*presentationml*",
+                "*opendocument.presentation*",
+                "application/vnd.ms-powerpoint",
+            },
+        },
+        {
+            "doc",
+            {
+                "*wordprocessingml*",
+                "*opendocument.text*",
+                "application/pdf",
+                "application/rtf",
+                "application/epub+zip",
+                "text/markdown",
+            },
+        },
     };
     auto it = m.find(kind);
     return it == m.end() ? nullptr : &it->second;
@@ -397,7 +436,7 @@ std::string meta_where(const MetaFilter& mf) {
         w += " AND (";
         for (size_t i = 0; i < mf.mime_globs.size(); i++)
             w += (i ? " OR " : "") + std::string("f.mime GLOB ?");
-        w += ")";
+        w += ')';
     }
     for (size_t i = 0; i < mf.name_likes.size(); i++) w += " AND lower(f.name) LIKE ? ESCAPE '\\'";
     if (mf.size_min >= 0) w += " AND f.size>=?";
@@ -737,11 +776,9 @@ bool Store::open(const std::string& db_path, const StoreOptions& opts) {
     std::string check = scalar_text(db_, "PRAGMA quick_check;");
     bool has_schema = scalar_int(db_, "SELECT count(*) FROM sqlite_master WHERE name='files';") > 0;
     bool stale_version = has_schema && scalar_int(db_, "PRAGMA user_version;") != kSchemaVersion;
-    if ((check != "ok" && !check.empty()) || stale_version) {
-        if (!recreate_db()) {
-            close();
-            return false;
-        }
+    if (((check != "ok" && !check.empty()) || stale_version) && !recreate_db()) {
+        close();
+        return false;
     }
 
     if (!ensure_match_mode(opts.match)) {
@@ -1033,7 +1070,7 @@ std::string Store::build_match_query(const std::string& user_query, bool prefix_
         terms.push_back("\"" + esc + "\"");
     }
     if (terms.empty()) return "";
-    if (prefix_last && match_ == MatchMode::Prefix) terms.back() += "*";
+    if (prefix_last && match_ == MatchMode::Prefix) terms.back() += '*';
     std::string out;
     for (size_t i = 0; i < terms.size(); i++) {
         if (i) out += ' ';
