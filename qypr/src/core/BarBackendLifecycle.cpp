@@ -59,6 +59,9 @@ void BarBackendLifecycle::startPreview() const {
     if (backends_.notifications) {
         backends_.notifications->setOnChange([this] { invalidator_.invalidate(); });
         backends_.notifications->start(/*seedFromLog=*/false);
+        if (backends_.notifications->notifications().empty()) {
+            backends_.notifications->testNotes() = demoNotifications();
+        }
     }
 }
 
