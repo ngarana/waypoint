@@ -1306,6 +1306,114 @@ std::vector<ContentHit> Store::search(const std::string& query, int limit,
     return hits;
 }
 
+bool Store::search_names(const std::string& root, const std::string& needle, int limit,
+                         std::vector<NameHit>& out) {
+    if (!db_) return false;
+    if (limit <= 0 || needle.empty() || root.empty()) return true;
+
+    // [prefix, upper) is the half-open key range of everything strictly below
+    // root ('0' is '/'+1), so both queries are range scans on the path/parent
+    // indexes rather than full-table scans.
+    std::string prefix = root.ends_with('/') ? root : root + "/";
+    std::string upper = prefix;
+    upper.back() = '0';
+
+    // Same base score the launcher ranks by (name prefix beats substring;
+    // shorter name / earlier match first), so the capped candidate set holds
+    // the launcher's best hits. lower() is ASCII-only, matching the walk.
+    auto base_score = [](size_t name_len, size_t pos) {
+        return pos == 0 ? 1000 - static_cast<int>(std::min<size_t>(name_len, 300))
+                        : 600 - static_cast<int>(std::min<size_t>(pos, 300));
+    };
+
+    // ---- files -------------------------------------------------------------
+    static const char* kFilesSql =
+        "SELECT path, mtime FROM files"
+        " WHERE state!=2 AND path>=?1 AND path<?2 AND instr(lower(name),?3)>0"
+        " ORDER BY CASE WHEN instr(lower(name),?3)=1 THEN 1000-min(length(name),300)"
+        "               ELSE 600-min(instr(lower(name),?3)-1,300) END DESC,"
+        "          mtime DESC"
+        " LIMIT ?4;";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, kFilesSql, -1, &st, nullptr) != SQLITE_OK) {
+        avail_ = Availability::Error;
+        return false;
+    }
+    sqlite3_bind_text(st, 1, prefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, upper.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 3, needle.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 4, limit);
+    int rc;
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
+        NameHit h;
+        if (const unsigned char* p = sqlite3_column_text(st, 0))
+            h.path.assign(reinterpret_cast<const char*>(p));
+        h.mtime_s = sqlite3_column_int64(st, 1) / 1000000000LL;
+        out.push_back(std::move(h));
+    }
+    sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) return false;
+
+    // ---- folders -------------------------------------------------------------
+    // Pre-filter parents whose below-root part contains the needle anywhere,
+    // then pick out each matching component: a hit on ".../adhoc/2026-x" yields
+    // the folder ".../adhoc" even though no file lives directly inside it.
+    static const char* kDirsSql =
+        "SELECT parent, max(mtime) FROM files"
+        " WHERE state!=2 AND parent>=?1 AND parent<?2"
+        "   AND instr(lower(substr(parent,length(?1)+1)),?3)>0"
+        " GROUP BY parent;";
+    if (sqlite3_prepare_v2(db_, kDirsSql, -1, &st, nullptr) != SQLITE_OK) {
+        avail_ = Availability::Error;
+        return false;
+    }
+    sqlite3_bind_text(st, 1, prefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, upper.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 3, needle.c_str(), -1, SQLITE_TRANSIENT);
+    std::map<std::string, int64_t> dirs; // folder → newest file mtime beneath it (s)
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
+        const unsigned char* p = sqlite3_column_text(st, 0);
+        if (!p) continue;
+        std::string parent(reinterpret_cast<const char*>(p));
+        int64_t mtime_s = sqlite3_column_int64(st, 1) / 1000000000LL;
+        std::string rel = parent.substr(prefix.size());
+        for (size_t start = 0; start < rel.size();) {
+            size_t end = rel.find('/', start);
+            if (end == std::string::npos) end = rel.size();
+            if (to_lower(rel.substr(start, end - start)).find(needle) != std::string::npos) {
+                auto [it, fresh] = dirs.try_emplace(prefix + rel.substr(0, end), mtime_s);
+                if (!fresh) it->second = std::max(it->second, mtime_s);
+            }
+            start = end + 1;
+        }
+    }
+    sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) return false;
+
+    struct Ranked {
+        int score;
+        int64_t mtime_s;
+        std::string path;
+    };
+    std::vector<Ranked> ranked;
+    ranked.reserve(dirs.size());
+    for (auto& [path, mtime_s] : dirs) {
+        std::string name = to_lower(path.substr(path.find_last_of('/') + 1));
+        ranked.push_back({
+            .score = base_score(name.size(), name.find(needle)),
+            .mtime_s = mtime_s,
+            .path = path,
+        });
+    }
+    std::ranges::sort(ranked, [](const Ranked& a, const Ranked& b) {
+        return a.score != b.score ? a.score > b.score : a.mtime_s > b.mtime_s;
+    });
+    if (ranked.size() > static_cast<size_t>(limit)) ranked.resize(static_cast<size_t>(limit));
+    for (auto& r : ranked)
+        out.push_back(NameHit{.path = std::move(r.path), .is_dir = true, .mtime_s = r.mtime_s});
+    return true;
+}
+
 StoreStats Store::stats() {
     StoreStats s;
     if (!db_) return s;

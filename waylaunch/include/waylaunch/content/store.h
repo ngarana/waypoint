@@ -96,6 +96,14 @@ struct ContentHit {
     double score = 0.0;  // normalized so higher == better
 };
 
+// A filename/foldername hit for the launcher's FILES section, answered from the
+// index instead of a live filesystem walk (see Store::search_names).
+struct NameHit {
+    std::string path;    // absolute
+    bool is_dir = false; // folder derived from the `parent` column
+    int64_t mtime_s = 0; // file: its mtime; folder: newest indexed file beneath it
+};
+
 struct StoreStats {
     int64_t total = 0;
     int64_t indexed = 0;
@@ -193,6 +201,18 @@ class Store {
     std::vector<ContentHit> search(const std::string& query, int limit,
                                    const std::string& hl_open = "",
                                    const std::string& hl_close = "");
+    // Filename search: files and folders strictly under `root` whose basename
+    // contains `needle` (ASCII case-insensitive; pass it lowercased). The index
+    // stores files only, so folders come from the `parent` column: a folder is
+    // found when at least one indexed file lives at or below it (empty folders
+    // and ones holding only excluded content are invisible). Only path
+    // components below `root` are matched, so a needle that occurs in the root
+    // itself doesn't turn every row into a hit. Each kind is pre-ranked like
+    // the launcher ranks (name prefix first, then earlier/shorter match) and
+    // capped at `limit`. Returns false on a query error — availability() is
+    // downgraded — so the caller can fall back to walking the filesystem.
+    bool search_names(const std::string& root, const std::string& needle, int limit,
+                      std::vector<NameHit>& out);
     StoreStats stats();
 
   private:
