@@ -1259,13 +1259,31 @@ TEST(NotificationAppsIndicatorDynamic) {
     qypr::NotificationMonitor mon(loop);
     qypr::Notification n1;
     n1.app = "Mail";
-    n1.icon = "󰇰";
+    n1.title = "New Email";
+    n1.body = "Meeting at 2pm";
+    n1.icon = "mail-unread";
+    n1.desktopEntry = "thunderbird";
+    n1.daemonId = 101;
+    n1.postedAt = 1000;
+
     qypr::Notification n2;
     n2.app = "Mail";
-    n2.icon = "󰇰";
+    n2.title = "Another Email";
+    n2.body = "Project update";
+    n2.icon = "mail-unread";
+    n2.desktopEntry = "thunderbird";
+    n2.daemonId = 102;
+    n2.postedAt = 2000;
+
     qypr::Notification n3;
     n3.app = "Chat";
+    n3.title = "Alice";
+    n3.body = "Hey there!";
     n3.icon = "󰖣";
+    n3.daemonId = 201;
+    n3.urgency = 2;  // critical
+    n3.postedAt = 3000;
+
     mon.testNotes().push_back(n1);
     mon.testNotes().push_back(n2);
     mon.testNotes().push_back(n3);
@@ -1275,14 +1293,51 @@ TEST(NotificationAppsIndicatorDynamic) {
     qypr::NotificationAppsIndicator ind(b);
     ind.onBackendUpdate();
     EXPECT_TRUE(ind.visible);
+    EXPECT_TRUE(ind.sensitive());
+    EXPECT_EQ(ind.apps().size(), 2U);
+
+    // Chat has newest postedAt (3000) so it should be first
+    EXPECT_EQ(ind.apps()[0].name, "Chat");
+    EXPECT_EQ(ind.apps()[0].count, 1);
+    EXPECT_TRUE(ind.apps()[0].hasCritical);
+
+    // Mail is second, count 2
+    EXPECT_EQ(ind.apps()[1].desktopEntry, "thunderbird");
+    EXPECT_EQ(ind.apps()[1].count, 2);
+    EXPECT_FALSE(ind.apps()[1].hasCritical);
+
+    // General tooltip
     EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos || !ind.tooltip().empty());
 
+    // Measure and draw with Cairo
     cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 200, 60);
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
-    EXPECT_TRUE(ind.measureWidth(p) > 0);
-    ind.bounds = {.x = 0, .y = 0, .w = ind.measureWidth(p), .h = 36};
+    const double width = ind.measureWidth(p);
+    EXPECT_TRUE(width > 0);
+    ind.bounds = {.x = 10.0, .y = 0, .w = width, .h = 36};
+    ind.onHoverMotion(15.0, 18.0);  // Hover first app
     ind.draw(p, qypr::nowMs());
+
+    // Per-app hover tooltips
+    ind.onHoverMotion(15.0, 18.0);  // Over first app (Chat)
+    EXPECT_TRUE(ind.tooltip().find("Chat") != std::string::npos);
+    EXPECT_TRUE(ind.tooltip().find("Alice") != std::string::npos);
+
+    ind.onHoverMotion(47.0, 18.0);  // Over second app (Mail)
+    EXPECT_TRUE(ind.tooltip().find("Mail") != std::string::npos);
+    EXPECT_TRUE(ind.tooltip().find("2 notifications") != std::string::npos);
+
+    ind.onHoverLeave();
+    EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos);
+
+    // Click interactions
+    EXPECT_TRUE(ind.onClick(15.0, 18.0));
+    EXPECT_TRUE(ind.onSecondaryClick(15.0, 18.0));
+    EXPECT_TRUE(ind.onMiddleClick(15.0, 18.0));
+    // Click outside buttons (gap or past bounds)
+    EXPECT_FALSE(ind.onClick(1000.0, 18.0));
+
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 
@@ -1290,4 +1345,5 @@ TEST(NotificationAppsIndicatorDynamic) {
     mon.testNotes().clear();
     ind.onBackendUpdate();
     EXPECT_FALSE(ind.visible);
+    EXPECT_EQ(ind.tooltip(), "No app notifications");
 }

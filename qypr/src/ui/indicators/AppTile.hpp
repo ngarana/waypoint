@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cairo/cairo.h>
 #include <cctype>
 #include <string>
 
@@ -57,6 +58,35 @@ inline cairo_surface_t* resolveIcon(const std::string& appId) {
         if (auto* s = IconResolver::instance().get(lower)) return s;
     }
     return nullptr;
+}
+
+// True if `s` is monochrome/symbolic (shades of grey/white/black without chromatic hue).
+inline bool surfaceIsMonochrome(cairo_surface_t* s) {
+    if (s == nullptr || cairo_image_surface_get_format(s) != CAIRO_FORMAT_ARGB32) { return false; }
+    const int w = cairo_image_surface_get_width(s);
+    const int h = cairo_image_surface_get_height(s);
+    if (w <= 0 || h <= 0) { return false; }
+    cairo_surface_flush(s);
+    const unsigned char* data = cairo_image_surface_get_data(s);
+    const int stride = cairo_image_surface_get_stride(s);
+    bool anyInk = false;
+    for (int y = 0; y < h; ++y) {
+        const auto* row =
+            reinterpret_cast<const uint32_t*>(data + (static_cast<ptrdiff_t>(y) * stride));
+        for (int x = 0; x < w; ++x) {
+            const uint32_t px = row[x];
+            const unsigned a = (px >> 24U) & 0xFFU;
+            if (a < 24U) { continue; }  // ignore near-transparent antialiasing (<~10%)
+            const unsigned r = ((px >> 16U) & 0xFFU) * 255U / a;
+            const unsigned g = ((px >> 8U) & 0xFFU) * 255U / a;
+            const unsigned b = ((px & 0xFFU) * 255U) / a;
+            const unsigned mx = std::max({r, g, b});
+            const unsigned mn = std::min({r, g, b});
+            if (mx - mn > 24U) { return false; }  // chromatic pixel -> full-colour icon
+            anyInk = true;
+        }
+    }
+    return anyInk;
 }
 
 }  // namespace qypr::apptile

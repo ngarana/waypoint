@@ -1,6 +1,7 @@
-// NotificationAppsIndicator.hpp - Dynamic per-app notification icons.
+// NotificationAppsIndicator.hpp - Dynamic per-app notification icons for the status bar.
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,16 +19,34 @@ public:
     double measureWidth(Painter& p) override;
     void draw(Painter& p, int64_t now) override;
     void onBackendUpdate() override;
-    bool onClick(double x, double y) override;
 
-private:
+    bool onClick(double x, double y) override;
+    bool onSecondaryClick(double x, double y) override;
+    bool onMiddleClick(double x, double y) override;
+    void onHoverMotion(double x, double y) override;
+    void onHoverLeave() override;
+
     struct AppEntry {
         std::string name;
-        std::string glyph;
+        std::string desktopEntry;
+        std::string icon;
         int count = 0;
+        int64_t latestTime = 0;
+        std::string latestTitle;
+        std::string latestBody;
+        std::vector<uint32_t> daemonIds;
+        bool hasCritical = false;
     };
+
+    const std::vector<AppEntry>& apps() const { return apps_; }
+
+private:
+    int hitTest(double x) const;
+
+    SystemBackends backends_{};
     std::vector<AppEntry> apps_;
-    NotificationMonitor* monitor_ = nullptr;
+    double hoverX_ = -1.0;
+    double hoverY_ = -1.0;
 };
 
 }  // namespace qypr
