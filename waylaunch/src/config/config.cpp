@@ -187,6 +187,8 @@ bool Config::load(const std::string& path) {
                 get_int(*search, "file_min_query", config_.search.file_min_query);
             config_.search.max_file_results =
                 get_int(*search, "max_file_results", config_.search.max_file_results);
+            config_.search.file_hidden =
+                get_bool(*search, "file_hidden", config_.search.file_hidden);
 
             if (auto* roots = (*search)["file_roots"].as_array()) {
                 config_.search.file_roots.clear();
@@ -392,6 +394,7 @@ bool Config::save(const std::string& path) const {
     file << "commands = " << (config_.search.enable_commands ? "true" : "false") << "\n";
     file << "file_min_query = " << config_.search.file_min_query << "\n";
     file << "max_file_results = " << config_.search.max_file_results << "\n";
+    file << "file_hidden = " << (config_.search.file_hidden ? "true" : "false") << "\n";
 
     if (!config_.search.file_roots.empty()) {
         file << "file_roots = [";

@@ -110,21 +110,31 @@ placeholder    = "Search"
 
 # Turn individual result providers on/off.
 applications   = true        # .desktop apps (matched by name/comment)
-files          = true        # async file/folder search (native walk, no deps)
+files          = true        # file/folder search (waylaunchd index + native walk, no deps)
 calculator     = true        # a math expression becomes the Top Hit
 commands       = true        # the [[commands]] entries below
 
-# --- File search (native bounded filesystem walk) -----------------------------
+# --- File search -------------------------------------------------------------
 # Roots to search. "~" expands to $HOME. If empty, non-desktop [[search.paths]]
 # are used, and failing that, $HOME.
+#   Trees the waylaunchd index covers ([content].roots) are answered from the
+#   index: complete at any depth, in a few ms. Everything else is a live walk
+#   capped at 300 ms per keystroke that silently misses whatever it hasn't
+#   reached by then. A large home (SDKs, toolchains, app data) can't be walked
+#   in time, so for complete results list only indexed trees plus small
+#   folders here, e.g. the same dirs as [content].roots + "~/Pictures".
 file_roots       = ["~"]
-# Directories never descended into (exact basename or glob, e.g. *.tmp). If
-# you leave this empty, waylaunch applies a sensible built-in noise list.
+# Names never matched or descended into. A bare name or glob (*.tmp) matches
+# any file/folder name; a pattern with '/' (go/pkg, court/backups) matches
+# trailing path components. If you leave this empty, waylaunch applies a
+# built-in noise list. Indexed trees also skip everything in [content].excludes.
 file_excludes    = [
     ".git", "node_modules", ".cache", "target", ".venv",
     "__pycache__", ".cargo", ".rustup", "go/pkg", ".local/share/Trash",
-    "court/backups"
+    ".pnpm-store", ".hypothesis", "court/backups"
 ]
+file_hidden      = false     # true → also match dot-files/folders (.config, .git…);
+                             # a query starting with '.' always matches them
 file_min_query   = 2         # min characters typed before file search fires
 max_file_results = 6         # files kept after ranking (prefix > substring,
                              # shallower + more-recent scores higher)

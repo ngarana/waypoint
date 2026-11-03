@@ -524,12 +524,14 @@ bool LauncherUI::init(Config& config) {
     file_excludes_ = sc.file_excludes;
     if (file_excludes_.empty()) {
         file_excludes_ = {
-            ".git",        "node_modules", ".cache",  "target", ".venv",
-            "__pycache__", ".cargo",       ".rustup", "go/pkg", ".local/share/Trash",
+            ".git",   "node_modules",       ".cache",      "target",
+            ".venv",  "__pycache__",        ".cargo",      ".rustup",
+            "go/pkg", ".local/share/Trash", ".pnpm-store", ".hypothesis",
         };
     }
     file_min_query_ = std::max(1, sc.file_min_query);
     max_file_results_ = std::max(1, sc.max_file_results);
+    file_hidden_ = sc.file_hidden;
     file_enabled_ = sc.enable_files;
 
     // Content search: open the waylaunchd index read-only. Absent/locked index →
@@ -543,9 +545,14 @@ bool LauncherUI::init(Config& config) {
         if (content_enabled_) {
             auto store = std::make_unique<content::Store>();
             if (store->open(content::ContentConfig::db_path(),
-                            {.read_only = true, .match = cc.match}))
+                            {.read_only = true, .match = cc.match})) {
                 content_store_ = std::move(store);
-            else content_enabled_ = false; // no index yet; degrade
+                // The same roots waylaunchd crawls: file search answers these
+                // trees from the index instead of walking them.
+                content_roots_ = cc.roots;
+            } else {
+                content_enabled_ = false; // no index yet; degrade
+            }
         }
         if (ui_dbg())
             fprintf(stderr, "[ui] content search %s (min_query=%d)\n",
@@ -858,8 +865,17 @@ void LauncherUI::register_providers() {
     // Async providers (run on the file-search worker). Roots/excludes/store were
     // resolved earlier in init().
     if (file_enabled_)
-        providers_.push_back(std::make_unique<FileProvider>(
-            file_roots_, file_excludes_, file_min_query_, max_file_results_, &history_));
+        providers_.push_back(std::make_unique<FileProvider>(FileProviderOptions{
+            .roots = file_roots_,
+            .excludes = file_excludes_,
+            .min_query = file_min_query_,
+            .max_results = max_file_results_,
+            .include_hidden = file_hidden_,
+            .history = &history_,
+            // Shared with ContentProvider: both query it on the worker thread.
+            .index = content_store_.get(),
+            .index_roots = content_store_ ? content_roots_ : std::vector<std::string>{},
+        }));
     if (content_store_)
         providers_.push_back(std::make_unique<ContentProvider>(
             content_store_.get(), content_min_query_, content_max_results_, &history_));

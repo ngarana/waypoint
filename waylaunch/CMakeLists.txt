@@ -495,14 +495,14 @@ if(BUILD_TESTING)
     target_compile_options(provider_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
     add_test(NAME provider_test COMMAND provider_test)
 
+    # Links waylaunch_content for the index-backed path (Store::search_names);
+    # the library also provides subprocess/EventLoop/Process.
     add_executable(file_provider_test tests/file_provider_test.cpp
         src/providers/file_provider.cpp
         src/modes/clipboard.cpp
-        src/search/subprocess.cpp
-        ${LIBWL_COMMON}/core/EventLoop.cpp
-        ${LIBWL_COMMON}/core/Process.cpp
         src/util/search_util.cpp
         src/ui/history.cpp)
+    target_link_libraries(file_provider_test PRIVATE waylaunch_content)
     target_include_directories(file_provider_test PRIVATE ${CMAKE_SOURCE_DIR}/include
         ${LIBWL_COMMON})
     target_compile_options(file_provider_test PRIVATE -Wall -Wextra -Wpedantic -UNDEBUG)
