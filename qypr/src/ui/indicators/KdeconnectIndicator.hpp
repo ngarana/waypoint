@@ -1,5 +1,2 @@
 #pragma once
-#include "ui/indicators/KdeConnectIndicator.hpp"
-namespace qypr {
-using KdeconnectIndicator = KdeConnectIndicator;
-}
+#include "ui/indicators/AdditionalIndicators.hpp"

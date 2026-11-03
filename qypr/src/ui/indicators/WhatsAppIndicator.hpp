@@ -1,5 +1,2 @@
 #pragma once
-#include "ui/indicators/WhatsappIndicator.hpp"
-namespace qypr {
-using WhatsAppIndicator = WhatsappIndicator;
-}
+#include "ui/indicators/AdditionalIndicators.hpp"
