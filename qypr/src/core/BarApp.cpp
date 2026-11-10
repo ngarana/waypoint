@@ -88,7 +88,7 @@ int BarApp::run() {
 
 void BarApp::draw(cairo_t* cr, int w, int h, int /*scale*/) {
     Painter p(cr);
-    statusBar_.layout(w, h);
+    statusBar_.layout(w, h, display_.rendersOverlay());
     statusBar_.draw(p, nowMs());
 
     // Keep the surface height in step with the overlay state (deferred; never
@@ -274,11 +274,13 @@ void BarApp::onTextInput(const std::string& utf8) {
 }
 
 void BarApp::onSpecialKey(uint32_t keysym, uint32_t modifiers) {
-    if (keysym == XKB_KEY_Tab || keysym == XKB_KEY_ISO_Left_Tab) {
+    if (!statusBar_.popovers().active() &&
+        (keysym == XKB_KEY_Tab || keysym == XKB_KEY_ISO_Left_Tab)) {
         const bool reverse = keysym == XKB_KEY_ISO_Left_Tab || ((modifiers & MOD_SHIFT) != 0U);
         if (!statusBar_.cycleFocus(reverse)) { statusBar_.clearFocus(); }
     } else {
-        statusBar_.handleKey(keysym);
+        statusBar_.handleKey(
+            keysym == XKB_KEY_Tab && (modifiers & MOD_SHIFT) != 0U ? XKB_KEY_ISO_Left_Tab : keysym);
     }
     invalidate();
     syncOverlay();
@@ -291,21 +293,32 @@ void BarApp::onLayoutChanged(const std::string& name, uint32_t index, uint32_t c
     kbLayout_.update(name, index, count);
 }
 
-void BarApp::onPointerMotion(int /*surfaceW*/, int /*surfaceH*/, double x, double y) {
+void BarApp::onPointerMotion(int surfaceW, int surfaceH, double x, double y) {
+    statusBar_.layout(surfaceW, surfaceH, display_.inputOnOverlayOutput());
+    if (!display_.inputOnOverlayOutput()) { return; }
     statusBar_.handlePointerMotion(x, y, nowMs());
     invalidate();
 }
 
-void BarApp::onPointerButton(int /*surfaceW*/, int /*surfaceH*/, double x, double y,
-                             uint32_t button, bool pressed) {
+void BarApp::onPointerButton(int surfaceW, int surfaceH, double x, double y, uint32_t button,
+                             bool pressed) {
+    if (pressed && !display_.inputOnOverlayOutput()) {
+        statusBar_.popovers().clear();
+        invalidate();
+        syncOverlay();
+        syncKeyboard();
+        return;
+    }
+    statusBar_.layout(surfaceW, surfaceH);
     statusBar_.handlePointerButton(x, y, button, pressed, nowMs());
     invalidate();
     syncOverlay();
     syncKeyboard();  // opening/closing the launcher flips the keyboard grab.
 }
 
-void BarApp::onPointerScroll(int /*surfaceW*/, int /*surfaceH*/, double x, double y, double dx,
-                             double dy) {
+void BarApp::onPointerScroll(int surfaceW, int surfaceH, double x, double y, double dx, double dy) {
+    if (!display_.inputOnOverlayOutput()) { return; }
+    statusBar_.layout(surfaceW, surfaceH);
     statusBar_.handleScroll(x, y, dx, dy);
     invalidate();
     syncOverlay();

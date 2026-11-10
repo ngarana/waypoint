@@ -112,7 +112,7 @@ public:
     // --- Tray View (compact bar representation) ---
     // icon() may return "" for text-only indicators (e.g. the clock); the
     // base draw then renders just the label.
-    virtual std::string icon() const = 0;
+    std::string icon() const override = 0;
     // Preferred representation: a freedesktop symbolic icon name (e.g.
     // "network-wireless-signal-excellent-symbolic") resolved through the *active*
     // system icon theme — whatever gtk-icon-theme-name points at. Return "" for a
@@ -121,41 +121,41 @@ public:
     // base draw falls back to the Nerd Font glyph from icon(). The base caches one
     // cairo surface per unique name and recolours it to iconColor() by masking —
     // symbolic SVGs (black-with-alpha) are designed for exactly this.
-    virtual std::string themedIcon() const { return ""; }
-    virtual std::string label() const { return ""; }
-    virtual std::string tooltip() const = 0;
+    std::string themedIcon() const override { return ""; }
+    std::string label() const override { return ""; }
+    std::string tooltip() const override = 0;
     virtual Color iconColor() const;
     // Point size of the label text; text-only indicators bump this up.
-    virtual double labelFontSize() const { return static_cast<double>(theme().font.sizeBody); }
+    double labelFontSize() const override { return static_cast<double>(theme().font.sizeBody); }
 
     // Measure indicator width based on current icon/label/etc.
-    virtual double measureWidth(Painter& p);
+    double measureWidth(Painter& p) override;
 
     // Render compact view inside bounds
     void draw(Painter& p, int64_t now) override;
 
     // --- Default View (Quick Settings Tile) ---
-    virtual std::unique_ptr<QSTile> createTile() { return nullptr; }
+    std::unique_ptr<QSTile> createTile() override { return nullptr; }
 
     // --- Detailed View (Individual Popover) ---
-    virtual bool hasDetailedView() const { return false; }
-    virtual std::unique_ptr<DetailedPopover> createDetailedView() { return nullptr; }
+    bool hasDetailedView() const override { return false; }
+    std::unique_ptr<DetailedPopover> createDetailedView() override { return nullptr; }
 
     // --- Lifecycle ---
-    virtual void poll(int64_t now) {}
-    virtual void onBackendUpdate() {}
-    virtual void onActivate() {}
+    void poll(int64_t now) override {}
+    void onBackendUpdate() override {}
+    void onActivate() override {}
 
     // True while this indicator still owes the frame loop an animation (hover
     // scale/alpha, charging pulse, …). The host asks every frame and keeps the
     // loops alive while any indicator returns true.
-    virtual bool animating(int64_t now) const;
+    bool animating(int64_t now) const override;
 
     // --- Input (forwarded by StatusBar) ---
     // `x,y` are pointer coordinates, so multi-element indicators (the tray host)
     // can route the gesture to the specific sub-item under the cursor. Indicators
     // that don't use the position can leave the args bound but unused.
-    virtual bool onScroll(double dx, double dy, double x, double y) {
+    bool onScroll(double dx, double dy, double x, double y) override {
         (void)x;
         (void)y;
         (void)dx;
@@ -165,13 +165,13 @@ public:
     // Custom per-position click handling (e.g. the tray host, which maps the
     // click to one of several sub-icons). Return true to consume; false falls
     // through to the default activate (tile/popover).
-    virtual bool onClick(double x, double y) { return false; }
+    bool onClick(double x, double y) override { return false; }
     // Secondary (right) and middle clicks. Unlike onClick, a false return does
     // NOT fall through to the default activate — an unhandled right/middle click
     // is simply a no-op. Used by the tray host (right = dbusmenu, middle =
     // SecondaryActivate) and the taskbar (middle = close).
-    virtual bool onSecondaryClick(double x, double y) { return false; }
-    virtual bool onMiddleClick(double x, double y) { return false; }
+    bool onSecondaryClick(double x, double y) override { return false; }
+    bool onMiddleClick(double x, double y) override { return false; }
 
     // Pointer hover tracking within this indicator's bounds. Forwarded by StatusBarInput
     // on pointer motion so multi-element indicators can track per-subitem hover state.
@@ -187,7 +187,7 @@ public:
     // focused window). The host hides these unless it has opted into showing
     // session content — so they never appear on the lock screen. See
     // StatusBar::setSessionContentVisible.
-    virtual bool sensitive() const { return false; }
+    bool sensitive() const override { return false; }
 
     // Lock-screen interaction policy — **default deny** (QL-1/QL-2/QL-4 of
     // docs/LOCK_SECURITY_REVIEW.md).
@@ -205,12 +205,12 @@ public:
     // true means "this action is safe to perform before authentication".
     //
     // Currently allow-listed: volume and brightness scroll, media transport.
-    virtual bool lockInteractive() const { return false; }
+    bool lockInteractive() const override { return false; }
 
     // QS-only indicators live only in the Quick Settings panel and never appear
     // as bar applets.  The StatusBar skips them during layout/draw while still
     // calling createTile() so their QS toggle is present.
-    virtual bool qsOnly() const { return false; }
+    bool qsOnly() const override { return false; }
 
     // --- Getters ---
     std::string id() const { return id_; }

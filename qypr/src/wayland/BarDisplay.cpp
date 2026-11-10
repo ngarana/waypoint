@@ -80,11 +80,22 @@ void BarDisplay::invalidateAll() {
 }
 
 void BarDisplay::setOverlayHeight(int logicalH) {
-    for (auto& win : windows_) win->setOverlayHeight(logicalH);
+    if (logicalH > reservedHeight_ && !overlayWindow_) {
+        overlayWindow_ = pointerWindow_;
+        if (!overlayWindow_ && !windows_.empty()) { overlayWindow_ = windows_.front().get(); }
+    }
+    for (auto& win : windows_) {
+        win->setOverlayHeight(win.get() == overlayWindow_ ? logicalH : reservedHeight_);
+    }
+    if (logicalH <= reservedHeight_) { overlayWindow_ = nullptr; }
 }
 
 void BarDisplay::setKeyboardInteractive(bool on) {
-    for (auto& win : windows_) win->setKeyboardInteractive(on);
+    if (on && !overlayWindow_) {
+        overlayWindow_ = pointerWindow_;
+        if (!overlayWindow_ && !windows_.empty()) { overlayWindow_ = windows_.front().get(); }
+    }
+    for (auto& win : windows_) { win->setKeyboardInteractive(on && win.get() == overlayWindow_); }
     flush();
 }
 
@@ -130,6 +141,7 @@ void BarDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name, cons
         self->seat_->setSurfaceSizer([self](wl_surface* s, int& w, int& h) {
             BarWindow* win = self->windowForSurface(s);
             if (!win) return false;
+            self->pointerWindow_ = win;
             w = win->logicalWidth();
             h = win->logicalHeight();
             return true;
@@ -139,6 +151,8 @@ void BarDisplay::onGlobal(void* data, wl_registry* registry, uint32_t name, cons
             wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4U)));
         auto win = std::make_unique<BarWindow>(output, name, &self->env_, self->reservedHeight_,
                                                self->bottom_);
+        win->setRenderObserver(
+            [self](BarWindow* rendering) { self->renderingWindow_ = rendering; });
         if (self->connected_ && self->layerShell_) win->createLayerSurface(self->layerShell_);
         self->windows_.push_back(std::move(win));
     }
@@ -148,6 +162,8 @@ void BarDisplay::onGlobalRemove(void* data, wl_registry*, uint32_t name) {
     auto* self = static_cast<BarDisplay*>(data);
     for (auto it = self->windows_.begin(); it != self->windows_.end(); ++it) {
         if ((*it)->name() == name) {
+            if (self->pointerWindow_ == it->get()) { self->pointerWindow_ = nullptr; }
+            if (self->overlayWindow_ == it->get()) { self->overlayWindow_ = nullptr; }
             self->windows_.erase(it);
             return;
         }

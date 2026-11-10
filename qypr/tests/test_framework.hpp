@@ -220,6 +220,8 @@ void mock_xkb_set_layouts(uint32_t count);
 
 // -----------------------------------------------------------------------------
 // Tests
+// Integration tests run after static indicator registration.
+void runStatusBarFlyoutTests();
 // -----------------------------------------------------------------------------
 
 // Temp-config helper shared by the config/theme suites.

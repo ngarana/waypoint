@@ -46,12 +46,23 @@ public:
     // what is running, so only device switching is offered there.
     AudioPopover(VolumeBackend* backend, bool showStreams)
         : backend_(backend),
-          showStreams_(showStreams) {}
+          showStreams_(showStreams),
+          master_(
+              "󰕾", [backend] { return backend->snapshot().level; },
+              [backend](double value) { backend->setLevel(value); },
+              [backend] { return volumeIcon(backend->snapshot()); },
+              [backend] { backend->toggleMute(); }, [backend] { return backend->snapshot().muted; },
+              "Volume", QSTile::Role::Volume) {}
+
+    void setTheme(const theme::State& state) override {
+        DetailedPopover::setTheme(state);
+        master_.setTheme(state);
+    }
 
     [[nodiscard]] double contentWidth() const override { return kAW; }
     [[nodiscard]] double contentHeight() const override {
         const size_t nSinks = std::max<size_t>(backend_->sinks().size(), 1);
-        double h = (kAPad * 2) + kSecHdr + (static_cast<double>(nSinks) * kSinkH);
+        double h = 72.0 + (kAPad * 2) + kSecHdr + (static_cast<double>(nSinks) * kSinkH);
         if (showStreams_ && !backend_->streams().empty()) {
             h += kDiv + kSecHdr + (static_cast<double>(backend_->streams().size()) * kStreamH);
         }
@@ -60,14 +71,15 @@ public:
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
-        b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
         if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
             p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
         }
 
         sinkRows_.clear();
         streamTracks_.clear();
-        double y = b.y + kAPad;
+        master_.bounds = {b.x + kAPad, b.y + kAPad, b.w - 2.0 * kAPad, 60.0};
+        master_.draw(p, now);
+        double y = b.y + kAPad + 72.0;
 
         // ── Output devices ───────────────────────────────────────────────────
         TextStyle const hdr{.family = theme().font.family,
@@ -149,6 +161,12 @@ public:
     }
 
     bool handleClick(double x, double y) override {
+        handleRelease();
+        if (master_.bounds.contains(x, y)) {
+            masterDragging_ = master_.canDragAt(x, y);
+            master_.onClick(x, y);
+            return true;
+        }
         for (const auto& r : sinkRows_) {
             if (r.rect.contains(x, y)) {
                 backend_->setDefaultSink(r.name);
@@ -159,9 +177,31 @@ public:
     }
 
     bool handleDrag(double x, double y) override {
+        if (masterDragging_) {
+            master_.onDrag(x, y);
+            return true;
+        }
+        if (activeStream_ >= 0 && activeTrack_.w > 0) {
+            backend_->setStreamVolume(static_cast<uint32_t>(activeStream_),
+                                      clamp01((x - activeTrack_.x) / activeTrack_.w));
+            return true;
+        }
+        return false;
+    }
+
+    void handleRelease() override {
+        masterDragging_ = false;
+        activeStream_ = -1;
+    }
+    bool handleMotion(double x, double y) override {
         hoverX_ = x;
         hoverY_ = y;
-        return dragStream(x, y);
+        return contains(x, y);
+    }
+    bool handleKey(uint32_t keysym) override { return master_.handleKey(keysym); }
+    bool handleScroll(double dx, double dy) override {
+        const double delta = dy != 0 ? dy : dx;
+        return delta != 0 && master_.handleKey(delta < 0 ? XKB_KEY_Up : XKB_KEY_Down);
     }
 
 private:
@@ -181,7 +221,9 @@ private:
             hit.y -= 12.0;
             hit.h += 24.0;  // generous vertical target
             if (!hit.contains(x, y) || t.track.w <= 0) { continue; }
-            backend_->setStreamVolume(t.index, (x - t.track.x) / t.track.w);
+            activeStream_ = t.index;
+            activeTrack_ = t.track;
+            backend_->setStreamVolume(t.index, clamp01((x - t.track.x) / t.track.w));
             return true;
         }
         return false;
@@ -189,6 +231,10 @@ private:
 
     VolumeBackend* backend_ = nullptr;
     bool showStreams_ = false;
+    QSSliderTile master_;
+    bool masterDragging_ = false;
+    int64_t activeStream_ = -1;
+    Rect activeTrack_;
     std::vector<SinkRow> sinkRows_;
     std::vector<StreamTrack> streamTracks_;
     double hoverX_ = -1, hoverY_ = -1;
@@ -266,18 +312,7 @@ std::unique_ptr<QSTile> VolumeIndicator::createTile() {
 std::unique_ptr<DetailedPopover> VolumeIndicator::createDetailedView() {
     if (backend_ == nullptr) { return nullptr; }
 
-    auto* snap = &lastSnap_;
-    auto* backend = backend_;
-    auto tile = std::make_unique<QSVolumeTile>([snap]() { return snap->level; },
-                                               [backend](double v) {
-                                                   if (backend) { backend->setLevel(v); }
-                                               },
-                                               [snap]() { return std::string(volumeIcon(*snap)); },
-                                               [backend]() {
-                                                   if (backend) { backend->toggleMute(); }
-                                               },
-                                               [snap]() { return snap->muted; });
-    return std::make_unique<SliderPopover>(std::move(tile));
+    return std::make_unique<AudioPopover>(backend_, sessionSurface_);
 }
 
 REGISTER_INDICATOR("volume", Zone::Right, 200, VolumeIndicator)

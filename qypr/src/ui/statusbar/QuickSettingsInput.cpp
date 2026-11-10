@@ -21,19 +21,25 @@ bool QuickSettingsInput::handleClick(Context& ctx, double x, double y) {
 
     if (ctx.power != nullptr && ctx.power->bounds.contains(x, y)) {
         ctx.power->onClick(x, y);
+        ctx.closeRequested = true;
         return true;
     }
 
     if (ctx.volume != nullptr && ctx.volume->bounds.contains(x, y)) {
         ctx.volume->onClick(x, y);
-        ctx.activeDragTile = ctx.volume;
+        if (ctx.volume->canDragAt(x, y)) { ctx.activeDragTile = ctx.volume; }
         return true;
     }
 
     for (auto& t : ctx.tiles) {
         if (t && t->bounds.contains(x, y)) {
-            t->onClick(x, y);
-            if (t->type() == QSTile::Type::Slider) { ctx.activeDragTile = t.get(); }
+            if (t->hasSecondaryAction() && t->type() == QSTile::Type::Toggle &&
+                x >= t->bounds.x + t->bounds.w - 24.0) {
+                t->onSecondaryClick(x, y);
+            } else {
+                t->onClick(x, y);
+            }
+            if (t->canDragAt(x, y)) { ctx.activeDragTile = t.get(); }
             return true;
         }
     }

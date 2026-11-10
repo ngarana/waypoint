@@ -39,7 +39,7 @@ void IndicatorHost::attachTiles(QuickSettingsPanel& qs, const SecondaryAction& o
         if (auto tile = ind.createTile()) {
             // Right-click on a QS tile opens its source indicator's detail
             // popover (the same view the bar icon opens).
-            if (onSecondary) {
+            if (onSecondary && ind.hasDetailedView()) {
                 tile->setOnSecondary([cb = onSecondary, id = ind.id()] { cb(id); });
             }
             qs.addTile(std::move(tile));

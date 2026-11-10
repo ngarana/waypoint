@@ -244,20 +244,16 @@ public:
         const size_t total = buildRows().size();
         if (total <= kBMax) { return false; }
         const size_t maxScroll = total - kBMax;
-        if (dy > 0 && scroll_ > 0) {
+        if (dy < 0 && scroll_ > 0) {
             --scroll_;
-        } else if (dy < 0 && scroll_ < maxScroll) {
+        } else if (dy > 0 && scroll_ < maxScroll) {
             ++scroll_;
         }
         return true;
     }
 
-    // A running scan must not be cut short by the idle timeout (discovery takes
-    // longer than the default dismiss window, and closing stops it), and a
-    // pairing prompt must never time out on the user while BlueZ waits.
-    [[nodiscard]] int autoDismissMs() const override {
-        return (snap().discovering || snap().pairing.active()) ? 0 : 6000;
-    }
+    // Discovery and pairing remain open until deliberately dismissed.
+    [[nodiscard]] int autoDismissMs() const override { return 0; }
 
     // Keyboard reaches the popover only while a passkey/PIN entry is up; the
     // host grabs and releases bar keyboard focus around it.

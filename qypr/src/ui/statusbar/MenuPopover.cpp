@@ -2,6 +2,8 @@
 #include "ui/statusbar/MenuPopover.hpp"
 
 #include <algorithm>
+#include <utility>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "render/Painter.hpp"
 #include "system/DbusMenuBackend.hpp"
@@ -51,7 +53,6 @@ double MenuPopover::contentHeight() const {
 
 void MenuPopover::draw(Painter& p, int64_t now) {
     Rect b = getBounds();
-    b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
     if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
         p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
 
@@ -89,7 +90,8 @@ void MenuPopover::draw(Painter& p, int64_t now) {
         }
 
         const Rect row{b.x + kPad, y, b.w - kPad * 2, kRowH};
-        const bool hot = it.enabled && row.contains(hoverX_, hoverY_);
+        const bool hot = it.enabled && (row.contains(hoverX_, hoverY_) ||
+                                        std::cmp_equal(hits_.size(), selected_));
         if (hot) p.fillRoundedRect(row, 6.0, theme().colors.glassHover);
 
         const Color fg =
@@ -122,6 +124,7 @@ void MenuPopover::draw(Painter& p, int64_t now) {
 }
 
 bool MenuPopover::handleClick(double x, double y) {
+    selected_ = -1;
     return std::ranges::any_of(hits_, [&](const auto& h) {
         if (!h.r.contains(x, y)) { return false; }
         switch (h.kind) {
@@ -129,10 +132,12 @@ bool MenuPopover::handleClick(double x, double y) {
                 if (stack_.size() > 1) stack_.pop_back();
                 return true;
             case Hit::Submenu:
-                stack_.push_back({h.id, h.label, backend_->fetch(service_, menuPath_, h.id)});
+                stack_.push_back({h.id, h.label,
+                                  backend_ ? backend_->fetch(service_, menuPath_, h.id)
+                                           : std::vector<MenuNode>{}});
                 return true;
             case Hit::Leaf:
-                backend_->clicked(service_, menuPath_, h.id);
+                if (backend_) { backend_->clicked(service_, menuPath_, h.id); }
                 closeRequested_ = true;
                 return true;
         }
@@ -140,9 +145,37 @@ bool MenuPopover::handleClick(double x, double y) {
     });
 }
 
-bool MenuPopover::handleDrag(double x, double y) {
+bool MenuPopover::handleMotion(double x, double y) {
+    selected_ = -1;
     hoverX_ = x;
     hoverY_ = y;
+    return false;
+}
+
+bool MenuPopover::handleKey(uint32_t keysym) {
+    if (keysym == XKB_KEY_Left && stack_.size() > 1) {
+        stack_.pop_back();
+        selected_ = -1;
+        return true;
+    }
+    if (hits_.empty()) { return false; }
+    const int count = static_cast<int>(hits_.size());
+    if (keysym == XKB_KEY_Down || keysym == XKB_KEY_Tab || keysym == XKB_KEY_Up ||
+        keysym == XKB_KEY_ISO_Left_Tab) {
+        const bool reverse = keysym == XKB_KEY_Up || keysym == XKB_KEY_ISO_Left_Tab;
+        if (selected_ < 0) {
+            selected_ = reverse ? count - 1 : 0;
+        } else {
+            selected_ = (selected_ + (reverse ? -1 : 1) + count) % count;
+        }
+        return true;
+    }
+    if (selected_ >= 0 && selected_ < count &&
+        (keysym == XKB_KEY_Return || keysym == XKB_KEY_space || keysym == XKB_KEY_Right)) {
+        const auto hit = hits_[static_cast<size_t>(selected_)];
+        if (keysym == XKB_KEY_Right && hit.kind != Hit::Submenu) { return false; }
+        return handleClick(hit.r.x + hit.r.w / 2.0, hit.r.y + hit.r.h / 2.0);
+    }
     return false;
 }
 

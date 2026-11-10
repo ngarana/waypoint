@@ -38,7 +38,7 @@ public:
     ~StatusBar() override;
 
     // Layout the bar based on focused screen width
-    void layout(int screenW, int screenH);
+    void layout(int screenW, int screenH, bool overlay = true);
 
     void draw(Painter& p, int64_t now) override;
 
@@ -52,8 +52,8 @@ public:
     bool handleKey(uint32_t keysym);
     // Committed keyboard text → the active popover (launcher search box).
     bool handleTextInput(const std::string& utf8);
-    // True while a popover needing typed input is open (the host then grabs
-    // keyboard focus for the bar surface).
+    // Desktop flyouts take keyboard focus for Escape/navigation; locked hosts
+    // keep their existing text-input policy.
     bool wantsKeyboard() const;
 
     // Focus navigation
@@ -117,6 +117,10 @@ public:
 
 private:
     void toggleQuickSettings();
+    void placeActivePopover();
+    bool drawOverlay_ = true;
+    int screenW_ = 0;
+    int screenH_ = 0;
     void activateIndicator(StatusIndicator& ind);
     void openIndicatorDetail(const std::string& id);
     void notifyBackendUpdate();
@@ -148,6 +152,8 @@ private:
 
     // Ownership + zone bucketing (one load path for ctor and reload).
     IndicatorHost indicators_;
+    SystemBackends detailBackends_;
+    std::vector<std::unique_ptr<StatusIndicator>> detailIndicators_;
 
     Rect rightGroupBounds_;
     Rect contentBounds_;

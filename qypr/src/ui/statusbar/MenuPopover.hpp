@@ -27,8 +27,9 @@ public:
     double contentHeight() const override;
     void draw(Painter& p, int64_t now) override;
     bool handleClick(double x, double y) override;
-    bool handleDrag(double x, double y) override;
+    bool handleMotion(double x, double y) override;
     bool consumeCloseRequest() override;
+    bool handleKey(uint32_t keysym) override;
 
 private:
     struct Level {
@@ -52,6 +53,7 @@ private:
     std::vector<Hit> hits_;  // rebuilt each draw, hit-tested on click
     double hoverX_ = -1, hoverY_ = -1;
     bool closeRequested_ = false;
+    int selected_ = -1;
 };
 
 }  // namespace qypr

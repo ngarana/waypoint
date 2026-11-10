@@ -313,9 +313,9 @@ public:
         const size_t total = networks().size();
         if (total <= kWMax) { return false; }
         const size_t maxScroll = total - kWMax;
-        if (dy > 0 && scroll_ > 0) {
+        if (dy < 0 && scroll_ > 0) {
             --scroll_;
-        } else if (dy < 0 && scroll_ < maxScroll) {
+        } else if (dy > 0 && scroll_ < maxScroll) {
             ++scroll_;
         }
         return true;
@@ -326,7 +326,7 @@ public:
     [[nodiscard]] bool wantsKeyboard() const override { return !authSsid_.empty(); }
 
     // A waiting password prompt must never time out on the user.
-    [[nodiscard]] int autoDismissMs() const override { return authSsid_.empty() ? 6000 : 0; }
+    [[nodiscard]] int autoDismissMs() const override { return 0; }
 
     bool handleText(const std::string& utf8) override {
         if (authSsid_.empty()) { return false; }

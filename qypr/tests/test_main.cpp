@@ -9,6 +9,9 @@ int main() {
     std::cout << " Running unit tests" << '\n';
     std::cout << "========================================" << '\n';
 
+    // Module integration tests need the complete static indicator registry.
+    runStatusBarFlyoutTests();
+
     // Unit tests are registered during static initialization.
     // They run automatically.
 

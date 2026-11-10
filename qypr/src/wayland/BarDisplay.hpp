@@ -44,14 +44,18 @@ public:
     void setInputSink(InputSink* sink);
 
     void invalidateAll();
+    bool rendersOverlay() const { return !overlayWindow_ || renderingWindow_ == overlayWindow_; }
+    bool inputOnOverlayOutput() const {
+        return !overlayWindow_ || pointerWindow_ == overlayWindow_;
+    }
 
     // Resize every bar surface to fit an open overlay (Quick Settings/popover),
     // or back to the idle strip. `logicalH` is the height from the anchored edge
     // (0/small = idle); each surface clamps it to its own output.
-    void setOverlayHeight(int logicalH);
+    void setOverlayHeight(int logicalH) override;
 
-    // Grab/release keyboard focus on every bar surface (launcher search box).
-    void setKeyboardInteractive(bool on);
+    // Grab/release keyboard focus on the output that owns the active flyout.
+    void setKeyboardInteractive(bool on) override;
 
     BarWindow* windowForSurface(wl_surface* surface);
 
@@ -96,6 +100,9 @@ private:
     std::unique_ptr<Seat> seat_;
     std::vector<std::unique_ptr<BarWindow>> windows_;
     InputSink* sink_ = nullptr;
+    BarWindow* pointerWindow_ = nullptr;
+    BarWindow* overlayWindow_ = nullptr;
+    BarWindow* renderingWindow_ = nullptr;
     bool connected_ = false;  // true once initial globals are bound
 };
 

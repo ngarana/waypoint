@@ -79,6 +79,7 @@ bool StatusBarInput::handlePointerMotion(Context& ctx, double x, double y, int64
     checkHover(ctx.indicators.center());
     checkHover(ctx.indicators.right());
 
+    if (ctx.popovers.active() != nullptr) { newTarget = nullptr; }
     if (ctx.tooltips.setTarget(newTarget, now) || newTarget != nullptr) {
         ctx.host.invalidate();  // retargeted, or keep fade ticking
     }
@@ -95,69 +96,49 @@ bool StatusBarInput::handlePointerButton(Context& ctx, double x, double y, uint3
     constexpr uint32_t kBtnMiddle = 0x112;
     if (pressed) { ctx.tooltips.clear(); }
 
-    if (ctx.popovers.active() != nullptr) {
-        if (ctx.popovers.active()->contains(x, y)) {
-            if (pressed) {
-                const bool isQS = ctx.popovers.active() == &ctx.qsPanel;
-                if (button == kBtnRight) {
-                    ctx.popovers.handleSecondaryClick(x, y);
-                    if ((ctx.popovers.active() != nullptr) &&
-                        ctx.popovers.active()->consumeCloseRequest()) {
-                        ctx.popovers.closeActive();
-                    }
-                } else {
-                    ctx.popovers.handleClick(x, y);
-                    if ((ctx.popovers.active() != nullptr) &&
-                        ctx.popovers.active()->consumeCloseRequest()) {
-                        ctx.popovers.closeActive();
-                    } else if (!isQS) {
-                        popoverDragging_ = true;
-                    }
-                }
-                if (ctx.onResetAutoDismiss) { ctx.onResetAutoDismiss(); }
-            } else {
-                popoverDragging_ = false;
-                if (ctx.popovers.active() == &ctx.qsPanel) {
-                    ctx.qsPanel.activeDragTile_ = nullptr;
-                }
-            }
-            ctx.host.invalidate();
-            return true;
-        }
-        if (pressed) {
+    // Release capture even when the pointer has left the panel. A mute/button
+    // click never starts a drag; each control owns that decision.
+    if (!pressed) {
+        if (button == kBtnLeft) {
             popoverDragging_ = false;
-            ctx.popovers.closeActive();
-            ctx.host.invalidate();
-            return true;
+            if (auto* pop = ctx.popovers.active()) { pop->handleRelease(); }
         }
+        return ctx.popovers.active() != nullptr;
     }
 
-    if (!pressed) { return false; }
-
-    if (button == kBtnLeft) {
-        // Right-zone indicators with detailed views open their own popover first.
-        for (auto& ind : ctx.indicators.right()) {
-            if (!isShown(*ind, ctx.sessionContentVisible) ||
-                !isInteractive(*ind, ctx.sessionContentVisible) || !ind->bounds.contains(x, y)) {
-                continue;
+    if (auto* pop = ctx.popovers.active()) {
+        if (pop->contains(x, y)) {
+            if (button == kBtnRight) {
+                ctx.popovers.handleSecondaryClick(x, y);
+            } else if (button == kBtnLeft) {
+                ctx.popovers.handleClick(x, y);
+                popoverDragging_ = ctx.popovers.active() == pop;
             }
-            if (ind->hasDetailedView()) {
-                if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*ind); }
-                ctx.host.invalidate();
-                return true;
+            if (auto* current = ctx.popovers.active(); current && current->consumeCloseRequest()) {
+                ctx.popovers.closeActive();
+                popoverDragging_ = false;
             }
-        }
-        for (auto& ind : ctx.indicators.right()) {
-            if (!isShown(*ind, ctx.sessionContentVisible) ||
-                !isInteractive(*ind, ctx.sessionContentVisible) || !ind->bounds.contains(x, y)) {
-                continue;
-            }
-            if (ind->onClick(x, y)) {
-                ctx.host.invalidate();
-                return true;
-            }
+            if (ctx.onResetAutoDismiss) { ctx.onResetAutoDismiss(); }
+            ctx.host.invalidate();
             return true;
         }
+        // Only another flyout trigger receives a dismissing click. Direct
+        // actions (including power commands) require a separate deliberate click.
+        StatusIndicator* target = nullptr;
+        ctx.indicators.forEach([&](StatusIndicator& ind) {
+            if (isShown(ind, ctx.sessionContentVisible) &&
+                isInteractive(ind, ctx.sessionContentVisible) && ind.bounds.contains(x, y)) {
+                target = &ind;
+            }
+        });
+        const bool same = target && target->id() == ctx.popovers.ownerId();
+        ctx.popovers.closeActive();
+        popoverDragging_ = false;
+        if (button == kBtnLeft && target && !same && target->hasDetailedView()) {
+            if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*target); }
+        }
+        ctx.host.invalidate();
+        return true;
     }
 
     auto checkClick = [&](auto& list) {
@@ -167,10 +148,12 @@ bool StatusBarInput::handlePointerButton(Context& ctx, double x, double y, uint3
                 continue;
             }
             if (button == kBtnRight) {
-                ind->onSecondaryClick(x, y);
+                if (ind->onSecondaryClick(x, y) && ind->hasDetailedView()) {
+                    if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*ind); }
+                }
             } else if (button == kBtnMiddle) {
                 ind->onMiddleClick(x, y);
-            } else if (!ind->onClick(x, y)) {
+            } else if (button == kBtnLeft && (ind->hasDetailedView() || !ind->onClick(x, y))) {
                 if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*ind); }
             }
             ctx.host.invalidate();
@@ -189,7 +172,7 @@ void StatusBarInput::handlePointerLeave(Context& ctx, int64_t now) {
     (void)now;
     lastPtrX_ = lastPtrY_ = -1.0;
     popoverDragging_ = false;
-    if (ctx.popovers.active() == &ctx.qsPanel) { ctx.popovers.closeActive(); }
+    if (auto* pop = ctx.popovers.active()) { pop->handleRelease(); }
     ctx.indicators.forEach([&](StatusIndicator& ind) {
         if (ind.hovered) { ind.onHoverLeave(); }
         ind.hovered = false;
@@ -201,7 +184,10 @@ void StatusBarInput::handlePointerLeave(Context& ctx, int64_t now) {
 bool StatusBarInput::handleScroll(Context& ctx, double x, double y, double dx, double dy) {
     if ((ctx.popovers.active() != nullptr) && ctx.popovers.active()->contains(x, y)) {
         if (ctx.onResetAutoDismiss) { ctx.onResetAutoDismiss(); }
-        return ctx.popovers.handleScroll(dx, dy);
+        ctx.popovers.handleMotion(x, y);
+        const bool handled = ctx.popovers.handleScroll(dx, dy);
+        ctx.host.invalidate();
+        return handled;
     }
 
     // Scroll-to-adjust on the right zone only (lock allow-list path).
@@ -223,17 +209,16 @@ bool StatusBarInput::handleKey(Context& ctx, uint32_t keysym) {
             ctx.host.invalidate();
             return true;
         }
-        const bool isQS = (ctx.popovers.active() == &ctx.qsPanel);
         const bool handled = ctx.popovers.handleKey(keysym);
         const bool consumed =
             (ctx.popovers.active() != nullptr) && ctx.popovers.active()->consumeCloseRequest();
-        if (consumed || (isQS && !handled)) {
+        if (consumed) {
             ctx.popovers.closeActive();
         } else if (handled) {
             if (ctx.onResetAutoDismiss) { ctx.onResetAutoDismiss(); }
         }
         ctx.host.invalidate();
-        return handled || isQS;
+        return true;  // keyboard focus stays inside the flyout until dismissed
     }
 
     if (!hasFocusedChild(ctx)) { return false; }
@@ -264,7 +249,8 @@ bool StatusBarInput::handleTextInput(Context& ctx, const std::string& utf8) {
 }
 
 bool StatusBarInput::wantsKeyboard(const Context& ctx) const {
-    return ctx.popovers.activeWantsKeyboard();
+    return (ctx.sessionContentVisible && ctx.popovers.active() != nullptr) ||
+           ctx.popovers.activeWantsKeyboard();
 }
 
 bool StatusBarInput::cycleFocus(Context& ctx, bool reverse) {

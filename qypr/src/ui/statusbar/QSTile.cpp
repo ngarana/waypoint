@@ -36,7 +36,7 @@ double QSToggleTile::preferredGridWidth() const {
 }
 
 double QSToggleTile::preferredGridHeight(double width) const {
-    const double textW = width - 48.0;
+    const double textW = width - 48.0 - (hasSecondaryAction() ? 24.0 : 0.0);
     const std::string sub = subtitle_ ? subtitle_() : "On";
     const double lines = wrappedLines(title_, 11.5, textW) + wrappedLines(sub, 10.0, textW);
     // Pango's line metrics are slightly taller than the requested font size.
@@ -115,7 +115,7 @@ void QSToggleTile::draw(Painter& p, int64_t now) {
 
     // Title & Subtitle column on the right
     double textX = bounds.x + 44.0;
-    double maxW = bounds.w - 48.0;
+    double maxW = bounds.w - 48.0 - (hasSecondaryAction() ? 24.0 : 0.0);
 
     std::string sub = subtitle_ ? subtitle_() : "";
     if (sub.empty()) sub = active ? "On" : "Off";
@@ -143,7 +143,6 @@ void QSSliderTile::onClick(double x, double y) {
 }
 
 void QSSliderTile::onDrag(double x, double y) {
-    if (onIconClick_ && iconBounds_.contains(x, y)) return;
     updateValueFromCoord(x);
 }
 
@@ -451,6 +450,10 @@ QSVolumeTile::QSVolumeTile(std::function<double()> getValue, std::function<void(
       dimmed_(std::move(dimmed)) {}
 
 void QSVolumeTile::onClick(double x, double y) {
+    if (moreBounds_.contains(x, y)) {
+        onSecondaryClick(x, y);
+        return;
+    }
     if (onIconClick_ && iconBounds_.contains(x, y)) {
         onIconClick_();
         return;
@@ -459,7 +462,6 @@ void QSVolumeTile::onClick(double x, double y) {
 }
 
 void QSVolumeTile::onDrag(double x, double y) {
-    if (onIconClick_ && iconBounds_.contains(x, y)) return;
     updateValueFromCoord(x);
 }
 
@@ -514,10 +516,13 @@ void QSVolumeTile::draw(Painter& p, int64_t) {
     // Right chevron + percentage readout
     TextStyle arrStyle{theme().font.iconFamily, 12.0, PANGO_WEIGHT_NORMAL,
                        theme().colors.textSubtle};
-    Size arrSz = p.measureText("󰅂", arrStyle);
+    const std::string arrow = hasSecondaryAction() ? "󰅂" : "";
+    Size arrSz = p.measureText(arrow, arrStyle);
     double arrX = bounds.x + bounds.w - pad - arrSz.w;
     double arrY = bounds.y + (bounds.h - arrSz.h) / 2.0;
-    p.drawText(arrX, arrY, "󰅂", arrStyle);
+    p.drawText(arrX, arrY, arrow, arrStyle);
+    moreBounds_ =
+        hasSecondaryAction() ? Rect{bounds.x + bounds.w - 32.0, bounds.y, 32.0, bounds.h} : Rect{};
 
     std::string pctText = std::to_string(static_cast<int>(std::round(val * 100))) + "%";
     TextStyle pctStyle{theme().font.family, 11.5, PANGO_WEIGHT_BOLD,
@@ -552,6 +557,23 @@ void QSMediaTile::onClick(double x, double y) {
         mpris_->togglePlaying();
     else if (nextBounds_.contains(x, y))
         mpris_->next();
+}
+
+bool QSMediaTile::handleKey(uint32_t keysym) {
+    if (!mpris_) { return false; }
+    if ((keysym == XKB_KEY_space || keysym == XKB_KEY_Return) && mpris_->canTogglePlaying()) {
+        mpris_->togglePlaying();
+        return true;
+    }
+    if (keysym == XKB_KEY_Left && mpris_->canGoPrevious()) {
+        mpris_->previous();
+        return true;
+    }
+    if (keysym == XKB_KEY_Right && mpris_->canGoNext()) {
+        mpris_->next();
+        return true;
+    }
+    return false;
 }
 
 void QSMediaTile::draw(Painter& p, int64_t) {

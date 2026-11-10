@@ -2,6 +2,7 @@
 #include "ui/indicators/MediaIndicator.hpp"
 
 #include <array>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <vector>
 
 #include "mpris/MprisController.hpp"
@@ -51,7 +52,6 @@ public:
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
-        b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
 
         if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
             p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
@@ -110,22 +110,39 @@ public:
 
     bool handleClick(double x, double y) override {
         if (!mpris_ || buttons_.size() < 3) return false;
-        if (buttons_[0].contains(x, y)) {
+        if (buttons_[0].contains(x, y) && mpris_->canGoPrevious()) {
             mpris_->previous();
             return true;
         }
-        if (buttons_[1].contains(x, y)) {
+        if (buttons_[1].contains(x, y) && mpris_->canTogglePlaying()) {
             mpris_->togglePlaying();
             return true;
         }
-        if (buttons_[2].contains(x, y)) {
+        if (buttons_[2].contains(x, y) && mpris_->canGoNext()) {
             mpris_->next();
             return true;
         }
         return false;
     }
 
-    bool handleDrag(double x, double y) override {
+    bool handleKey(uint32_t keysym) override {
+        if (!mpris_) { return false; }
+        if (keysym == XKB_KEY_space && mpris_->canTogglePlaying()) {
+            mpris_->togglePlaying();
+            return true;
+        }
+        if (keysym == XKB_KEY_Left && mpris_->canGoPrevious()) {
+            mpris_->previous();
+            return true;
+        }
+        if (keysym == XKB_KEY_Right && mpris_->canGoNext()) {
+            mpris_->next();
+            return true;
+        }
+        return false;
+    }
+
+    bool handleMotion(double x, double y) override {
         hoverX_ = x;
         hoverY_ = y;
         return false;

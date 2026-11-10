@@ -10,7 +10,9 @@ namespace qypr {
 void PopoverManager::open(std::unique_ptr<DetailedPopover> popover, double anchorX,
                           double anchorY) {
     cancelAutoDismiss();
+    ownerId_.clear();
     if (borrowed_) {
+        borrowed_->handleRelease();
         borrowed_->close();
         borrowedClosing_ = borrowed_;
         borrowed_ = nullptr;
@@ -32,6 +34,7 @@ void PopoverManager::open(std::unique_ptr<DetailedPopover> popover, double ancho
 
 void PopoverManager::openBorrowed(DetailedPopover* popover, double anchorX, double anchorY) {
     cancelAutoDismiss();
+    ownerId_.clear();
     if (borrowedClosing_ == popover) borrowedClosing_ = nullptr;  // reopened mid-close
     if (active_) {
         transitioning_ = std::move(active_);
@@ -99,9 +102,18 @@ void PopoverManager::resetAutoDismiss(std::function<void()> onDismiss) {
     });
 }
 
+void PopoverManager::clear() {
+    closeActive();
+    transitioning_.reset();
+    borrowedClosing_ = nullptr;
+}
+
 void PopoverManager::closeActive() {
+    if (auto* pop = active()) { pop->handleRelease(); }
     cancelAutoDismiss();
+    ownerId_.clear();
     if (borrowed_) {
+        borrowed_->handleRelease();
         borrowed_->close();
         borrowedClosing_ = borrowed_;  // keep drawing it through the fade-out
         borrowed_ = nullptr;
@@ -112,14 +124,30 @@ void PopoverManager::closeActive() {
 }
 
 void PopoverManager::draw(Painter& p, int64_t now) {
+    auto drawPanel = [&](DetailedPopover& panel, double alpha) {
+        const Rect b = panel.visibleBounds();
+        cairo_save(p.cr());
+        cairo_rectangle(p.cr(), b.x, b.y, b.w, b.h);
+        cairo_clip(p.cr());
+        p.pushGroup();
+        panel.draw(p, now);
+        p.popGroupWithAlpha(alpha);
+        cairo_restore(p.cr());
+        if (panel.maxScroll() > 0) {
+            const double trackH = std::max(1.0, b.h - 16.0);
+            const double thumbH = std::max(16.0, trackH * b.h / panel.contentHeight());
+            const double offset = b.y - panel.getBounds().y;
+            const double y = b.y + 8.0 + (trackH - thumbH) * offset / panel.maxScroll();
+            p.fillRoundedRect({b.x + b.w - 5.0, y, 3.0, thumbH}, 1.5,
+                              panel.theme().colors.textSubtle.withAlpha(alpha * 0.6));
+        }
+    };
     if (transitioning_) {
         double prog = transitioning_->openProgress_.value(now);
         if (!transitioning_->openProgress_.active(now) && prog <= 0.01) {
             transitioning_.reset();
         } else {
-            p.pushGroup();
-            transitioning_->draw(p, now);
-            p.popGroupWithAlpha(prog);
+            drawPanel(*transitioning_, prog);
         }
     }
 
@@ -128,18 +156,14 @@ void PopoverManager::draw(Painter& p, int64_t now) {
         if (!borrowedClosing_->openProgress_.active(now) && prog <= 0.01) {
             borrowedClosing_ = nullptr;
         } else {
-            p.pushGroup();
-            borrowedClosing_->draw(p, now);
-            p.popGroupWithAlpha(prog);
+            drawPanel(*borrowedClosing_, prog);
         }
     }
 
     DetailedPopover* cur = active_ ? active_.get() : borrowed_;
     if (cur) {
         double prog = cur->openProgress_.value(now);
-        p.pushGroup();
-        cur->draw(p, now);
-        p.popGroupWithAlpha(prog);
+        drawPanel(*cur, prog);
     }
 }
 
@@ -176,18 +200,20 @@ bool PopoverManager::handleSecondaryClick(double x, double y) {
 
 bool PopoverManager::handleDrag(double x, double y) {
     DetailedPopover* cur = active_ ? active_.get() : borrowed_;
-    if (cur && cur->contains(x, y)) { return cur->handleDrag(x, y); }
+    if (cur) { return cur->handleDrag(x, y); }
     return false;
 }
 
 bool PopoverManager::handleMotion(double x, double y) {
     DetailedPopover* cur = active_ ? active_.get() : borrowed_;
-    return cur ? cur->handleMotion(x, y) : false;
+    if (!cur) { return false; }
+    const bool handled = cur->handleMotion(x, y);
+    return handled || cur->contains(x, y);
 }
 
 bool PopoverManager::handleScroll(double dx, double dy) {
     DetailedPopover* cur = active_ ? active_.get() : borrowed_;
-    if (cur) { return cur->handleScroll(dx, dy); }
+    if (cur) { return cur->scrollViewport(dy) || cur->handleScroll(dx, dy); }
     return false;
 }
 

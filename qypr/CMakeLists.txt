@@ -414,6 +414,7 @@ add_executable(qypr-test
     tests/test_wayland.cpp
     tests/test_lock.cpp
     tests/test_bar.cpp
+    tests/test_flyouts.cpp
     tests/test_indicators.cpp
     tests/test_notifications.cpp
     tests/test_qs.cpp
@@ -436,6 +437,7 @@ enable_testing()
 add_test(NAME qypr-test COMMAND qypr-test)
 
 target_compile_definitions(qypr-test PRIVATE TESTING)
+target_compile_options(qypr-test PRIVATE -UNDEBUG)
 
 if(ENABLE_COVERAGE)
     target_compile_options(qypr-test PRIVATE --coverage -O0 -g)

@@ -7,10 +7,9 @@
 // popover) the surface does NOT resize — a layer-surface resize is what the
 // compositor animates (the popover "bounce"). Instead the surface is a fixed
 // full-output-height buffer, transparent everywhere the bar isn't drawing, and
-// only its pointer input region grows to cover the open popover (and shrinks to
-// the strip when it closes) so clicks pass through to the apps below elsewhere.
-// The exclusive zone still reserves only the strip, so tiled windows tile
-// against the strip, not the full-height surface.
+// only its pointer input region changes. While a panel is open, the owning
+// output captures outside clicks for light dismissal; otherwise only the strip
+// takes input. The exclusive zone always reserves just the strip.
 
 #pragma once
 
@@ -43,21 +42,19 @@ public:
     // wl_output listener attached — before the compositor streams mode/scale.
     void createLayerSurface(zwlr_layer_shell_v1* shell);
 
-    // Grow/shrink the pointer INPUT REGION to `logicalH` (measured from the
-    // anchored edge) so an open popover is clickable, clamped to [reserved
-    // strip, output]; a value at/under the reserved strip returns to the idle
-    // strip. The surface itself is a fixed full-output-height buffer that never
-    // resizes — resizing a layer surface is what the compositor animates (the
-    // popover "bounce"). Only the input region changes, so everywhere the bar
-    // isn't drawing stays click-through.
+    // Track the drawn overlay extent without resizing the layer surface.
+    // Any extent beyond the strip enables outside-click dismissal over the output.
     void setOverlayHeight(int logicalH);
 
     // Grab (EXCLUSIVE) or release (NONE) keyboard focus for this surface — set
-    // while a launcher/search popover is open so the user can type.
+    // while a popover is open, for Escape and control navigation.
     void setKeyboardInteractive(bool on);
 
     // Mark dirty and repaint as soon as the compositor allows.
     void invalidate();
+    void setRenderObserver(std::function<void(BarWindow*)> observer) {
+        renderObserver_ = std::move(observer);
+    }
 
     uint32_t name() const { return name_; }
     wl_surface* surface() const { return surface_; }
@@ -79,6 +76,7 @@ public:
 
 private:
     void render();
+    std::function<void(BarWindow*)> renderObserver_;
     void applyInputRegion();  // (re)commit the pointer input region for inputHeight_
     ShmBuffer* acquireBuffer(int pxW, int pxH);
 
@@ -94,7 +92,8 @@ private:
     std::vector<std::unique_ptr<ShmBuffer>> buffers_;
 
     int reservedHeight_ = 0;  // exclusive zone + idle strip height (logical)
-    int outputHeight_ = 0;    // full output height (logical); the fixed surface height
+    int outputPixelHeight_ = 0;
+    int outputHeight_ = 0;  // full output height (logical); the fixed surface height
     // Start with the idle strip active. BarSurfaceController intentionally
     // treats its initial idle height as already synchronized, so relying on a
     // later setOverlayHeight() call leaves the first frame with zero damage
@@ -102,7 +101,7 @@ private:
     int inputHeight_ = 0;          // input-region height from the anchored edge (logical)
     int appliedInputHeight_ = -1;  // last input-region height committed (avoid churn)
     bool bottom_ = false;          // anchored to the lower screen edge
-    bool kbInteractive_ = false;   // keyboard grab state (launcher search)
+    bool kbInteractive_ = false;   // keyboard grab state (active flyout)
 
     int width_ = 0;   // logical, from configure
     int height_ = 0;  // logical, from configure

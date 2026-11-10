@@ -34,6 +34,7 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
                      const IndicatorRegistry::ModuleSelection* sel)
     : loop_(loop),
       host_(host),
+      detailBackends_(backends),
       sessionSurface_(backends.sessionSurface),
       wifi_(backends.wifi) {
     popovers_.setEventLoop(&loop);
@@ -45,7 +46,9 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
     // Build internal QS panel tiles (header, power, wifi combo, volume, media).
     // Only on the session surface (QL-7): command tiles must not exist on lock.
     if (sessionSurface_) {
-        qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
+        qsPanel_.buildTiles(
+            loop_, backends, [this]() { openIndicatorDetail("wifi"); },
+            [this]() { openIndicatorDetail("volume"); });
     }
     cascadeTheme();
 
@@ -86,14 +89,18 @@ StatusBar::~StatusBar() {
 void StatusBar::reloadModules(const SystemBackends& backends,
                               const IndicatorRegistry::ModuleSelection* sel) {
     // Close any open popover — the indicators are about to be destroyed.
-    popovers_.closeActive();
+    popovers_.clear();
+    detailIndicators_.clear();
+    detailBackends_ = backends;
 
     indicators_.load(backends, sel);
     indicators_.attachTiles(
         qsPanel_, [this](const std::string& id) { openIndicatorDetail(id); },
         /*clearFirst=*/true);
     if (sessionSurface_) {
-        qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
+        qsPanel_.buildTiles(
+            loop_, backends, [this]() { openIndicatorDetail("wifi"); },
+            [this]() { openIndicatorDetail("volume"); });
     }
     cascadeTheme();
     host_.invalidate();
@@ -135,6 +142,7 @@ const theme::State& StatusBar::theme() const {
 
 void StatusBar::cascadeTheme() {
     indicators_.forEach([&](StatusIndicator& ind) { ind.setTheme(theme_); });
+    for (auto& ind : detailIndicators_) { ind->setTheme(theme_); }
     qsPanel_.setTheme(theme_);
 }
 
@@ -166,11 +174,15 @@ void StatusBar::setGeometry(const BarGeometry& g) {
 
 void StatusBar::notifyBackendUpdate() {
     indicators_.forEach([&](StatusIndicator& ind) { ind.onBackendUpdate(); });
+    for (auto& ind : detailIndicators_) { ind->onBackendUpdate(); }
     if (wifi_ != nullptr) { qsPanel_.updateWifi(wifi_->snapshot()); }
     host_.invalidate();
 }
 
-void StatusBar::layout(int screenW, int screenH) {
+void StatusBar::layout(int screenW, int screenH, bool overlay) {
+    drawOverlay_ = overlay;
+    screenW_ = screenW;
+    screenH_ = screenH;
     double const pad = theme().statusbar.padding;
     double const sp = theme().statusbar.iconSpacing;
 
@@ -210,16 +222,29 @@ void StatusBar::layout(int screenW, int screenH) {
     apply(indicators_.center(), r.center);
     apply(indicators_.right(), r.right);
 
-    // Anchor active popovers away from the screen edge, right-aligned for
-    // wide/QS panels.
-    if (popovers_.active() != nullptr) {
-        DetailedPopover* p = popovers_.active();
-        if (p == &qsPanel_ || p->contentWidth() >= 300.0) {
-            p->anchorX = rightGroupBounds_.w > 0 ? rightGroupBounds_.x + rightGroupBounds_.w
-                                                 : contentBounds_.x + contentBounds_.w;
+    if (drawOverlay_) { placeActivePopover(); }
+}
+
+void StatusBar::placeActivePopover() {
+    auto* pop = popovers_.active();
+    if (!pop || screenW_ <= 0 || screenH_ <= 0) { return; }
+    const double gap = 6.0;
+    const double top = geom_.bottom ? 8.0 : bounds.y + bounds.h + gap;
+    const double bottom = geom_.bottom ? bounds.y - gap : screenH_ - 8.0;
+    pop->setViewport({8.0, top, std::max(1.0, screenW_ - 16.0), std::max(1.0, bottom - top)});
+    auto* source = indicators_.findById(popovers_.ownerId());
+    if (!source) { source = indicators_.findById("power"); }
+    if (auto* ind = source) {
+        const double width = std::min(pop->contentWidth(), pop->availableWidth());
+        if (ind->zone() == Zone::Left) {
+            pop->anchorX = ind->bounds.x + width;
+        } else if (ind->zone() == Zone::Center) {
+            pop->anchorX = ind->bounds.x + (ind->bounds.w + width) / 2.0;
+        } else {
+            pop->anchorX = ind->bounds.x + ind->bounds.w;
         }
-        popovers_.anchorToStrip(*p, geom_.bottom, bounds);
     }
+    popovers_.anchorToStrip(*pop, geom_.bottom, bounds);
 }
 
 void StatusBar::draw(Painter& p, int64_t now) {
@@ -245,6 +270,12 @@ void StatusBar::draw(Painter& p, int64_t now) {
                                        ease::inOutQuad);
             ind->hoverScale_.animateTo(ind->hovered ? 1.05 : 1.0, theme().anim.fast,
                                        ease::inOutQuad);
+            if (drawOverlay_ && popovers_.active() && popovers_.ownerId() == ind->id()) {
+                p.fillRoundedRect(ind->bounds, 6.0, theme().colors.primary.withAlpha(0.18));
+                const double y = geom_.bottom ? ind->bounds.y : ind->bounds.y + ind->bounds.h - 2.0;
+                p.fillRoundedRect({ind->bounds.x + 4.0, y, std::max(0.0, ind->bounds.w - 8.0), 2.0},
+                                  1.0, theme().colors.primary);
+            }
             ind->draw(p, now);
         }
     };
@@ -252,7 +283,7 @@ void StatusBar::draw(Painter& p, int64_t now) {
     drawZone(indicators_.center());
     drawZone(indicators_.right());
 
-    popovers_.draw(p, now);
+    if (drawOverlay_) { popovers_.draw(p, now); }
     tooltips_.draw(p, theme(), geom_, bounds, now);
 }
 
@@ -299,6 +330,11 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
     // Lock-screen policy (default deny) before any backend touch (QL-*).
     if (!isInteractive(ind)) { return; }
 
+    if (popovers_.active() && popovers_.ownerId() == ind.id()) {
+        popovers_.closeActive();
+        host_.invalidate();
+        return;
+    }
     ind.onActivate();
     if (ind.id() == "power") {
         toggleQuickSettings();
@@ -312,7 +348,8 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
             const double anchorX = ind.zone() == Zone::Left ? ind.bounds.x + p->contentWidth()
                                                             : ind.bounds.x + ind.bounds.w;
             popovers_.open(std::move(view), anchorX, 0);
-            popovers_.anchorToStrip(*p, geom_.bottom, bounds);
+            popovers_.setOwnerId(ind.id());
+            placeActivePopover();
             resetAutoDismiss();
         }
     }
@@ -320,9 +357,27 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
 }
 
 void StatusBar::openIndicatorDetail(const std::string& id) {
-    if (auto* ind = indicators_.findById(id); ind != nullptr && ind->hasDetailedView()) {
-        activateIndicator(*ind);
+    auto* ind = indicators_.findById(id);
+    if (!ind && sessionSurface_) {
+        for (auto& detail : detailIndicators_) {
+            if (detail->id() == id) {
+                ind = detail.get();
+                break;
+            }
+        }
+        if (!ind) {
+            IndicatorRegistry::ModuleSelection selection;
+            selection.right = {id};
+            auto created = IndicatorRegistry::instance().createAll(detailBackends_, &selection);
+            if (!created.empty()) {
+                ind = created.front().get();
+                ind->setTheme(theme());
+                ind->onBackendUpdate();
+                detailIndicators_.push_back(std::move(created.front()));
+            }
+        }
     }
+    if (ind && ind->hasDetailedView()) { activateIndicator(*ind); }
 }
 
 bool StatusBar::handlePointerButton(double x, double y, uint32_t button, bool pressed,
@@ -364,7 +419,8 @@ void StatusBar::toggleQuickSettings() {
         const double qsAnchorX = rightGroupBounds_.w > 0 ? rightGroupBounds_.x + rightGroupBounds_.w
                                                          : contentBounds_.x + contentBounds_.w;
         popovers_.openBorrowed(&qsPanel_, qsAnchorX, 0);
-        popovers_.anchorToStrip(qsPanel_, geom_.bottom, bounds);
+        popovers_.setOwnerId("power");
+        placeActivePopover();
     }
     resetAutoDismiss();
 }

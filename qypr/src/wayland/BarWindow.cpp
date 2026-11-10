@@ -104,17 +104,34 @@ void BarWindow::setOverlayHeight(int logicalH) {
 // -----------------------------------------------------------------------------
 void BarWindow::onScale(void* data, wl_output*, int32_t factor) {
     auto* self = static_cast<BarWindow*>(data);
-    if (factor > 0) self->scale_ = factor;
+    if (factor > 0 && factor != self->scale_) {
+        self->scale_ = factor;
+        if (self->surface_) { wl_surface_set_buffer_scale(self->surface_, factor); }
+        self->dirty_ = true;
+    }
 }
 void BarWindow::onMode(void* data, wl_output*, uint32_t flags, int32_t, int32_t height, int32_t) {
     auto* self = static_cast<BarWindow*>(data);
     constexpr uint32_t kCurrent = 0x1;  // WL_OUTPUT_MODE_CURRENT
-    if ((flags & kCurrent) && height > 0)
-        self->outputHeight_ = height / (self->scale_ > 0 ? self->scale_ : 1);
+    if ((flags & kCurrent) && height > 0) self->outputPixelHeight_ = height;
 }
 void BarWindow::onGeometry(void*, wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t,
                            const char*, const char*, int32_t) {}
-void BarWindow::onDone(void*, wl_output*) {}
+void BarWindow::onDone(void* data, wl_output*) {
+    auto* self = static_cast<BarWindow*>(data);
+    if (self->outputPixelHeight_ <= 0) { return; }
+    // Mode and scale arrive in either order. Resolve them together before
+    // resizing for a physical output change (never for a popup opening).
+    const int logicalHeight = self->outputPixelHeight_ / std::max(1, self->scale_);
+    if (logicalHeight == self->outputHeight_) { return; }
+    self->outputHeight_ = logicalHeight;
+    self->inputHeight_ = std::min(self->inputHeight_, logicalHeight);
+    self->appliedInputHeight_ = -1;
+    if (self->layerSurface_) {
+        zwlr_layer_surface_v1_set_size(self->layerSurface_, 0, logicalHeight);
+        wl_surface_commit(self->surface_);
+    }
+}
 void BarWindow::onName(void*, wl_output*, const char*) {}
 void BarWindow::onDescription(void*, wl_output*, const char*) {}
 
@@ -194,7 +211,9 @@ void BarWindow::render() {
 
     buf->setDrawnHeight(inputHeight_);
 
+    if (renderObserver_) { renderObserver_(this); }
     if (env_->render) env_->render(cr, width_, height_, scale_);
+    if (renderObserver_) { renderObserver_(nullptr); }
     cairo_destroy(cr);
     cairo_surface_flush(buf->cairoSurface());
 
@@ -225,7 +244,7 @@ void BarWindow::render() {
 
 void BarWindow::applyInputRegion() {
     wl_region* region = wl_compositor_create_region(env_->compositor);
-    const int h = inputHeight_ < height_ ? inputHeight_ : height_;
+    const int h = inputHeight_ > reservedHeight_ ? height_ : std::min(inputHeight_, height_);
     const int y = bottom_ ? height_ - h : 0;
     wl_region_add(region, 0, y, width_, h);
     wl_surface_set_input_region(surface_, region);

@@ -45,7 +45,13 @@ public:
     void setTheme(const theme::State& state);
 
     DetailedPopover* active() const { return active_.get() ? active_.get() : borrowed_; }
-    bool isTransitioning() const { return transitioning_.get() != nullptr; }
+    bool isTransitioning() const {
+        return transitioning_ != nullptr || borrowedClosing_ != nullptr;
+    }
+    void setOwnerId(const std::string& id) { ownerId_ = id; }
+    const std::string& ownerId() const { return ownerId_; }
+    // Destroy views before rebuilding the indicators whose state they borrow.
+    void clear();
 
     // Tallest contentHeight() among every popover currently being drawn — the
     // active/borrowed one plus any still fading out. Zero when nothing is drawn.
@@ -74,6 +80,7 @@ private:
     std::unique_ptr<DetailedPopover> transitioning_;  // owned popover fading out
     DetailedPopover* borrowedClosing_ = nullptr;      // borrowed popover fading out
 
+    std::string ownerId_;
     bool backdropEnabled_ = false;
     double backdropAlpha_ = -1.0;
 

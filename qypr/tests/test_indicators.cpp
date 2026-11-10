@@ -337,7 +337,7 @@ TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     view->draw(p, qypr::nowMs() + 10000);
 
     EXPECT_FALSE(view->wantsKeyboard());
-    EXPECT_EQ(view->autoDismissMs(), 6000);
+    EXPECT_EQ(view->autoDismissMs(), 0);
 
     // Click the secured unsaved row (first row below the header + subheader).
     const double rowY = 12.0 + 30.0 + 24.0 + 17.0;
@@ -354,7 +354,7 @@ TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     // the editor must close and release the keyboard).
     EXPECT_TRUE(view->handleKey(XKB_KEY_Return));
     EXPECT_FALSE(view->wantsKeyboard());
-    EXPECT_EQ(view->autoDismissMs(), 6000);
+    EXPECT_EQ(view->autoDismissMs(), 0);
 
     // Escape also cancels the editor.
     view->draw(p, qypr::nowMs() + 10000);
