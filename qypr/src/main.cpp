@@ -41,6 +41,13 @@ int main(int argc, char** argv) {
             int const secs = (i + 1 < argc) ? std::atoi(argv[i + 1]) : 6;
             return app.videoTest(secs > 0 ? secs : 6);
         }
+        // Fingerprint + suspend/resume diagnostics without locking.
+        //   qypr-lock --fingerprint-test [seconds]
+        if (std::strcmp(argv[i], "--fingerprint-test") == 0) {
+            // NOLINTNEXTLINE(bugprone-unchecked-string-to-number-conversion) // lenient CLI arg
+            int const secs = (i + 1 < argc) ? std::atoi(argv[i + 1]) : 60;
+            return app.fingerprintTest(secs > 0 ? secs : 60);
+        }
         // Idle seconds before the video pauses and the screen dims.
         //   qypr-lock --idle-timeout <seconds>
         if (std::strcmp(argv[i], "--idle-timeout") == 0 && i + 1 < argc) {

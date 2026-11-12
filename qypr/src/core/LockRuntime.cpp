@@ -3,6 +3,7 @@
 
 #include <cstdio>
 
+#include "core/Audit.hpp"
 #include "notifications/NotificationMonitor.hpp"
 #include "system/BatteryBackend.hpp"
 #include "system/BluetoothBackend.hpp"
@@ -28,6 +29,9 @@ bool LockRuntime::acquire(InputSink* sink, RenderFn renderFn, AnimatingFn animat
     display_.setRenderFn(std::move(renderFn));
     display_.setAnimatingFn(std::move(animatingFn));
 
+    // The compositor confirms every output is covered. Logged so the journal
+    // shows when the screen was actually locked (e.g. relative to a suspend).
+    lock_.setOnLocked([] { audit::log(audit::Level::Info, "session locked"); });
     lock_.setOnFinished([this] {
         std::fprintf(stderr, "qypr-lock: session lock refused or lost\n");
         loop_.quit();

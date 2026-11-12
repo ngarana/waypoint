@@ -9,12 +9,13 @@
 # pam_fprintd.so` at the top of the login stack (on Arch, in
 # /etc/pam.d/system-local-login). PAM runs modules in order, so a typed
 # password would wait behind a fingerprint scan ("Place your finger on the
-# reader") for up to the fprintd timeout, and that scan would fight the
-# parallel qypr-fingerprint worker for the reader. Keeping pam_fprintd out of
-# this stack is what lets either the password or a finger unlock on its own.
+# reader") for up to the fprintd timeout, and that scan would take the reader
+# from the lock's own fingerprint scan. Keeping pam_fprintd out of this stack
+# is what lets either the password or a finger unlock on its own.
 #
 # Keep it that way: do NOT add pam_fprintd.so here (or to the stacks this
-# includes). Fingerprint lives in /etc/pam.d/qypr-fingerprint.
+# includes). Fingerprint unlock needs no PAM file: qypr-lock talks to fprintd
+# over D-Bus itself (docs/FINGERPRINT.md).
 auth      include   system-auth
 # Parity with "login": re-unlock the GNOME keyring with the typed password if
 # it was locked. The leading '-' skips it silently where it is not installed.

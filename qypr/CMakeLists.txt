@@ -284,6 +284,8 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/video/VideoPlayer.cpp
     src/auth/PamAuthenticator.cpp
     src/auth/FingerprintAuthenticator.cpp
+    src/auth/FprintdDbus.cpp
+    src/system/SleepMonitor.cpp
 )
 
 # qypr-bar is exactly the shared set: lock-only sources were never in it,
@@ -474,8 +476,9 @@ install(FILES man/man1/qypr-lock.1 man/man1/qypr-bar.1 man/man1/qypr-record.1
 # Example configuration (copy to $XDG_CONFIG_HOME/qypr/bar.conf to use).
 install(FILES examples/bar.conf DESTINATION share/qypr/examples)
 
-# PAM services (copy to /etc/pam.d/ to enable): qypr-lock is the password
-# stack kept free of pam_fprintd, qypr-fingerprint the parallel finger stack.
+# PAM service (copy to /etc/pam.d/ to enable): qypr-lock is the password stack,
+# kept free of pam_fprintd so a typed password never waits behind a scan.
+# Fingerprint unlock needs no PAM file: it talks to fprintd over D-Bus.
 # Installed under share (not /etc) deliberately: writing to /etc from `cmake
 # --install` would fight the distro package manager, which owns /etc/pam.d.
-install(FILES pam/qypr-lock pam/qypr-fingerprint DESTINATION share/qypr/pam)
+install(FILES pam/qypr-lock DESTINATION share/qypr/pam)
