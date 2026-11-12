@@ -4,8 +4,8 @@
 namespace waylaunch {
 
 // Bitmask for Super (Mod4) and Alt (Mod1) in libxkbcommon default layout
-constexpr uint32_t MOD_ALT = (1 << 3);   // Mod1
-constexpr uint32_t MOD_SUPER = (1 << 6); // Mod4
+constexpr uint32_t MOD_ALT = (UINT32_C(1) << 3);   // Mod1 // NOLINT(bugprone-signed-bitwise)
+constexpr uint32_t MOD_SUPER = (UINT32_C(1) << 6); // Mod4 // NOLINT(bugprone-signed-bitwise)
 
 SwitcherInputController::SwitcherInputController(AppSwitcherManager* manager, wl_seat* seat)
     : manager_(manager), seat_(seat) {
@@ -14,30 +14,30 @@ SwitcherInputController::SwitcherInputController(AppSwitcherManager* manager, wl
 
 void SwitcherInputController::setup_dispatch_table() {
     key_dispatch_table_ = {
-        {XKB_KEY_Tab, [this]() { manager_->navigate_next(); }},
-        {XKB_KEY_ISO_Left_Tab, [this]() { manager_->navigate_prev(); }},
-        {XKB_KEY_grave, [this]() { manager_->navigate_prev(); }},
-        {XKB_KEY_Left, [this]() { manager_->navigate_prev(); }},
-        {XKB_KEY_Right, [this]() { manager_->navigate_next(); }},
-        {XKB_KEY_q, [this]() { manager_->quit_selected(); }},
-        {XKB_KEY_Q, [this]() { manager_->quit_selected(); }},
-        {XKB_KEY_h, [this]() { manager_->toggle_minimize_selected(); }},
-        {XKB_KEY_H, [this]() { manager_->toggle_minimize_selected(); }},
-        {XKB_KEY_1, [this]() { manager_->jump_to(0); }},
-        {XKB_KEY_2, [this]() { manager_->jump_to(1); }},
-        {XKB_KEY_3, [this]() { manager_->jump_to(2); }},
-        {XKB_KEY_4, [this]() { manager_->jump_to(3); }},
-        {XKB_KEY_5, [this]() { manager_->jump_to(4); }},
-        {XKB_KEY_6, [this]() { manager_->jump_to(5); }},
-        {XKB_KEY_7, [this]() { manager_->jump_to(6); }},
-        {XKB_KEY_8, [this]() { manager_->jump_to(7); }},
-        {XKB_KEY_9, [this]() { manager_->jump_to(8); }},
-        {XKB_KEY_Escape, [this]() { cancel(); }},
+        {XKB_KEY_Tab, [this] { manager_->navigate_next(); }},
+        {XKB_KEY_ISO_Left_Tab, [this] { manager_->navigate_prev(); }},
+        {XKB_KEY_grave, [this] { manager_->navigate_prev(); }},
+        {XKB_KEY_Left, [this] { manager_->navigate_prev(); }},
+        {XKB_KEY_Right, [this] { manager_->navigate_next(); }},
+        {XKB_KEY_q, [this] { manager_->quit_selected(); }},
+        {XKB_KEY_Q, [this] { manager_->quit_selected(); }},
+        {XKB_KEY_h, [this] { manager_->toggle_minimize_selected(); }},
+        {XKB_KEY_H, [this] { manager_->toggle_minimize_selected(); }},
+        {XKB_KEY_1, [this] { manager_->jump_to(0); }},
+        {XKB_KEY_2, [this] { manager_->jump_to(1); }},
+        {XKB_KEY_3, [this] { manager_->jump_to(2); }},
+        {XKB_KEY_4, [this] { manager_->jump_to(3); }},
+        {XKB_KEY_5, [this] { manager_->jump_to(4); }},
+        {XKB_KEY_6, [this] { manager_->jump_to(5); }},
+        {XKB_KEY_7, [this] { manager_->jump_to(6); }},
+        {XKB_KEY_8, [this] { manager_->jump_to(7); }},
+        {XKB_KEY_9, [this] { manager_->jump_to(8); }},
+        {XKB_KEY_Escape, [this] { cancel(); }},
         // Explicit confirm — a fallback for when releasing the modifier isn't
         // observed (some compositor keyboard-grab configs), and a natural key.
-        {XKB_KEY_Return, [this]() { confirm(); }},
-        {XKB_KEY_KP_Enter, [this]() { confirm(); }},
-        {XKB_KEY_space, [this]() { confirm(); }},
+        {XKB_KEY_Return, [this] { confirm(); }},
+        {XKB_KEY_KP_Enter, [this] { confirm(); }},
+        {XKB_KEY_space, [this] { confirm(); }},
     };
 }
 
