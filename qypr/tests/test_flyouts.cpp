@@ -10,10 +10,15 @@ struct FlyoutCanvas {
     cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1280, 800);
     cairo_t* cr = cairo_create(surface);
     qypr::Painter painter{cr};
+    FlyoutCanvas() = default;
     ~FlyoutCanvas() {
         cairo_destroy(cr);
         cairo_surface_destroy(surface);
     }
+    FlyoutCanvas(const FlyoutCanvas&) = delete;
+    FlyoutCanvas& operator=(const FlyoutCanvas&) = delete;
+    FlyoutCanvas(FlyoutCanvas&&) = delete;
+    FlyoutCanvas& operator=(FlyoutCanvas&&) = delete;
 };
 
 void testScrollRoutesEveryZone() {
