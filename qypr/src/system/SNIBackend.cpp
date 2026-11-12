@@ -185,7 +185,8 @@ int SNIBackend::getRegisteredItems(sd_bus*, const char*, const char*, const char
 int SNIBackend::getHostRegistered(sd_bus*, const char*, const char*, const char*,
                                   sd_bus_message* reply, void* userdata, sd_bus_error*) {
     auto* self = static_cast<SNIBackend*>(userdata);
-    sd_bus_message_append(reply, "b", !self->registeredHosts_.empty());
+    sd_bus_message_append(reply, "b",
+                          self->mode_ == Mode::WatcherHost || !self->registeredHosts_.empty());
     return 1;
 }
 
@@ -222,6 +223,13 @@ void SNIBackend::activate(size_t index, int x, int y) {
                              "Activate", nullptr, nullptr, "ii", x, y);
 }
 
+void SNIBackend::contextMenu(size_t index, int x, int y) {
+    if (!bus_.available() || index >= items_.size()) return;
+    const SNIItem& it = items_[index];
+    sd_bus_call_method_async(bus_.get(), nullptr, it.service.c_str(), it.path.c_str(), kItemIface,
+                             "ContextMenu", nullptr, nullptr, "ii", x, y);
+}
+
 void SNIBackend::secondaryActivate(size_t index, int x, int y) {
     if (!bus_.available() || index >= items_.size()) return;
     const SNIItem& it = items_[index];
@@ -230,14 +238,14 @@ void SNIBackend::secondaryActivate(size_t index, int x, int y) {
 }
 
 void SNIBackend::scroll(size_t index, int dx, int dy) {
-    // The SNI spec's Scroll(dx, dy) takes signed deltas; an item with no
-    // scroll handler is a no-op on the bus side (we already fire-and-forget,
-    // so there's nothing more to do). xkb scanline scrolls arrive with dy
-    // representing pixels — that's fine as a raw pass-through.
     if (!bus_.available() || index >= items_.size()) return;
     const SNIItem& it = items_[index];
-    sd_bus_call_method_async(bus_.get(), nullptr, it.service.c_str(), it.path.c_str(), kItemIface,
-                             "Scroll", nullptr, nullptr, "ii", dx, dy);
+    if (dx != 0)
+        sd_bus_call_method_async(bus_.get(), nullptr, it.service.c_str(), it.path.c_str(),
+                                 kItemIface, "Scroll", nullptr, nullptr, "is", dx, "horizontal");
+    if (dy != 0)
+        sd_bus_call_method_async(bus_.get(), nullptr, it.service.c_str(), it.path.c_str(),
+                                 kItemIface, "Scroll", nullptr, nullptr, "is", dy, "vertical");
 }
 
 // ─── Host mode helpers ──────────────────────────────────────────────────────
@@ -407,8 +415,11 @@ void SNIBackend::emitItemUnregistered(const std::string& service) {
 void SNIBackend::watchItemOwnership(const std::string& service) {
     sd_bus* bus = bus_.get();
     if (!bus) return;
+    std::string owner;
+    std::string path;
+    parseItemRef(service, owner, path);
     std::string match = "type='signal',sender='" + std::string(kDBusIface) + "',interface='" +
-                        std::string(kDBusIface) + "',member='NameOwnerChanged',arg0='" + service +
+                        std::string(kDBusIface) + "',member='NameOwnerChanged',arg0='" + owner +
                         "'";
     sd_bus_slot* slot = bus_.addMatch(match.c_str(), &SNIBackend::onItemOwnerChanged, this);
     if (slot) ownerWatchSlots_.push_back(slot);
@@ -422,13 +433,17 @@ int SNIBackend::onItemOwnerChanged(sd_bus_message* m, void* ud, sd_bus_error*) {
     sd_bus_message_read(m, "sss", &name, &oldOwner, &newOwner);
 
     if (newOwner && !*newOwner && name) {
-        std::string svc = name;
-        auto it = std::ranges::find(self->registeredItems_, svc);
-        if (it != self->registeredItems_.end()) {
-            self->registeredItems_.erase(it);
-            self->emitItemUnregistered(svc);
-            self->refresh();
-        }
+        std::vector<std::string> removed;
+        std::erase_if(self->registeredItems_, [&](const std::string& ref) {
+            std::string service;
+            std::string path;
+            parseItemRef(ref, service, path);
+            if (service != name) return false;
+            removed.push_back(ref);
+            return true;
+        });
+        for (const auto& ref : removed) self->emitItemUnregistered(ref);
+        if (!removed.empty()) self->refresh();
     }
     return 0;
 }
@@ -512,6 +527,8 @@ SNIItem SNIBackend::fetchItem(const std::string& service, const std::string& pat
         return item;
     }
 
+    std::string attentionName;
+    cairo_surface_t* attentionPixmap = nullptr;
     if (sd_bus_message_enter_container(reply, 'a', "{sv}") >= 0) {
         while (sd_bus_message_enter_container(reply, 'e', "sv") > 0) {
             const char* key = nullptr;
@@ -520,7 +537,18 @@ SNIItem SNIBackend::fetchItem(const std::string& service, const std::string& pat
                 sd_bus_message_exit_container(reply);
                 continue;
             }
-            if (std::strcmp(key, "IconName") == 0) {
+            if (std::strcmp(key, "AttentionIconName") == 0) {
+                readVariantString(reply, &attentionName);
+            } else if (std::strcmp(key, "AttentionIconPixmap") == 0) {
+                attentionPixmap = readVariantPixmap(reply);
+            } else if (std::strcmp(key, "ItemIsMenu") == 0) {
+                int value = 0;
+                if (sd_bus_message_enter_container(reply, 'v', "b") > 0) {
+                    sd_bus_message_read(reply, "b", &value);
+                    item.itemIsMenu = value != 0;
+                    sd_bus_message_exit_container(reply);
+                }
+            } else if (std::strcmp(key, "IconName") == 0) {
                 readVariantString(reply, &item.iconName);
             } else if (std::strcmp(key, "Title") == 0) {
                 readVariantString(reply, &item.title);
@@ -538,6 +566,14 @@ SNIItem SNIBackend::fetchItem(const std::string& service, const std::string& pat
         sd_bus_message_exit_container(reply);
     }
     sd_bus_message_unref(reply);
+    if (item.menuPath == "/") item.menuPath.clear();
+    if (item.status == "NeedsAttention" && (!attentionName.empty() || attentionPixmap)) {
+        item.iconName = attentionName;
+        if (item.pixmap) cairo_surface_destroy(item.pixmap);
+        item.pixmap = attentionPixmap;
+        attentionPixmap = nullptr;
+    }
+    if (attentionPixmap) cairo_surface_destroy(attentionPixmap);
     return item;
 }
 

@@ -190,13 +190,14 @@ bool StatusBarInput::handleScroll(Context& ctx, double x, double y, double dx, d
         return handled;
     }
 
-    // Scroll-to-adjust on the right zone only (lock allow-list path).
-    for (auto& ind : ctx.indicators.right()) {
-        if (isShown(*ind, ctx.sessionContentVisible) &&
-            isInteractive(*ind, ctx.sessionContentVisible) && ind->bounds.contains(x, y) &&
-            ind->onScroll(dx, dy, x, y)) {
-            ctx.host.invalidate();
-            return true;
+    for (auto* zone : {&ctx.indicators.left(), &ctx.indicators.center(), &ctx.indicators.right()}) {
+        for (auto& ind : *zone) {
+            if (isShown(*ind, ctx.sessionContentVisible) &&
+                isInteractive(*ind, ctx.sessionContentVisible) && ind->bounds.contains(x, y) &&
+                ind->onScroll(dx, dy, x, y)) {
+                ctx.host.invalidate();
+                return true;
+            }
         }
     }
     return false;

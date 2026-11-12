@@ -39,6 +39,8 @@ struct SNIItem {
     std::string status;    // "Active" | "Passive" | "NeedsAttention"
     std::string menuPath;  // com.canonical.dbusmenu object path ("" if none)
 
+    bool itemIsMenu = false;
+
     // Best IconPixmap converted to a premultiplied cairo surface, or nullptr.
     // Owned by the backend (freed in clearItems / the destructor). Used only
     // when iconName does not resolve through the icon theme.
@@ -71,6 +73,8 @@ public:
     void activate(size_t index, int x, int y);
 
     // Middle-click: the spec's SecondaryActivate. Fire-and-forget async.
+    void contextMenu(size_t index, int x, int y);
+
     void secondaryActivate(size_t index, int x, int y);
 
     // Scroll-on-tray-item: forwards the spec's Scroll(dx, dy). Fire-and-forget

@@ -35,6 +35,13 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
 
     std::vector<std::unique_ptr<StatusIndicator>> result;
 
+    auto alreadyHasTray = [&result](const std::string& id) {
+        return (id == "sni" || id == "notification-apps") &&
+               std::ranges::any_of(result, [](const auto& ind) {
+                   return ind->id() == "sni" || ind->id() == "notification-apps";
+               });
+    };
+
     // No config: every indicator, grouped by compiled zone, ordered by priority.
     if (!sel) {
         auto sortedEntries = entries_;
@@ -45,6 +52,7 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
             return a.priority < b.priority;  // Sort by priority ascending
         });
         for (const auto& entry : sortedEntries) {
+            if (alreadyHasTray(entry.id)) continue;
             if (!isAllowed(entry)) { continue; }
             if (auto ind = entry.factory(synced)) { result.push_back(std::move(ind)); }
         }
@@ -55,6 +63,7 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
     // and lays out in vector order, so insertion order is the visual order.
     auto buildZone = [&](const std::vector<std::string>& ids, Zone zone) {
         for (const auto& id : ids) {
+            if (alreadyHasTray(id)) continue;
             auto it = std::ranges::find_if(entries_, [&](const Entry& e) { return e.id == id; });
             if (it == entries_.end()) continue;  // unknown id: drop, never crash
             if (!isAllowed(*it)) continue;       // unsafe in current runtime: drop

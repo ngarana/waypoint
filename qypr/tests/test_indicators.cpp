@@ -759,8 +759,8 @@ TEST(SNITrayHostVisibleWithItems) {
     cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
-    // Two 18px icons + one 6px gap + 2*8px side pad = 68px.
-    EXPECT_NEAR(host.measureWidth(p), (2 * 18.0) + 6.0 + (2 * 8.0), 0.01);
+    // Two 28px targets plus 4px padding on each side.
+    EXPECT_NEAR(host.measureWidth(p), 64.0, 0.01);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 
@@ -1254,96 +1254,60 @@ TEST(KeyboardLayoutGating) {
 // here, since none of this touches the bus.
 // -----------------------------------------------------------------------------
 
-TEST(NotificationAppsIndicatorDynamic) {
+TEST(NotificationAppsPersistentTray) {
     qypr::EventLoop loop;
     qypr::NotificationMonitor mon(loop);
-    qypr::Notification n1;
-    n1.app = "Mail";
-    n1.title = "New Email";
-    n1.body = "Meeting at 2pm";
-    n1.icon = "mail-unread";
-    n1.desktopEntry = "thunderbird";
-    n1.daemonId = 101;
-    n1.postedAt = 1000;
-
-    qypr::Notification n2;
-    n2.app = "Mail";
-    n2.title = "Another Email";
-    n2.body = "Project update";
-    n2.icon = "mail-unread";
-    n2.desktopEntry = "thunderbird";
-    n2.daemonId = 102;
-    n2.postedAt = 2000;
-
-    qypr::Notification n3;
-    n3.app = "Chat";
-    n3.title = "Alice";
-    n3.body = "Hey there!";
-    n3.icon = "󰖣";
-    n3.daemonId = 201;
-    n3.urgency = 2;  // critical
-    n3.postedAt = 3000;
-
-    mon.testNotes().push_back(n1);
-    mon.testNotes().push_back(n2);
-    mon.testNotes().push_back(n3);
-
+    qypr::Notification note;
+    note.app = "Mail";
+    mon.testNotes().push_back(note);
+    qypr::SystemBus session(loop, qypr::BusKind::Session);
+    qypr::SNIBackend backend(session);
     qypr::SystemBackends b{};
     b.notifications = &mon;
+    b.sni = &backend;
     qypr::NotificationAppsIndicator ind(b);
     ind.onBackendUpdate();
-    EXPECT_TRUE(ind.visible);
+    EXPECT_FALSE(ind.visible);  // Toasts alone never create persistent app icons.
     EXPECT_TRUE(ind.sensitive());
-    EXPECT_EQ(ind.apps().size(), 2U);
-
-    // Chat has newest postedAt (3000) so it should be first
-    EXPECT_EQ(ind.apps()[0].name, "Chat");
-    EXPECT_EQ(ind.apps()[0].count, 1);
-    EXPECT_TRUE(ind.apps()[0].hasCritical);
-
-    // Mail is second, count 2
-    EXPECT_EQ(ind.apps()[1].desktopEntry, "thunderbird");
-    EXPECT_EQ(ind.apps()[1].count, 2);
-    EXPECT_FALSE(ind.apps()[1].hasCritical);
-
-    // General tooltip
-    EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos || !ind.tooltip().empty());
-
-    // Measure and draw with Cairo
-    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 200, 60);
+    backend.items_.push_back(
+        {.service = ":1.100", .path = "/Tray", .title = "Background app", .status = "Passive"});
+    ind.onBackendUpdate();
+    EXPECT_TRUE(ind.visible);  // All-passive trays must still expose overflow.
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 400, 300);
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
-    const double width = ind.measureWidth(p);
-    EXPECT_TRUE(width > 0);
-    ind.bounds = {.x = 10.0, .y = 0, .w = width, .h = 36};
-    ind.onHoverMotion(15.0, 18.0);  // Hover first app
+    ind.bounds = {0, 0, ind.measureWidth(p), 32};
     ind.draw(p, qypr::nowMs());
-
-    // Per-app hover tooltips
-    ind.onHoverMotion(15.0, 18.0);  // Over first app (Chat)
-    EXPECT_TRUE(ind.tooltip().find("Chat") != std::string::npos);
-    EXPECT_TRUE(ind.tooltip().find("Alice") != std::string::npos);
-
-    ind.onHoverMotion(47.0, 18.0);  // Over second app (Mail)
-    EXPECT_TRUE(ind.tooltip().find("Mail") != std::string::npos);
-    EXPECT_TRUE(ind.tooltip().find("2 notifications") != std::string::npos);
-
-    ind.onHoverLeave();
-    EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos);
-
-    // Click interactions
-    EXPECT_TRUE(ind.onClick(15.0, 18.0));
-    EXPECT_TRUE(ind.onSecondaryClick(15.0, 18.0));
-    EXPECT_TRUE(ind.onMiddleClick(15.0, 18.0));
-    // Click outside buttons (gap or past bounds)
-    EXPECT_FALSE(ind.onClick(1000.0, 18.0));
-
-    cairo_destroy(cr);
-    cairo_surface_destroy(surf);
-
-    // No notifications → hidden
+    EXPECT_FALSE(ind.onClick(15, 16));
+    EXPECT_TRUE(ind.hasDetailedView());
+    auto pop = ind.createDetailedView();
+    EXPECT_TRUE(pop != nullptr);
+    pop->anchorX = 300;
+    pop->anchorY = 40;
+    pop->draw(p, qypr::nowMs());
+    EXPECT_TRUE(pop->handleKey(XKB_KEY_Down));
+    backend.items_.clear();  // Disappearing/replaced apps while the popup is open.
+    backend.items_.push_back(
+        {.service = ":1.101", .path = "/Other", .title = "Replacement", .status = "Active"});
+    EXPECT_TRUE(pop->handleClick(20, 90));
+    EXPECT_FALSE(pop->consumeCloseRequest());
+    pop->draw(p, qypr::nowMs());
+    EXPECT_FALSE(pop->handleKey(XKB_KEY_Return));
     mon.testNotes().clear();
     ind.onBackendUpdate();
-    EXPECT_FALSE(ind.visible);
-    EXPECT_EQ(ind.tooltip(), "No app notifications");
+    EXPECT_TRUE(ind.visible);    // Lifetime belongs to the app, not notification history.
+    ind.draw(p, qypr::nowMs());  // No icon: initial fallback still has the same hit target.
+    ind.onHoverMotion(15, 16);
+    EXPECT_EQ(ind.tooltip(), "Replacement");
+    EXPECT_TRUE(ind.onClick(15, 16));
+    backend.items_[0].status = "NeedsAttention";
+    ind.onBackendUpdate();
+    EXPECT_TRUE(ind.tooltip().find("Needs attention") != std::string::npos);
+    for (int i = 0; i < 10; ++i)
+        backend.items_.push_back(
+            {.service = ":1." + std::to_string(200 + i), .path = "/Tray", .status = "Active"});
+    ind.onBackendUpdate();
+    EXPECT_NEAR(ind.measureWidth(p), 204.0, 0.01);  // Six icons plus overflow, bounded.
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
 }

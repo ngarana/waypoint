@@ -16,6 +16,42 @@ struct FlyoutCanvas {
     }
 };
 
+void testScrollRoutesEveryZone() {
+    qypr::EventLoop loop;
+    FlyoutHost host;
+    qypr::SystemBackends backends;
+    qypr::IndicatorRegistry::ModuleSelection modules;
+    qypr::StatusBar bar(loop, host, backends, &modules);
+    bar.setSessionContentVisible(true);
+    struct ScrollTarget : qypr::StatusIndicator {
+        ScrollTarget() : StatusIndicator("scroll-test", qypr::Zone::Right, 0) {}
+        [[nodiscard]] std::string icon() const override { return "S"; }
+        [[nodiscard]] std::string tooltip() const override { return "Scroll target"; }
+        bool onScroll(double, double, double, double) override { return true; }
+    };
+    for (auto* zone :
+         {&bar.indicators().left(), &bar.indicators().center(), &bar.indicators().right()}) {
+        auto target = std::make_unique<ScrollTarget>();
+        target->bounds = {100, 0, 30, 30};
+        zone->push_back(std::move(target));
+        EXPECT_TRUE(bar.handleScroll(110, 15, 0, 1));
+        zone->pop_back();
+    }
+}
+
+void testTrayAliasesShareOneHost() {
+    qypr::SystemBackends b;
+    b.sessionSurface = true;
+    qypr::IndicatorRegistry::ModuleSelection modules;
+    modules.left = {"notification-apps"};
+    modules.right = {"sni", "notification-apps"};
+    const auto indicators = qypr::IndicatorRegistry::instance().createAll(b, &modules);
+    EXPECT_EQ(indicators.size(), 1U);
+    EXPECT_EQ(indicators.front()->id(), "notification-apps");
+    b.hasSession = false;
+    EXPECT_TRUE(qypr::IndicatorRegistry::instance().createAll(b, &modules).empty());
+}
+
 void testStatusBarFlyoutSwitchToggleAndDismiss() {
     qypr::EventLoop loop;
     FlyoutHost host;
@@ -399,6 +435,8 @@ void runStatusBarFlyoutTests() {
         {"QuickSettingsVolumeDetailsWithoutBarModule",
          testQuickSettingsVolumeDetailsWithoutBarModule},
         {"StatusBarFlyoutSwitchToggleAndDismiss", testStatusBarFlyoutSwitchToggleAndDismiss},
+        {"ScrollRoutesEveryZone", testScrollRoutesEveryZone},
+        {"TrayAliasesShareOneHost", testTrayAliasesShareOneHost},
         {"StatusBarFlyoutPlacementAllZonesAndEdges", testStatusBarFlyoutPlacementAllZonesAndEdges},
         {"FlyoutOverflowScrollAndClip", testFlyoutOverflowScrollAndClip},
         {"FlyoutSliderCaptureAndRelease", testFlyoutSliderCaptureAndRelease},
