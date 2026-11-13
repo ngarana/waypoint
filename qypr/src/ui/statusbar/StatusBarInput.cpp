@@ -66,7 +66,12 @@ bool StatusBarInput::handlePointerMotion(Context& ctx, double x, double y, int64
         for (auto& ind : list) {
             bool const prev = ind->hovered;
             ind->hovered = isShown(*ind, ctx.sessionContentVisible) && ind->bounds.contains(x, y);
-            if (ind->hovered) { newTarget = ind.get(); }
+            if (ind->hovered) {
+                newTarget = ind.get();
+                ind->onHoverMotion(x, y);
+            } else if (prev) {
+                ind->onHoverLeave();
+            }
             if (ind->hovered != prev) { ctx.host.invalidate(); }
         }
     };
@@ -185,7 +190,10 @@ void StatusBarInput::handlePointerLeave(Context& ctx, int64_t now) {
     lastPtrX_ = lastPtrY_ = -1.0;
     popoverDragging_ = false;
     if (ctx.popovers.active() == &ctx.qsPanel) { ctx.popovers.closeActive(); }
-    ctx.indicators.forEach([&](StatusIndicator& ind) { ind.hovered = false; });
+    ctx.indicators.forEach([&](StatusIndicator& ind) {
+        if (ind.hovered) { ind.onHoverLeave(); }
+        ind.hovered = false;
+    });
     ctx.tooltips.clear();
     ctx.host.invalidate();
 }

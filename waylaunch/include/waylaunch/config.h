@@ -85,11 +85,16 @@ struct SearchConfig {
     bool enable_calculator = true;
     bool enable_commands = true;
 
-    // File search (async native filesystem walk) tuning.
-    std::vector<std::string> file_roots;    // dirs to search; "~" expands to $HOME
-    std::vector<std::string> file_excludes; // exclude patterns (exact basename or glob: *.tmp)
-    int file_min_query = 2;                 // min chars before file search runs
-    int max_file_results = 6;               // rows kept after ranking
+    // File search tuning. Trees the waylaunchd index covers are answered from
+    // it; the rest by an async bounded filesystem walk.
+    std::vector<std::string> file_roots; // dirs to search; "~" expands to $HOME
+    // Exclude patterns: exact basename or glob (*.tmp) match any entry name; a
+    // pattern with '/' (go/pkg) matches an entry's trailing path components.
+    std::vector<std::string> file_excludes;
+    int file_min_query = 2;   // min chars before file search runs
+    int max_file_results = 6; // rows kept after ranking
+    bool file_hidden =
+        false; // also match dot-files/folders (a leading '.' in the query always does)
 };
 
 struct HistoryConfig {

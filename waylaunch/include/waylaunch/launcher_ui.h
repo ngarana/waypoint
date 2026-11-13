@@ -208,11 +208,13 @@ class LauncherUI {
     std::vector<std::string> file_excludes_;
     int file_min_query_ = 2;
     int max_file_results_ = 6;
+    bool file_hidden_ = false;
     bool file_enabled_ = true;
 
     // Content search (read-only queries against the waylaunchd index).
     std::string config_path_;                       // to load [content] settings
     std::unique_ptr<content::Store> content_store_; // read-only; null if unavailable
+    std::vector<std::string> content_roots_;        // trees the index covers (file search)
     bool content_enabled_ = false;
     int content_min_query_ = 3;
     int content_max_results_ = 6;

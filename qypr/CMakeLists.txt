@@ -197,10 +197,13 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/LauncherIndicator.cpp
     src/ui/indicators/MediaIndicator.cpp
     src/ui/indicators/NightLightIndicator.cpp
+    src/ui/indicators/NotificationAppsIndicator.cpp
     src/ui/indicators/NotificationIndicator.cpp
     src/ui/indicators/PagerIndicator.cpp
     src/ui/indicators/PowerMenuIndicator.cpp
     src/ui/indicators/SNITrayHost.cpp
+    src/ui/indicators/SimpleIconIndicator.cpp
+    src/ui/indicators/AdditionalIndicators.cpp
     src/ui/indicators/SystemMonitorIndicator.cpp
     src/ui/indicators/TaskbarIndicator.cpp
     src/ui/indicators/VolumeIndicator.cpp

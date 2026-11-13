@@ -153,10 +153,12 @@ void wl_delete(Fts5Tokenizer* p) {
 int wl_tokenize(Fts5Tokenizer* p, void* pCtx, int flags, const char* pText, int nText,
                 int (*xToken)(void*, int, const char*, int, int, int)) {
     WlTok* w = reinterpret_cast<WlTok*>(p);
-    Tramp t{.pCtx = pCtx,
-            .xToken = xToken,
-            .pText = pText,
-            .query = (flags & FTS5_TOKENIZE_QUERY) != 0};
+    Tramp t{
+        .pCtx = pCtx,
+        .xToken = xToken,
+        .pText = pText,
+        .query = (static_cast<unsigned>(flags) & static_cast<unsigned>(FTS5_TOKENIZE_QUERY)) != 0,
+    };
     return w->parent.xTokenize(w->parent_inst, &t, flags, pText, nText, wl_trampoline);
 }
 
@@ -310,20 +312,57 @@ const std::vector<std::string>* kind_globs(const std::string& kind) {
         {"audio", {"audio/*"}},
         {"video", {"video/*"}},
         {"text", {"text/*"}},
-        {"code",
-         {"text/x-*", "application/json", "application/javascript", "application/xml",
-          "application/x-shellscript"}},
-        {"archive",
-         {"application/zip", "application/x-tar", "application/gzip", "application/x-7z-compressed",
-          "application/x-bzip2", "application/x-xz", "application/vnd.rar",
-          "application/x-rar-compressed"}},
-        {"spreadsheet",
-         {"*spreadsheetml*", "*opendocument.spreadsheet*", "text/csv", "application/vnd.ms-excel"}},
-        {"presentation",
-         {"*presentationml*", "*opendocument.presentation*", "application/vnd.ms-powerpoint"}},
-        {"doc",
-         {"*wordprocessingml*", "*opendocument.text*", "application/pdf", "application/rtf",
-          "application/epub+zip", "text/markdown"}},
+        {
+            "code",
+            {
+                "text/x-*",
+                "application/json",
+                "application/javascript",
+                "application/xml",
+                "application/x-shellscript",
+            },
+        },
+        {
+            "archive",
+            {
+                "application/zip",
+                "application/x-tar",
+                "application/gzip",
+                "application/x-7z-compressed",
+                "application/x-bzip2",
+                "application/x-xz",
+                "application/vnd.rar",
+                "application/x-rar-compressed",
+            },
+        },
+        {
+            "spreadsheet",
+            {
+                "*spreadsheetml*",
+                "*opendocument.spreadsheet*",
+                "text/csv",
+                "application/vnd.ms-excel",
+            },
+        },
+        {
+            "presentation",
+            {
+                "*presentationml*",
+                "*opendocument.presentation*",
+                "application/vnd.ms-powerpoint",
+            },
+        },
+        {
+            "doc",
+            {
+                "*wordprocessingml*",
+                "*opendocument.text*",
+                "application/pdf",
+                "application/rtf",
+                "application/epub+zip",
+                "text/markdown",
+            },
+        },
     };
     auto it = m.find(kind);
     return it == m.end() ? nullptr : &it->second;
@@ -397,7 +436,7 @@ std::string meta_where(const MetaFilter& mf) {
         w += " AND (";
         for (size_t i = 0; i < mf.mime_globs.size(); i++)
             w += (i ? " OR " : "") + std::string("f.mime GLOB ?");
-        w += ")";
+        w += ')';
     }
     for (size_t i = 0; i < mf.name_likes.size(); i++) w += " AND lower(f.name) LIKE ? ESCAPE '\\'";
     if (mf.size_min >= 0) w += " AND f.size>=?";
@@ -737,11 +776,9 @@ bool Store::open(const std::string& db_path, const StoreOptions& opts) {
     std::string check = scalar_text(db_, "PRAGMA quick_check;");
     bool has_schema = scalar_int(db_, "SELECT count(*) FROM sqlite_master WHERE name='files';") > 0;
     bool stale_version = has_schema && scalar_int(db_, "PRAGMA user_version;") != kSchemaVersion;
-    if ((check != "ok" && !check.empty()) || stale_version) {
-        if (!recreate_db()) {
-            close();
-            return false;
-        }
+    if (((check != "ok" && !check.empty()) || stale_version) && !recreate_db()) {
+        close();
+        return false;
     }
 
     if (!ensure_match_mode(opts.match)) {
@@ -1033,7 +1070,7 @@ std::string Store::build_match_query(const std::string& user_query, bool prefix_
         terms.push_back("\"" + esc + "\"");
     }
     if (terms.empty()) return "";
-    if (prefix_last && match_ == MatchMode::Prefix) terms.back() += "*";
+    if (prefix_last && match_ == MatchMode::Prefix) terms.back() += '*';
     std::string out;
     for (size_t i = 0; i < terms.size(); i++) {
         if (i) out += ' ';
@@ -1267,6 +1304,114 @@ std::vector<ContentHit> Store::search(const std::string& query, int limit,
             static_cast<long long>(t1 - t0), static_cast<long long>(t2 - t1),
             static_cast<long long>(now_ms() - t2), hits.size());
     return hits;
+}
+
+bool Store::search_names(const std::string& root, const std::string& needle, int limit,
+                         std::vector<NameHit>& out) {
+    if (!db_) return false;
+    if (limit <= 0 || needle.empty() || root.empty()) return true;
+
+    // [prefix, upper) is the half-open key range of everything strictly below
+    // root ('0' is '/'+1), so both queries are range scans on the path/parent
+    // indexes rather than full-table scans.
+    std::string prefix = root.ends_with('/') ? root : root + "/";
+    std::string upper = prefix;
+    upper.back() = '0';
+
+    // Same base score the launcher ranks by (name prefix beats substring;
+    // shorter name / earlier match first), so the capped candidate set holds
+    // the launcher's best hits. lower() is ASCII-only, matching the walk.
+    auto base_score = [](size_t name_len, size_t pos) {
+        return pos == 0 ? 1000 - static_cast<int>(std::min<size_t>(name_len, 300))
+                        : 600 - static_cast<int>(std::min<size_t>(pos, 300));
+    };
+
+    // ---- files -------------------------------------------------------------
+    static const char* kFilesSql =
+        "SELECT path, mtime FROM files"
+        " WHERE state!=2 AND path>=?1 AND path<?2 AND instr(lower(name),?3)>0"
+        " ORDER BY CASE WHEN instr(lower(name),?3)=1 THEN 1000-min(length(name),300)"
+        "               ELSE 600-min(instr(lower(name),?3)-1,300) END DESC,"
+        "          mtime DESC"
+        " LIMIT ?4;";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, kFilesSql, -1, &st, nullptr) != SQLITE_OK) {
+        avail_ = Availability::Error;
+        return false;
+    }
+    sqlite3_bind_text(st, 1, prefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, upper.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 3, needle.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 4, limit);
+    int rc;
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
+        NameHit h;
+        if (const unsigned char* p = sqlite3_column_text(st, 0))
+            h.path.assign(reinterpret_cast<const char*>(p));
+        h.mtime_s = sqlite3_column_int64(st, 1) / 1000000000LL;
+        out.push_back(std::move(h));
+    }
+    sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) return false;
+
+    // ---- folders -------------------------------------------------------------
+    // Pre-filter parents whose below-root part contains the needle anywhere,
+    // then pick out each matching component: a hit on ".../adhoc/2026-x" yields
+    // the folder ".../adhoc" even though no file lives directly inside it.
+    static const char* kDirsSql =
+        "SELECT parent, max(mtime) FROM files"
+        " WHERE state!=2 AND parent>=?1 AND parent<?2"
+        "   AND instr(lower(substr(parent,length(?1)+1)),?3)>0"
+        " GROUP BY parent;";
+    if (sqlite3_prepare_v2(db_, kDirsSql, -1, &st, nullptr) != SQLITE_OK) {
+        avail_ = Availability::Error;
+        return false;
+    }
+    sqlite3_bind_text(st, 1, prefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, upper.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 3, needle.c_str(), -1, SQLITE_TRANSIENT);
+    std::map<std::string, int64_t> dirs; // folder → newest file mtime beneath it (s)
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
+        const unsigned char* p = sqlite3_column_text(st, 0);
+        if (!p) continue;
+        std::string parent(reinterpret_cast<const char*>(p));
+        int64_t mtime_s = sqlite3_column_int64(st, 1) / 1000000000LL;
+        std::string rel = parent.substr(prefix.size());
+        for (size_t start = 0; start < rel.size();) {
+            size_t end = rel.find('/', start);
+            if (end == std::string::npos) end = rel.size();
+            if (to_lower(rel.substr(start, end - start)).find(needle) != std::string::npos) {
+                auto [it, fresh] = dirs.try_emplace(prefix + rel.substr(0, end), mtime_s);
+                if (!fresh) it->second = std::max(it->second, mtime_s);
+            }
+            start = end + 1;
+        }
+    }
+    sqlite3_finalize(st);
+    if (rc != SQLITE_DONE) return false;
+
+    struct Ranked {
+        int score;
+        int64_t mtime_s;
+        std::string path;
+    };
+    std::vector<Ranked> ranked;
+    ranked.reserve(dirs.size());
+    for (auto& [path, mtime_s] : dirs) {
+        std::string name = to_lower(path.substr(path.find_last_of('/') + 1));
+        ranked.push_back({
+            .score = base_score(name.size(), name.find(needle)),
+            .mtime_s = mtime_s,
+            .path = path,
+        });
+    }
+    std::ranges::sort(ranked, [](const Ranked& a, const Ranked& b) {
+        return a.score != b.score ? a.score > b.score : a.mtime_s > b.mtime_s;
+    });
+    if (ranked.size() > static_cast<size_t>(limit)) ranked.resize(static_cast<size_t>(limit));
+    for (auto& r : ranked)
+        out.push_back(NameHit{.path = std::move(r.path), .is_dir = true, .mtime_s = r.mtime_s});
+    return true;
 }
 
 StoreStats Store::stats() {

@@ -172,6 +172,15 @@ public:
     // SecondaryActivate) and the taskbar (middle = close).
     virtual bool onSecondaryClick(double x, double y) { return false; }
     virtual bool onMiddleClick(double x, double y) { return false; }
+
+    // Pointer hover tracking within this indicator's bounds. Forwarded by StatusBarInput
+    // on pointer motion so multi-element indicators can track per-subitem hover state.
+    virtual void onHoverMotion(double x, double y) {
+        (void)x;
+        (void)y;
+    }
+    virtual void onHoverLeave() {}
+
     bool interactive() const override { return true; }
 
     // Session-sensitive indicators reveal what you are doing (workspaces, the

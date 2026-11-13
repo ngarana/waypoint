@@ -6,11 +6,13 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace waylaunch::content;
@@ -309,6 +311,71 @@ int main() {
         CHECK(m.search("kind:pdf zzznotpresent", 5).empty(),
               "meta: filter + non-matching text → no hits (not all pdfs)");
         m.close();
+    }
+
+    // ---- search_names: filename/foldername lookup for the launcher's FILES ----
+    {
+        std::string ndb = (dir / "names.db").string();
+        Store n;
+        CHECK(n.open(ndb, {false, MatchMode::Prefix}), "names: open writer");
+        // Root deliberately contains the needle ("adhoc-root") to prove only
+        // components below the root are matched.
+        std::string root = (dir / "adhoc-root").string();
+        auto at = [&](const std::string& rel, int64_t mtime_s) {
+            FileRecord r = rec(root + "/" + rel, fs::path(rel).filename().string());
+            r.mtime_ns = mtime_s * 1000000000LL;
+            return r;
+        };
+        CHECK(n.put(at("reports/adhoc/2026-10-05_mc/report.csv", 2000), "") &&
+                  n.put(at("reports/adhoc/2026-09-28_iten/brief.pdf", 3000), "") &&
+                  n.put(at("scratch/superseded-adhoc-draft/notes.md", 1000), "") &&
+                  n.put(at("AdhocPlan.txt", 500), "") && n.put(at("unrelated/readme.md", 100), ""),
+              "names: put fixtures");
+        FileRecord gone = at("reports/adhoc/deleted.txt", 9000);
+        CHECK(n.put(gone, "") && n.tombstone(gone.path), "names: tombstone one");
+        // A sibling whose name extends the root must not leak in ([root/, root0)).
+        FileRecord sib = rec(root + "x/adhoc-sibling.txt", "adhoc-sibling.txt");
+        CHECK(n.put(sib, ""), "names: put sibling-of-root");
+
+        std::vector<NameHit> hits;
+        CHECK(n.search_names(root, "adhoc", 50, hits), "names: query ok");
+        auto has = [&](const std::string& rel, bool is_dir) {
+            return std::ranges::any_of(hits, [&](const NameHit& h) {
+                return h.path == root + "/" + rel && h.is_dir == is_dir;
+            });
+        };
+        CHECK(has("reports/adhoc", true), "names: folder with no direct files is derived");
+        CHECK(has("scratch/superseded-adhoc-draft", true), "names: substring folder");
+        CHECK(has("AdhocPlan.txt", false), "names: case-insensitive file hit");
+        CHECK(!has("reports", true) && !has("reports/adhoc/2026-10-05_mc", true),
+              "names: non-matching ancestors/descendants are not folders hits");
+        CHECK(!has("reports/adhoc/deleted.txt", false), "names: tombstones skipped");
+        CHECK(std::ranges::none_of(hits,
+                                   [&](const NameHit& h) {
+                                       return h.path == root ||
+                                              h.path.find("sibling") != std::string::npos;
+                                   }),
+              "names: root itself and root-prefixed siblings excluded");
+        CHECK(hits.size() == 3, "names: exactly the 3 expected hits");
+        auto adhoc = std::ranges::find_if(
+            hits, [&](const NameHit& h) { return h.path == root + "/reports/adhoc"; });
+        CHECK(adhoc != hits.end() && adhoc->mtime_s == 3000,
+              "names: folder mtime = newest live file beneath it");
+
+        hits.clear();
+        CHECK(n.search_names(root, "adhoc", 1, hits) && hits.size() == 2,
+              "names: limit caps each kind (1 file + 1 folder)");
+        CHECK(hits.size() == 2 && hits[1].path == root + "/reports/adhoc",
+              "names: folder pre-rank puts the name-prefix match first");
+
+        hits.clear();
+        CHECK(n.search_names(root + "/", "readme", 5, hits) && hits.size() == 1,
+              "names: trailing slash on root tolerated");
+        n.close();
+
+        Store closed;
+        hits.clear();
+        CHECK(!closed.search_names(root, "adhoc", 5, hits), "names: closed store reports failure");
     }
 
     fs::remove_all(dir);
