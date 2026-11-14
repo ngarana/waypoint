@@ -222,6 +222,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/PaletteReader.cpp
     src/ui/PaletteSource.cpp
     src/ui/Theme.cpp
+    src/ui/statusbar/AppletLink.cpp
     src/ui/statusbar/IndicatorHost.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
     src/ui/statusbar/ListFlyout.cpp

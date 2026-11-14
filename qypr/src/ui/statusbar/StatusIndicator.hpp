@@ -166,6 +166,10 @@ public:
         return nullptr;
     }
 
+    // The claimed applet's menu, for a module that merges it into its flyout
+    // (StatusArea::requestAppletMenu). Default: none.
+    virtual std::unique_ptr<DetailedPopover> createAppletMenu() { return nullptr; }
+
     // --- Overflow row while passive (empty id = not in the overflow) ---
     OverflowEntry overflowEntry() const override { return {}; }
 

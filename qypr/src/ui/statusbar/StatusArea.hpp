@@ -90,11 +90,19 @@ public:
     // request is taken by the StatusBar after the popover's input handler has
     // returned, so the requesting popover is never destroyed mid-call.
     struct DetailRequest {
-        std::string moduleId;  // flyout to open
-        std::string anchorId;  // indicator to anchor it to (the overflow chevron)
+        std::string moduleId;     // flyout to open
+        std::string anchorId;     // indicator to anchor it to (the overflow chevron)
+        bool appletMenu = false;  // the module's applet menu instead (merged flyouts)
     };
     void requestDetail(std::string moduleId, std::string anchorId) {
-        request_ = DetailRequest{std::move(moduleId), std::move(anchorId)};
+        request_ = DetailRequest{.moduleId = std::move(moduleId), .anchorId = std::move(anchorId)};
+    }
+    // A merged flyout's "More from <applet> ›" row: swap the flyout for the
+    // applet's menu (StatusIndicator::createAppletMenu), anchored to the module.
+    void requestAppletMenu(std::string moduleId) {
+        std::string anchor = moduleId;
+        request_ = DetailRequest{
+            .moduleId = std::move(moduleId), .anchorId = std::move(anchor), .appletMenu = true};
     }
     std::optional<DetailRequest> takeDetailRequest() {
         auto r = std::move(request_);

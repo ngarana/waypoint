@@ -29,11 +29,16 @@ public:
     bool hasDetailedView() const override { return backend_ != nullptr; }
     std::unique_ptr<DetailedPopover> createDetailedView() override;
 
-    // Right click: the menu of the tray applet this module claims (nm-applet,
-    // blueman, pasystray — see StatusArea); middle click forwards its
-    // SecondaryActivate. Inert while the applet is not running.
-    bool hasContextMenu() const override { return tray_.bound(); }
-    std::unique_ptr<DetailedPopover> createContextMenu(double x, double y) override;
+    // One surface: right click and the Menu key open the same picker. The
+    // tray applet this module claims (blueman — see StatusArea) is merged
+    // into it: the picker's last row opens the applet's menu (AppletLink).
+    // Middle click forwards the applet's SecondaryActivate.
+    bool onSecondaryClick(double /*x*/, double /*y*/) override { return hasDetailedView(); }
+    bool hasContextMenu() const override { return hasDetailedView(); }
+    std::unique_ptr<DetailedPopover> createContextMenu(double /*x*/, double /*y*/) override {
+        return createDetailedView();
+    }
+    std::unique_ptr<DetailedPopover> createAppletMenu() override;
     bool onMiddleClick(double x, double y) override { return tray_.secondaryActivate(x, y); }
 
 private:

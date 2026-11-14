@@ -65,7 +65,9 @@ void drawBtSpinner(Painter& p, double cx, double cy, double r, int64_t now, cons
 // open — it keeps the radio busy, so it stops on close.
 class BluetoothPopover : public DetailedPopover {
 public:
-    explicit BluetoothPopover(BluetoothBackend* backend) : backend_(backend) {
+    BluetoothPopover(BluetoothBackend* backend, AppletLink applet)
+        : backend_(backend),
+          applet_(std::move(applet)) {
         if (backend_ != nullptr) {
             backend_->startDiscovery();  // no-op until the adapter is powered
         }
@@ -100,11 +102,12 @@ public:
                 required,
                 popover_layout::estimatedTextWidth(promptTitle(snap().pairing), 11.5) + 24.0);
         }
+        required = std::max(required, applet_.width());
         return popover_layout::boundedWidth(kBMinW, kBMaxW, (2.0 * kBPad) + required);
     }
 
     [[nodiscard]] double contentHeight() const override {
-        double h = (kBPad * 2) + kBHdrH + promptHeight(snap().pairing);
+        double h = (kBPad * 2) + kBHdrH + promptHeight(snap().pairing) + applet_.height();
         if (!powered()) { return h + kBNote; }
         const std::vector<Row> rows = buildRows();
         const size_t first = firstRow(rows.size());
@@ -125,6 +128,11 @@ public:
 
         hits_.clear();
         double y = b.y + kBPad;
+
+        // ── Footer: the claimed applet's menu (bottom-anchored) ──
+        if (const Rect link = applet_.draw(p, theme(), b, kBPad, hoverX_, hoverY_); link.w > 0) {
+            hits_.push_back({.r = link, .kind = Hit::Kind::Applet});
+        }
 
         // ── Header: title + radio switch ──
         TextStyle const hdr{.family = theme().font.family,
@@ -208,6 +216,9 @@ public:
                 case Hit::Kind::PromptCancel:
                     if (backend_ != nullptr) { backend_->respondPairing(false); }
                     entry_.clear();
+                    return true;
+                case Hit::Kind::Applet:
+                    if (applet_.open) { applet_.open(); }
                     return true;
             }
         }
@@ -309,7 +320,7 @@ private:
     };
 
     struct Hit {
-        enum class Kind { Radio, Refresh, Device, PromptAccept, PromptCancel };
+        enum class Kind { Radio, Refresh, Device, PromptAccept, PromptCancel, Applet };
         Rect r;
         Kind kind = Kind::Device;
         BtDevice dev{};
@@ -617,6 +628,7 @@ private:
     }
 
     BluetoothBackend* backend_ = nullptr;
+    AppletLink applet_;
     std::vector<Hit> hits_;
     size_t scroll_ = 0;
     double hoverX_ = -1, hoverY_ = -1;
@@ -696,14 +708,13 @@ std::unique_ptr<QSTile> BluetoothIndicator::createTile() {
 
 std::unique_ptr<DetailedPopover> BluetoothIndicator::createDetailedView() {
     if (backend_ == nullptr) { return nullptr; }
-    return std::make_unique<BluetoothPopover>(backend_);
+    return std::make_unique<BluetoothPopover>(backend_, tray_.link());
 }
 
 REGISTER_INDICATOR("bluetooth", Zone::Right, 350, BluetoothIndicator)
 
-std::unique_ptr<DetailedPopover> BluetoothIndicator::createContextMenu(double x, double y) {
-    const SNIItem* app = tray_.item();
-    return tray_.contextMenu(x, y, nullptr, app && !app->title.empty() ? app->title : "Bluetooth");
+std::unique_ptr<DetailedPopover> BluetoothIndicator::createAppletMenu() {
+    return tray_.appletMenu("Bluetooth");
 }
 
 }  // namespace qypr

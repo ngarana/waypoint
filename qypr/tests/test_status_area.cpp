@@ -222,7 +222,7 @@ TEST(BackgroundAppsPinnedHiddenAndAttention) {
     EXPECT_EQ(BA::overflowItems(&sni, nullptr).size(), 2U);
 }
 
-TEST(NativeModulesForwardGesturesToClaimedApplet) {
+TEST(MergedModulesReachTheirAppletFromTheFlyout) {
     qypr::EventLoop loop;
     qypr::SystemBus session(loop, qypr::BusKind::Session);
     qypr::SNIBackend sni(session);
@@ -237,24 +237,30 @@ TEST(NativeModulesForwardGesturesToClaimedApplet) {
     qypr::WifiIndicator wifi(backends);
     qypr::BluetoothIndicator bluetooth(backends);
 
-    // No applet running: right/middle click stay inert.
-    EXPECT_FALSE(wifi.hasContextMenu());
+    // No applet running: no "More from" row, no applet menu, middle click inert.
+    EXPECT_EQ(wifi.tray_.link().text(), std::string());
+    EXPECT_EQ(wifi.tray_.link().height(), 0.0);
+    EXPECT_TRUE(wifi.createAppletMenu() == nullptr);
     EXPECT_FALSE(wifi.onMiddleClick(10, 10));
 
     auto applet = trayItem(":1.22", "nm-applet", "Network");
     applet.menuPath = "/org/ayatana/NotificationItem/nm_applet/Menu";
     sni.items_.push_back(applet);
-    EXPECT_TRUE(wifi.hasContextMenu());
-    EXPECT_FALSE(bluetooth.hasContextMenu());  // blueman is not running
-    EXPECT_TRUE(wifi.onMiddleClick(10, 10));   // SecondaryActivate sent
+    EXPECT_EQ(wifi.tray_.link().text(), std::string("More from nm-applet"));
+    EXPECT_EQ(bluetooth.tray_.link().text(), std::string());  // blueman is not running
+    EXPECT_TRUE(wifi.onMiddleClick(10, 10));                  // SecondaryActivate sent
 
+    // The row asks the bar to swap the flyout for the applet's menu.
+    wifi.tray_.link().open();
+    const auto req = area.takeDetailRequest();
+    EXPECT_TRUE(req.has_value() && req->appletMenu && req->moduleId == "wifi");
     // Without a dbusmenu there is nothing to draw, so the module asks the
     // applet to show its own menu (ContextMenu) and opens no popover.
-    EXPECT_TRUE(wifi.createContextMenu(10, 10) == nullptr);
+    EXPECT_TRUE(wifi.createAppletMenu() == nullptr);
 
     // A module out of the layout claims nothing.
     area.setLayoutModules({"bluetooth"});
-    EXPECT_FALSE(wifi.hasContextMenu());
+    EXPECT_EQ(wifi.tray_.link().text(), std::string());
 
     // The lock screen never receives the tray backend.
     qypr::SystemBackends locked = backends;
@@ -262,7 +268,7 @@ TEST(NativeModulesForwardGesturesToClaimedApplet) {
     locked.sync();
     qypr::WifiIndicator lockedWifi(locked);
     area.setLayoutModules({"wifi"});
-    EXPECT_FALSE(lockedWifi.hasContextMenu());
+    EXPECT_EQ(lockedWifi.tray_.link().text(), std::string());
 }
 
 namespace {
@@ -488,6 +494,101 @@ void testOverflowListsPassiveModules() {
 
 // Bar-level tests build indicators through the registry, which is complete
 // only once static initialization is over: main() runs these.
+namespace {
+
+// A bus dropped before any backend sees it. sd_bus_open_system() is not
+// mocked, so the Wi-Fi backend must never reach the real NetworkManager; and
+// a dbusmenu fetch builds its message with calls the session-bus mock does
+// not cover. Offline, both fail fast, as with the services absent.
+struct OfflineBus : qypr::SystemBus {
+    OfflineBus(qypr::EventLoop& loop, qypr::BusKind kind) : SystemBus(loop, kind) { teardown(); }
+};
+
+void testMergedFlyoutSwapsToAppletMenuAndBack() {
+    qypr::EventLoop loop;
+    AreaHost host;
+    OfflineBus systemBus(loop, qypr::BusKind::System);
+    OfflineBus menuBus(loop, qypr::BusKind::Session);
+    qypr::SystemBus session(loop, qypr::BusKind::Session);
+    qypr::WifiBackend wifiBackend(loop, systemBus);
+    wifiBackend.seed({.available = true, .enabled = true});
+    qypr::SNIBackend sni(session);
+    auto applet = trayItem(":1.22", "nm-applet", "Network");
+    applet.menuPath = "/org/ayatana/NotificationItem/nm_applet/Menu";
+    sni.items_.push_back(applet);
+    // Its fetch fails offline: the applet section is empty, the back row is
+    // still there.
+    qypr::DbusMenuBackend menus(menuBus);
+    qypr::SystemBackends backends;
+    backends.sessionSurface = true;
+    backends.wifi = &wifiBackend;
+    backends.sni = &sni;
+    backends.dbusMenu = &menus;
+    qypr::IndicatorRegistry::ModuleSelection modules;
+    modules.right = {"wifi"};
+    qypr::StatusBar bar(loop, host, backends, &modules);
+    bar.setSessionContentVisible(true);
+    bar.refreshFromBackends();
+    AreaCanvas canvas;
+    bar.layout(1280, 800);
+    bar.draw(canvas.painter, qypr::nowMs());
+    auto* wifi = bar.indicators().findById("wifi");
+    EXPECT_TRUE(wifi != nullptr && wifi->visible);
+    if (wifi == nullptr) return;
+    const auto b = wifi->bounds;
+    auto isMenu = [&] {
+        return dynamic_cast<qypr::MenuPopover*>(bar.popovers().active()) != nullptr;
+    };
+
+    // Right click opens the flyout, not a menu.
+    EXPECT_TRUE(bar.handlePointerButton(b.x + b.w / 2, b.y + b.h / 2, 0x111, true, 0));
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("wifi"));
+    EXPECT_TRUE(bar.popovers().active() != nullptr && !isMenu());
+
+    // Its last row swaps in nm-applet's menu, anchored to the module.
+    auto* flyout = bar.popovers().active();
+    flyout->draw(canvas.painter, qypr::nowMs() + 1000);
+    const auto fb = flyout->getBounds();
+    if (const char* dir = std::getenv("QYPR_TEST_ARTIFACT_DIR")) {
+        std::filesystem::create_directories(dir);
+        bar.draw(canvas.painter, qypr::nowMs() + 1000);
+        const auto path = std::filesystem::path(dir) / "wifi-merged-flyout.png";
+        EXPECT_EQ(cairo_surface_write_to_png(canvas.surface, path.c_str()), CAIRO_STATUS_SUCCESS);
+    }
+    EXPECT_TRUE(bar.handlePointerButton(fb.x + fb.w / 2, fb.y + fb.h - 12 - 17, 0x110, true, 0));
+    EXPECT_TRUE(isMenu());
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("wifi"));
+    auto* menu = dynamic_cast<qypr::MenuPopover*>(bar.popovers().active());
+    if (menu == nullptr) return;
+    EXPECT_EQ(menu->stack_.front().items.front().label, std::string("\u2039 Wi-Fi"));
+    if (const char* dir = std::getenv("QYPR_TEST_ARTIFACT_DIR")) {
+        std::filesystem::create_directories(dir);
+        cairo_save(canvas.cr);
+        cairo_set_operator(canvas.cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(canvas.cr);
+        cairo_restore(canvas.cr);
+        bar.draw(canvas.painter, qypr::nowMs() + 1000);
+        const auto path = std::filesystem::path(dir) / "wifi-applet-menu.png";
+        EXPECT_EQ(cairo_surface_write_to_png(canvas.surface, path.c_str()), CAIRO_STATUS_SUCCESS);
+    }
+
+    // Its first row goes back to the flyout.
+    menu->draw(canvas.painter, qypr::nowMs() + 1000);
+    const auto mb = menu->getBounds();
+    EXPECT_TRUE(bar.handlePointerButton(mb.x + mb.w / 2, mb.y + 6 + 15, 0x110, true, 0));
+    EXPECT_TRUE(bar.popovers().active() != nullptr && !isMenu());
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("wifi"));
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Escape));
+
+    // The Menu key opens the same flyout.
+    bar.popovers().clear();
+    wifi->focused = true;
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Menu));
+    EXPECT_TRUE(bar.popovers().active() != nullptr && !isMenu());
+}
+
+}  // namespace
+
 void runStatusAreaBarTests() {
     const std::vector<std::pair<std::string, void (*)()>> tests{
         {"RightClickAndMenuKeyOpenContextMenu", testRightClickAndMenuKeyOpenContextMenu},
@@ -495,6 +596,7 @@ void runStatusAreaBarTests() {
          testStatusAreaDetailRequestOpensAnchoredFlyout},
         {"AliasesBuildOneModule", testAliasesBuildOneModule},
         {"OverflowListsPassiveModules", testOverflowListsPassiveModules},
+        {"MergedFlyoutSwapsToAppletMenuAndBack", testMergedFlyoutSwapsToAppletMenuAndBack},
     };
     for (const auto& [name, run] : tests) {
         std::cout << "Running test: " << name << "...\n";

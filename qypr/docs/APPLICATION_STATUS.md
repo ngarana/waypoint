@@ -40,13 +40,23 @@ as well: an app's desktop id, name, notification app names and window app
 ids, and `category:<Name>` against its desktop-entry categories (see
 [App status](#app-status-notification-apps-whatsapp-email)).
 
-A claimed applet's icon is never drawn. Its menu moves onto the module:
+A claimed applet's icon is never drawn. Its menu moves onto the module, in
+one of two ways:
 
-- **Right click** (or the Menu key on a focused module) opens the applet's own
-  D-Bus menu under the module's name. An applet without a menu is asked to
-  show its own (`ContextMenu`). A module whose applet is not running has no
-  context menu, and right click keeps its old meaning (the detail flyout).
-- **Middle click** forwards `SecondaryActivate`.
+- **Merged** (`wifi`, `bluetooth`): the module has one surface. Left click,
+  right click and the Menu key all open its flyout, and the flyout's last
+  row, "More from nm-applet ›" (or blueman), swaps the flyout for the
+  applet's own D-Bus menu (`src/ui/statusbar/AppletLink.hpp`). That menu's
+  first row, "‹ Wi-Fi", goes back. The row is there only while the applet
+  runs.
+- **Split** (`volume`, `phone-link`, `removable-devices`): right click (or the
+  Menu key on a focused module) opens the applet's menu under the module's
+  name, below the module's own actions where it has any. A module whose
+  applet is not running and that has no actions of its own keeps right
+  click's old meaning (the detail flyout).
+
+Either way, an applet without a D-Bus menu is asked to show its own
+(`ContextMenu`), and **middle click** forwards `SecondaryActivate`.
 
 A claim only holds while the claiming module is in the layout. Removing `wifi`
 from `bar.conf` hands nm-applet back to the tray instead of making it
@@ -220,7 +230,7 @@ Unit tests: `tests/test_status_area.cpp` (claims follow the layout, `[tray]`
 config, composite menus, the overflow skipping claimed items, pinned /
 hidden / attention placement, passive module rows opening their flyout from
 the chevron, modules forwarding gestures, right click / Menu key routing,
-alias dedupe),
+alias dedupe, the merged wifi flyout swapping to nm-applet's menu and back),
 `tests/test_removable_drives.cpp` (UDisks2 reduction, the removal plan, busy
 processes, the module and its flyout), `tests/test_phone_link.cpp` (device
 list, status line, reachability policy, flyout), `tests/test_app_status.cpp`
@@ -239,5 +249,6 @@ fixture to check that its items are removed, including while the overflow is
 open.
 
 For claims: with nm-applet and blueman-applet running and `wifi` and
-`bluetooth` in the layout, neither applet shows a tray icon. Right click on
-`wifi` opens nm-applet's menu, and on `bluetooth` blueman's.
+`bluetooth` in the layout, neither applet shows a tray icon. The `wifi`
+flyout ends with "More from nm-applet ›", which opens nm-applet's menu, and
+the `bluetooth` flyout with blueman's.

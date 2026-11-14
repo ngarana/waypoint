@@ -81,7 +81,9 @@ void drawSpinner(Painter& p, double cx, double cy, double r, int64_t now, const 
 // scan results, radio state, and connection changes appear live.
 class WifiPopover : public DetailedPopover {
 public:
-    explicit WifiPopover(WifiBackend* backend) : backend_(backend) {
+    WifiPopover(WifiBackend* backend, AppletLink applet)
+        : backend_(backend),
+          applet_(std::move(applet)) {
         if (backend_ != nullptr && backend_->snapshot().enabled) {
             backend_->requestScan();  // fresh list for this open (async)
         }
@@ -98,11 +100,12 @@ public:
                 required,
                 popover_layout::estimatedTextWidth("Password for " + authSsid_, 11.0) + 30.0);
         }
+        required = std::max(required, applet_.width());
         return popover_layout::boundedWidth(kWMinW, kWMaxW, (2.0 * kWPad) + required);
     }
 
     [[nodiscard]] double contentHeight() const override {
-        double h = (kWPad * 2) + kWHeaderH + kWSubH;
+        double h = (kWPad * 2) + kWHeaderH + kWSubH + applet_.height();
         if (!enabled()) { return h; }
         const auto& nets = networks();
         if (nets.empty()) {
@@ -124,6 +127,11 @@ public:
 
         hits_.clear();
         double y = b.y + kWPad;
+
+        // ── Footer: the claimed applet's menu (bottom-anchored) ──
+        if (const Rect link = applet_.draw(p, theme(), b, kWPad, hoverX_, hoverY_); link.w > 0) {
+            hits_.push_back({.r = link, .kind = Hit::Kind::Applet});
+        }
 
         // ── Header: title + radio switch ──
         TextStyle const hdr{.family = theme().font.family,
@@ -277,6 +285,9 @@ public:
                     authSsid_.clear();
                     psk_.clear();
                     return true;
+                case Hit::Kind::Applet:
+                    if (applet_.open) { applet_.open(); }
+                    return true;
             }
         }
         return true;  // swallow clicks inside the popover (never dismiss on a miss)
@@ -365,7 +376,7 @@ public:
 
 private:
     struct Hit {
-        enum class Kind { Radio, Refresh, Network, Connect, Cancel };
+        enum class Kind { Radio, Refresh, Network, Connect, Cancel, Applet };
         Rect r;
         Kind kind = Kind::Network;
         std::string ssid;
@@ -450,6 +461,7 @@ private:
     }
 
     WifiBackend* backend_ = nullptr;
+    AppletLink applet_;
     std::vector<Hit> hits_;
     size_t scroll_ = 0;
     double hoverX_ = -1, hoverY_ = -1;
@@ -520,14 +532,13 @@ std::unique_ptr<QSTile> WifiIndicator::createTile() {
 
 std::unique_ptr<DetailedPopover> WifiIndicator::createDetailedView() {
     if (backend_ == nullptr) { return nullptr; }
-    return std::make_unique<WifiPopover>(backend_);
+    return std::make_unique<WifiPopover>(backend_, tray_.link());
 }
 
 REGISTER_INDICATOR("wifi", Zone::Right, 300, WifiIndicator)
 
-std::unique_ptr<DetailedPopover> WifiIndicator::createContextMenu(double x, double y) {
-    const SNIItem* app = tray_.item();
-    return tray_.contextMenu(x, y, nullptr, app && !app->title.empty() ? app->title : "Network");
+std::unique_ptr<DetailedPopover> WifiIndicator::createAppletMenu() {
+    return tray_.appletMenu("Wi-Fi");
 }
 
 }  // namespace qypr

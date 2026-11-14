@@ -52,6 +52,36 @@ bool TrayAppBinding::secondaryActivate(double x, double y) const {
     return true;
 }
 
+AppletLink TrayAppBinding::link() const {
+    return {.label =
+                [binding = *this] {
+                    const SNIItem* it = binding.item();
+                    return it != nullptr ? "More from " + it->id : std::string();
+                },
+            .open =
+                [area = area_, id = moduleId_] {
+                    if (area != nullptr) area->requestAppletMenu(id);
+                }};
+}
+
+std::unique_ptr<DetailedPopover> TrayAppBinding::appletMenu(const std::string& backLabel) const {
+    const SNIItem* it = item();
+    if (it == nullptr) return nullptr;
+    auto section = menuSection();
+    if (!section) {
+        sni_->contextMenu(static_cast<size_t>(sni_->indexOf(it->service, it->path)), 0, 0);
+        return nullptr;
+    }
+    auto back = std::make_unique<NativeMenu>();
+    back->add("\u2039 " + backLabel, [area = area_, id = moduleId_] {
+        if (area != nullptr) area->requestDetail(id, id);
+    });
+    auto menu = std::make_unique<CompositeMenu>();
+    menu->addSection(std::move(back));
+    menu->addSection(std::move(section));
+    return std::make_unique<MenuPopover>(std::move(menu), it->title.empty() ? it->id : it->title);
+}
+
 bool TrayAppBinding::activate(double x, double y) const {
     const SNIItem* it = item();
     if (it == nullptr) return false;

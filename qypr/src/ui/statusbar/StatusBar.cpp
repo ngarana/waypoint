@@ -445,7 +445,17 @@ void StatusBar::openIndicatorDetail(const std::string& id) {
 
 void StatusBar::openContextMenu(StatusIndicator& ind, double x, double y) {
     if (!isInteractive(ind)) { return; }
-    if (auto view = ind.createContextMenu(x, y)) {
+    openMenuFor(ind, ind.createContextMenu(x, y));
+}
+
+void StatusBar::openAppletMenu(const std::string& moduleId) {
+    auto* ind = indicators_.findById(moduleId);
+    if (ind == nullptr || !isInteractive(*ind)) { return; }
+    openMenuFor(*ind, ind->createAppletMenu());
+}
+
+void StatusBar::openMenuFor(StatusIndicator& ind, std::unique_ptr<DetailedPopover> view) {
+    if (view) {
         view->setTheme(theme());
         popovers_.open(std::move(view), ind.bounds.x + ind.bounds.w, 0);
         popovers_.setOwnerId(ind.id());
@@ -475,7 +485,11 @@ void StatusBar::openDetailAnchored(const std::string& moduleId, const std::strin
 
 void StatusBar::takeStatusAreaRequest() {
     if (auto req = statusArea_.takeDetailRequest()) {
-        openDetailAnchored(req->moduleId, req->anchorId);
+        if (req->appletMenu) {
+            openAppletMenu(req->moduleId);
+        } else {
+            openDetailAnchored(req->moduleId, req->anchorId);
+        }
     }
 }
 

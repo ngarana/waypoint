@@ -132,6 +132,8 @@ private:
     // A passive module's flyout opened from the overflow, anchored to the
     // overflow chevron (`anchorId`) since the module itself is not drawn.
     void openDetailAnchored(const std::string& moduleId, const std::string& anchorId);
+    void openAppletMenu(const std::string& moduleId);
+    void openMenuFor(StatusIndicator& ind, std::unique_ptr<DetailedPopover> view);
     // Serve a detail request a popover left in the status area.
     void takeStatusAreaRequest();
     // Indicators see the status area through their backends copy.

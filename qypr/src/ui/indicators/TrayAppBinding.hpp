@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 
+#include "ui/statusbar/AppletLink.hpp"
 #include "ui/statusbar/MenuSource.hpp"
 #include "ui/statusbar/StatusIndicator.hpp"
 
@@ -44,6 +45,15 @@ public:
     std::unique_ptr<DetailedPopover> contextMenu(double x, double y,
                                                  std::unique_ptr<MenuSource> native,
                                                  const std::string& title) const;
+
+    // Merged modules (wifi, bluetooth) reach the applet from their flyout
+    // instead: link() is the flyout's "More from nm-applet ›" row, and
+    // appletMenu() the popover it swaps in — the applet's dbusmenu under a
+    // first row that goes back to the module's flyout ("‹ Wi-Fi"). Null when
+    // the applet isn't running; a menu-less applet is asked to show its own
+    // menu instead.
+    [[nodiscard]] AppletLink link() const;
+    std::unique_ptr<DetailedPopover> appletMenu(const std::string& backLabel) const;
 
     // Forward middle click. False when no applet is bound.
     bool secondaryActivate(double x, double y) const;
