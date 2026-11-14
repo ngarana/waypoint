@@ -462,9 +462,10 @@ Both modes are now implemented — `qypr/docs/SNI_WATCHER_PLAN.md` is a
 historical design record — but the class still owns item discovery, bus
 ownership tracking, icon pixmaps, item actions, and protocol vtables.
 
-[`SNITrayHost`](../qypr/src/ui/indicators/SNITrayHost.hpp#L20) (407+69 lines)
-then handles icon resolution, monochrome detection, overflow policy, hit
-testing, and context-menu routing.
+[`BackgroundAppsIndicator`](../qypr/src/ui/indicators/BackgroundAppsIndicator.hpp#L31)
+(formerly `SNITrayHost`) then handles icon drawing, strip/overflow placement
+(pinned, hidden, attention, claimed), the overflow popover with its passive
+module rows, hit testing, and context-menu routing.
 
 Suggested seams:
 

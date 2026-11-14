@@ -1,6 +1,9 @@
 // test_status_area.cpp - Tray claims, menu sources, context-menu routing.
 #include "test_framework.hpp"
 
+#include <cstdlib>
+#include <filesystem>
+
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "ui/indicators/TrayAppBinding.hpp"
@@ -151,26 +154,72 @@ TEST(TrayHostSkipsItemsClaimedByLayoutModules) {
     sni.items_.push_back(trayItem(":1.80", "TelegramDesktop", "Telegram"));
 
     qypr::StatusArea area;
+    area.pinned_ = {"telegramdesktop"};
     qypr::SystemBackends backends{};
     backends.sni = &sni;
     backends.statusArea = &area;
-    qypr::SNITrayHost host(backends);
+    qypr::BackgroundAppsIndicator host(backends);
     AreaCanvas canvas;
 
-    area.setLayoutModules({"sni"});  // no wifi module: nm-applet stays in the tray
+    // No wifi module: nm-applet is an ordinary background app, behind the
+    // chevron; pinned Telegram has its own cell.
+    area.setLayoutModules({"background-apps"});
     host.onBackendUpdate();
-    EXPECT_NEAR(host.measureWidth(canvas.painter), 64.0, 0.01);  // two cells
+    EXPECT_NEAR(host.measureWidth(canvas.painter), 64.0, 0.01);  // Telegram + chevron
 
-    area.setLayoutModules({"wifi", "sni"});  // wifi absorbs nm-applet
+    area.setLayoutModules({"wifi", "background-apps"});  // wifi absorbs nm-applet
     host.onBackendUpdate();
     EXPECT_TRUE(host.visible);
-    EXPECT_NEAR(host.measureWidth(canvas.painter), 36.0, 0.01);  // one cell
-    EXPECT_EQ(host.tooltip(), std::string("1 tray items"));
+    EXPECT_NEAR(host.measureWidth(canvas.painter), 36.0, 0.01);  // Telegram, no chevron
+    EXPECT_EQ(host.tooltip(), std::string("Nothing running in the background"));
 
     sni.items_.pop_back();  // Telegram exits: only the claimed applet is left
     host.onBackendUpdate();
     EXPECT_FALSE(host.visible);
     EXPECT_NEAR(host.measureWidth(canvas.painter), 0.0, 0.01);
+}
+
+TEST(BackgroundAppsPinnedHiddenAndAttention) {
+    qypr::EventLoop loop;
+    qypr::SystemBus session(loop, qypr::BusKind::Session);
+    qypr::SNIBackend sni(session);
+    sni.items_.push_back(trayItem(":1.22", "nm-applet", "Network"));
+    sni.items_.push_back(trayItem(":1.80", "TelegramDesktop", "Telegram"));
+    sni.items_.push_back(trayItem(":1.81", "steam", "Steam"));
+    sni.items_.push_back(trayItem(":1.82", "discord", "Discord"));
+    sni.items_.push_back(trayItem(":1.83", "keepassxc", "KeePassXC"));
+
+    qypr::StatusArea area;
+    area.setLayoutModules({"wifi", "background-apps"});
+    area.pinned_ = {"telegram"};  // by title (keys are case-insensitive)
+    area.hidden_ = {"steam"};     // by Id
+    using BA = qypr::BackgroundAppsIndicator;
+    EXPECT_TRUE(BA::stripItems(&sni, &area) == std::vector<size_t>{1});
+    EXPECT_TRUE(BA::overflowItems(&sni, &area) == (std::vector<size_t>{3, 4}));
+
+    // Asking for attention promotes an app for as long as it asks; a hidden
+    // or claimed one stays where it is.
+    sni.items_[4].status = "NeedsAttention";
+    sni.items_[2].status = "NeedsAttention";
+    sni.items_[0].status = "NeedsAttention";
+    EXPECT_TRUE(BA::stripItems(&sni, &area) == (std::vector<size_t>{1, 4}));
+    EXPECT_TRUE(BA::overflowItems(&sni, &area) == std::vector<size_t>{3});
+    sni.items_[4].status = "Active";
+    EXPECT_TRUE(BA::stripItems(&sni, &area) == std::vector<size_t>{1});
+
+    // The strip never outgrows its limit; the rest overflow.
+    area.pinned_.clear();
+    sni.items_.clear();
+    for (size_t i = 0; i < BA::kStripLimit + 2; ++i) {
+        auto item = trayItem(":1." + std::to_string(100 + i), "app" + std::to_string(i), "App");
+        item.status = "NeedsAttention";
+        sni.items_.push_back(item);
+    }
+    EXPECT_EQ(BA::stripItems(&sni, &area).size(), BA::kStripLimit);
+    EXPECT_EQ(BA::overflowItems(&sni, &area).size(), 2U);
+
+    // No status area (lock screen or tests): every item is eligible.
+    EXPECT_EQ(BA::overflowItems(&sni, nullptr).size(), 2U);
 }
 
 TEST(NativeModulesForwardGesturesToClaimedApplet) {
@@ -285,6 +334,11 @@ void testAliasesBuildOneModule() {
     EXPECT_EQ(built[0]->id(), std::string("removable-devices"));
     EXPECT_TRUE(built[0]->zone() == qypr::Zone::Left);  // first listing wins
     EXPECT_EQ(built[1]->id(), std::string("clock"));
+    modules.left = {"tray", "sni"};
+    modules.right = {"background-apps"};
+    const auto trays = qypr::IndicatorRegistry::instance().createAll(b, &modules);
+    EXPECT_EQ(trays.size(), 1U);
+    EXPECT_EQ(trays[0]->id(), std::string("background-apps"));
     modules.left = {"kde-connect", "phone-connect"};
     modules.right = {"phone-link"};
     const auto phones = qypr::IndicatorRegistry::instance().createAll(b, &modules);
@@ -330,6 +384,106 @@ void testStatusAreaDetailRequestOpensAnchoredFlyout() {
     EXPECT_TRUE(bar.popovers().active() == nullptr);
 }
 
+void testOverflowListsPassiveModules() {
+    qypr::EventLoop loop;
+    AreaHost host;
+    qypr::SystemBus session(loop, qypr::BusKind::Session);
+    qypr::SNIBackend sni(session);
+    qypr::SystemBackends backends;
+    backends.sni = &sni;
+    qypr::IndicatorRegistry::ModuleSelection modules;
+    modules.right = {"clock", "background-apps"};
+    qypr::StatusBar bar(loop, host, backends, &modules);
+    bar.setSessionContentVisible(true);
+
+    // A module with nothing to say right now (think: the fstab drive) hides
+    // from the strip and lists itself behind the chevron instead.
+    struct Passive : qypr::StatusIndicator {
+        explicit Passive(int& fired)
+            : StatusIndicator("passive-target", qypr::Zone::Right, 1),
+              fired_(&fired) {
+            visible = false;
+        }
+        [[nodiscard]] std::string icon() const override { return "P"; }
+        [[nodiscard]] std::string tooltip() const override { return "Passive"; }
+        [[nodiscard]] bool hasDetailedView() const override { return true; }
+        std::unique_ptr<qypr::DetailedPopover> createDetailedView() override {
+            auto menu = std::make_unique<qypr::NativeMenu>();
+            menu->add("Act", [f = fired_] { ++(*f); });
+            return std::make_unique<qypr::MenuPopover>(std::move(menu), "Passive");
+        }
+        [[nodiscard]] qypr::OverflowEntry overflowEntry() const override {
+            if (visible) { return {}; }
+            return {.id = id(), .title = "Shared drive", .subtitle = "4.0 TB", .glyph = "P"};
+        }
+
+    private:
+        int* fired_;
+    };
+    int fired = 0;
+    bar.indicators().right().push_back(std::make_unique<Passive>(fired));
+    auto* chevron = bar.indicators().findById("background-apps");
+    EXPECT_TRUE(chevron != nullptr);
+    EXPECT_FALSE(chevron->visible);  // built before the passive module existed
+
+    bar.refreshFromBackends();  // the overflow host settles after the others
+    EXPECT_TRUE(chevron->visible);
+    EXPECT_EQ(chevron->tooltip(), std::string("1 more status"));
+    sni.items_.push_back(trayItem(":1.80", "TelegramDesktop", "Telegram"));
+    bar.refreshFromBackends();
+    EXPECT_EQ(chevron->tooltip(), std::string("1 more status, 1 background app"));
+
+    AreaCanvas canvas;
+    bar.layout(1280, 800);
+    bar.draw(canvas.painter, qypr::nowMs());
+    const auto b = chevron->bounds;
+    EXPECT_NEAR(b.w, 36.0, 0.01);
+    EXPECT_TRUE(bar.handlePointerButton(b.x + b.w / 2, b.y + b.h / 2, 0x110, true, 0));
+    bar.handlePointerButton(b.x + b.w / 2, b.y + b.h / 2, 0x110, false, 0);
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("background-apps"));
+    auto* overflow = bar.popovers().active();
+    EXPECT_TRUE(overflow != nullptr);
+    overflow->draw(canvas.painter, qypr::nowMs());
+    if (const char* dir = std::getenv("QYPR_TEST_ARTIFACT_DIR")) {
+        cairo_save(canvas.cr);
+        cairo_set_operator(canvas.cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(canvas.cr);
+        cairo_restore(canvas.cr);
+        bar.setBackdrop(true, 0.96);
+        bar.draw(canvas.painter, qypr::nowMs() + 10000);
+        std::filesystem::create_directories(dir);
+        const auto file = std::filesystem::path(dir) / "background-apps-overflow.png";
+        EXPECT_EQ(cairo_surface_write_to_png(canvas.surface, file.c_str()), CAIRO_STATUS_SUCCESS);
+    }
+
+    // The STATUS row opens the module's own flyout, anchored to the chevron.
+    const auto pb = overflow->getBounds();
+    EXPECT_TRUE(bar.handlePointerButton(pb.x + pb.w / 2, pb.y + 8 + 24 + 21, 0x110, true, 0));
+    auto* flyout = bar.popovers().active();
+    EXPECT_TRUE(flyout != nullptr);
+    EXPECT_TRUE(flyout != overflow);
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("background-apps"));
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Escape));
+    EXPECT_TRUE(bar.popovers().active() == nullptr);
+
+    // Keyboard: open the overflow, Down to the row, Enter.
+    EXPECT_TRUE(bar.handlePointerButton(b.x + b.w / 2, b.y + b.h / 2, 0x110, true, 0));
+    bar.popovers().active()->draw(canvas.painter, qypr::nowMs());
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Down));
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Return));
+    EXPECT_TRUE(bar.popovers().active() != nullptr);
+    EXPECT_EQ(bar.popovers().ownerId(), std::string("background-apps"));
+    EXPECT_TRUE(bar.handleKey(XKB_KEY_Escape));
+
+    // Once the module has something to show it leaves the overflow, and with
+    // nothing else there the chevron goes too.
+    bar.indicators().findById("passive-target")->visible = true;
+    sni.items_.clear();
+    bar.refreshFromBackends();
+    EXPECT_FALSE(chevron->visible);
+    EXPECT_EQ(fired, 0);
+}
+
 }  // namespace
 
 // Bar-level tests build indicators through the registry, which is complete
@@ -340,6 +494,7 @@ void runStatusAreaBarTests() {
         {"StatusAreaDetailRequestOpensAnchoredFlyout",
          testStatusAreaDetailRequestOpensAnchoredFlyout},
         {"AliasesBuildOneModule", testAliasesBuildOneModule},
+        {"OverflowListsPassiveModules", testOverflowListsPassiveModules},
     };
     for (const auto& [name, run] : tests) {
         std::cout << "Running test: " << name << "...\n";

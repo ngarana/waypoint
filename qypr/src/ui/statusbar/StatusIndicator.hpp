@@ -236,6 +236,11 @@ public:
     // calling createTile() so their QS toggle is present.
     bool qsOnly() const override { return false; }
 
+    // The overflow host lists other modules' overflowEntry() (passive drives,
+    // an away phone), so StatusBar updates it after every other module has
+    // settled its own visibility for the same change.
+    bool listsOverflow() const override { return false; }
+
     // --- Getters ---
     std::string id() const { return id_; }
     Zone zone() const { return zone_; }
@@ -247,6 +252,9 @@ public:
 
     bool hovered = false;
     bool focused = false;
+    // Set by StatusBar from its geometry: true when the bar sits on the bottom
+    // edge, so popovers open upward (a chevron should point that way).
+    bool barBottom = false;
     Animated hoverScale_{1.0};
     Animated hoverAlpha_{0.0};
 

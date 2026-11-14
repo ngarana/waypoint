@@ -124,7 +124,20 @@ SystemBackends StatusBar::withStatusArea(const SystemBackends& backends) {
 // claims it carries decide what the tray host and claimed modules show, so
 // every indicator recomputes once instead of waiting for the next push.
 void StatusBar::refreshIndicators() {
-    indicators_.forEach([](StatusIndicator& ind) { ind.onBackendUpdate(); });
+    indicators_.forEach([this](StatusIndicator& ind) {
+        ind.barBottom = geom_.bottom;
+        if (!ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
+    refreshOverflowHosts();
+}
+
+// The overflow host's own visibility follows what the other modules just
+// decided (a module that hid itself lists itself behind the chevron), so it
+// always goes last.
+void StatusBar::refreshOverflowHosts() {
+    indicators_.forEach([](StatusIndicator& ind) {
+        if (ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
 }
 
 void StatusBar::syncStatusArea(const SystemBackends& backends) {
@@ -157,6 +170,7 @@ void StatusBar::resetAutoDismiss() {
 void StatusBar::setSessionContentVisible(bool v) {
     if (v == sessionContentVisible_) { return; }
     sessionContentVisible_ = v;
+    refreshOverflowHosts();  // sensitive modules leave/rejoin the overflow
     host_.invalidate();
 }
 
@@ -210,11 +224,15 @@ void StatusBar::setBackdrop(bool enabled, double alpha) {
 
 void StatusBar::setGeometry(const BarGeometry& g) {
     geom_ = g;
+    indicators_.forEach([&](StatusIndicator& ind) { ind.barBottom = g.bottom; });
     host_.invalidate();
 }
 
 void StatusBar::notifyBackendUpdate() {
-    indicators_.forEach([&](StatusIndicator& ind) { ind.onBackendUpdate(); });
+    indicators_.forEach([&](StatusIndicator& ind) {
+        if (!ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
+    refreshOverflowHosts();
     for (auto& ind : detailIndicators_) { ind->onBackendUpdate(); }
     if (wifi_ != nullptr) { qsPanel_.updateWifi(wifi_->snapshot()); }
     host_.invalidate();

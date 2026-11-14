@@ -139,6 +139,7 @@ private:
     // Claims follow the layout: refresh after every (re)load.
     void syncStatusArea(const SystemBackends& backends);
     void refreshIndicators();
+    void refreshOverflowHosts();
     void notifyBackendUpdate();
     // (Re)arm auto-dismiss on the active popover via the manager.
     void resetAutoDismiss();

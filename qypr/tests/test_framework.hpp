@@ -181,7 +181,7 @@ extern int g_tests_failed;
 #include "ui/indicators/DNDIndicator.hpp"
 #include "ui/indicators/VolumeIndicator.hpp"
 #include "ui/indicators/WifiIndicator.hpp"
-#include "ui/indicators/SNITrayHost.hpp"
+#include "ui/indicators/BackgroundAppsIndicator.hpp"
 #include "ui/indicators/WorkspacesIndicator.hpp"
 #include "ui/indicators/PagerIndicator.hpp"
 #include "ui/indicators/ActiveWindowIndicator.hpp"

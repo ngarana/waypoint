@@ -103,13 +103,14 @@ public:
 
 // Visibility/interactivity policy: session sensitivity, lock-screen
 // allow-list (default deny, see LOCK_SECURITY_REVIEW QL-1/QL-2/QL-4),
-// QS-only applets.
+// QS-only applets, and the overflow host.
 class IIndicatorPolicy {
 public:
     virtual ~IIndicatorPolicy() = default;
     virtual bool sensitive() const = 0;
     virtual bool lockInteractive() const = 0;
     virtual bool qsOnly() const = 0;
+    virtual bool listsOverflow() const = 0;
 };
 
 }  // namespace qypr

@@ -51,11 +51,11 @@ void testTrayAndNotificationAppsAreDistinct() {
     b.sessionSurface = true;
     qypr::IndicatorRegistry::ModuleSelection modules;
     modules.left = {"notification-apps"};
-    modules.right = {"sni"};
+    modules.right = {"sni"};  // legacy alias of background-apps
     const auto indicators = qypr::IndicatorRegistry::instance().createAll(b, &modules);
     EXPECT_EQ(indicators.size(), 2U);
     EXPECT_EQ(indicators.front()->id(), "notification-apps");
-    EXPECT_EQ(indicators.back()->id(), "sni");
+    EXPECT_EQ(indicators.back()->id(), "background-apps");
     b.hasSession = false;
     EXPECT_TRUE(qypr::IndicatorRegistry::instance().createAll(b, &modules).empty());
 }
@@ -302,6 +302,7 @@ void testEveryRegisteredModuleRendersAndRoutesInput() {
     // No session loop, compositor or bus connection: application launch,
     // eject, network and power actions cannot affect the user's desktop.
     const std::vector<std::string> ids = {"active-window",
+                                          "background-apps",
                                           "battery",
                                           "bluetooth",
                                           "brightness",
@@ -319,10 +320,13 @@ void testEveryRegisteredModuleRendersAndRoutesInput() {
                                           "notifications",
                                           "pager",
                                           "phone-connect",
+                                          "phone-link",
                                           "power",
+                                          "removable-devices",
                                           "sni",
                                           "system-monitor",
                                           "taskbar",
+                                          "tray",
                                           "usb",
                                           "usb-eject",
                                           "volume",

@@ -8,7 +8,7 @@ tray icon *and* a notification-apps entry for nm-applet):
 |---|---|---|
 | What state is the system in? (network, Bluetooth, sound, drives, phone) | native modules: `wifi`, `bluetooth`, `volume`, … | system services (NetworkManager, BlueZ, PipeWire, …) |
 | Which apps want my attention? | `notification-apps` | the notification daemon (one icon per app with live notifications) |
-| What else is running in the background? | `sni` (tray host) | StatusNotifierItem apps not claimed by a native module |
+| What else is running or relevant? | `background-apps` (the overflow chevron; old ids `sni`, `tray`) | native modules that are passive right now, and StatusNotifierItem apps not claimed by a native module |
 
 All three are session-only and hidden on the lock screen.
 
@@ -54,8 +54,15 @@ claims-bluetooth = overskride
 ```
 
 (`claims-volume`, `claims-removable-devices` and `claims-phone-link` work the
-same way. `pinned` and `hidden` list tray Ids for the background-apps
-overflow and are read now, but nothing uses them yet.)
+same way.) The same section places the apps nothing claims:
+
+```ini
+[tray]
+pinned = TelegramDesktop   # its own icon next to the chevron
+hidden = steam             # never shown
+```
+
+Both match the item's `Id` or its title, case-insensitively.
 
 ## removable-devices
 
@@ -113,21 +120,37 @@ daemon. It does not use StatusNotifierItem.
 
 Notification cards and history stay with `notifications`.
 
-## The tray host (`sni`)
+## The overflow (`background-apps`)
 
-Unclaimed StatusNotifierItems are shown by `sni`:
+One chevron holds everything that is running or relevant but doesn't earn a
+permanent place on the bar. It appears only when there is something behind
+it, and points the way it opens (down on a top bar, up on a bottom bar).
+Opened, it lists two sections:
 
-- Active items appear in registration order, up to six icons. Passive items
-  and any more than six sit behind an overflow chevron, which also appears
-  when every item is passive.
-- NeedsAttention shows the attention icon when the app supplies one, plus a
-  dot.
+- **STATUS** — native modules that are passive right now and list themselves
+  through `overflowEntry()`: a drive that lives in fstab (`removable-devices`),
+  a paired phone that is away (`phone-link`). The row opens that module's own
+  flyout, anchored to the chevron. The bar updates the overflow after every
+  other module, so a module that just hid itself is already listed.
+- **BACKGROUND APPS** — StatusNotifierItem apps no native module claims
+  (Telegram, Steam, a password manager), in registration order.
+
+Tray apps are the last resort, so none of them takes bar space by default.
+Two exceptions put an app's own icon next to the chevron, up to six: `[tray]
+pinned`, and an app asking for attention (`NeedsAttention`), for as long as it
+asks — with the app's attention icon when it supplies one, plus a dot.
+`[tray] hidden` keeps an app out of sight entirely; a claimed applet never
+appears here.
+
+On a tray app (strip icon or overflow row):
+
 - Left click invokes `Activate`, or opens the menu for `ItemIsMenu` items.
-- Right click opens the item's D-Bus menu, falling back to `ContextMenu`.
-- Middle click invokes `SecondaryActivate`. The wheel calls
-  `Scroll(delta, orientation)`.
+- Right click (or Menu in the overflow) opens the item's D-Bus menu, falling
+  back to `ContextMenu`.
+- Middle click invokes `SecondaryActivate`; the wheel calls
+  `Scroll(delta, orientation)` (strip icons).
 - The overflow works with the pointer and the keyboard: Tab/arrows to move,
-  Enter/Space to activate, Menu or right click for the item's menu.
+  Enter/Space to activate, Menu for the item's menu.
 - Items go away when the app unregisters or exits, including rows in an open
   overflow. Overflow rows find their app again on activation, so an app that
   exits while its row is visible can't redirect the click to a different app.
@@ -145,8 +168,10 @@ XEmbed-only tray clients need a separate compatibility bridge.
 ## Verification
 
 Unit tests: `tests/test_status_area.cpp` (claims follow the layout, `[tray]`
-config, composite menus, the tray host skipping claimed items, modules
-forwarding gestures, right click / Menu key routing, alias dedupe),
+config, composite menus, the overflow skipping claimed items, pinned /
+hidden / attention placement, passive module rows opening their flyout from
+the chevron, modules forwarding gestures, right click / Menu key routing,
+alias dedupe),
 `tests/test_removable_drives.cpp` (UDisks2 reduction, the removal plan, busy
 processes, the module and its flyout), `tests/test_phone_link.cpp` (device
 list, status line, reachability policy, flyout),

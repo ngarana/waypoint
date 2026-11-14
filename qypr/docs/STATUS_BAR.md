@@ -135,7 +135,7 @@ Shell (Root UI Compositor — coordinates inputs, layouts, and global idle dimmi
     │   ├── BluetoothIndicator      D-Bus: org.bluez
     │   ├── BatteryIndicator        D-Bus: org.freedesktop.UPower
     │   ├── DNDIndicator            local state, notification suppression
-    │   ├── SNITrayHost             StatusNotifierWatcher → third-party icons
+    │   ├── BackgroundAppsIndicator overflow chevron: passive modules + unclaimed tray apps
     │   └── QuickSettingsButton     ⚙ opens the Quick Settings panel
     │
     ├── QuickSettingsPanel ───────────────────────────────────
@@ -218,7 +218,7 @@ graph TD
         BrI[BrightnessIndicator]
         BtI[BluetoothIndicator]
         DI[DNDIndicator]
-        SI[SNITrayHost]
+        SI[BackgroundAppsIndicator]
     end
 
     Sh -->|manages & draws| LS
@@ -939,10 +939,11 @@ items (nm-applet exposes only `SecondaryActivate`/`Scroll` + a
 `com.canonical.dbusmenu`) need context-menu support, which is deferred to
 Phase 6 polish along with async item fetch.
 
-`SNITrayHost` renders one small icon per item in the right zone, just left of
-the Quick Settings gear (chromeless, like every other indicator — no divider),
-and maps a click to the icon under the pointer via the base
-`StatusIndicator::onClick` hook.
+`SNITrayHost` rendered one small icon per item in the right zone and mapped a
+click to the icon under the pointer via the base `StatusIndicator::onClick`
+hook. It has since become `background-apps` (`BackgroundAppsIndicator`): tray
+apps sit behind one overflow chevron unless pinned or asking for attention —
+see [APPLICATION_STATUS.md](APPLICATION_STATUS.md).
 
 ---
 
@@ -1240,7 +1241,7 @@ panel skeleton. Pure UI, no system backends yet.
 |------|---------|
 | `src/system/SNIBackend.hpp/.cpp` | Host-mode StatusNotifierItem client on the shared session bus: register host, mirror the Watcher's items, per-item `GetAll` + `IconPixmap` → cairo, `Activate(ii)` |
 | `src/system/SystemBus.*` | `BusKind::Session` opens the user session bus with the same push/one-connection semantics as the system bus |
-| `src/ui/indicators/SNITrayHost.hpp/.cpp` | Renders one themed icon per item in the right zone; per-icon click → `activate()` via the `StatusIndicator::onClick` hook |
+| `src/ui/indicators/BackgroundAppsIndicator.hpp/.cpp` (then `SNITrayHost`) | Renders one themed icon per item in the right zone; per-icon click → `activate()` via the `StatusIndicator::onClick` hook |
 | `src/ui/IconResolver.*` | Inheritance-aware freedesktop lookup (active theme + `Inherits=` chain, all contexts) so tray status/device icons resolve |
 
 Verified live against waybar's Watcher with nm-applet + blueman: both icons
@@ -1458,14 +1459,15 @@ Finishes Phase 5's host: tray items now have their **right-click menus**.
 |------|---------|
 | `src/system/DbusMenuBackend.hpp/.cpp` | `com.canonical.dbusmenu` client. `fetch()` calls **AboutToShow** then **GetLayout(parent, 1, [])** and parses the nested `(ia{sv}av)` tree (id, label, enabled/visible, separator, toggle-type/state, submenu). `clicked()` fires **Event "clicked"**. Synchronous request/reply (user-initiated on right-click — not polling), matching `SNIBackend`'s existing property reads |
 | `src/ui/statusbar/MenuPopover.hpp/.cpp` | Generic menu renderer: separators, disabled items greyed, check/radio toggles, submenu arrows, and **in-place drill-down** (a back header) so nested menus fit the one-active-popover model. Leaf activation fires the item and asks the host to close |
-| `src/ui/indicators/SNITrayHost.*` | **Right-click → dbusmenu** for the item under the pointer (opened through the normal detailed-view path); **middle-click → `SecondaryActivate`**. Left-click still `Activate`s |
+| `src/ui/indicators/BackgroundAppsIndicator.*` (then `SNITrayHost`) | **Right-click → dbusmenu** for the item under the pointer (opened through the normal detailed-view path); **middle-click → `SecondaryActivate`**. Left-click still `Activate`s |
 | `src/system/SNIBackend.*` | Fetches each item's **`Menu`** object path; adds `secondaryActivate` |
 | `src/ui/statusbar/StatusBar.cpp`, `StatusIndicator.hpp`, `DetailedPopover.hpp` | **Button plumbing**: right/middle clicks now dispatch to `onSecondaryClick`/`onMiddleClick` (StatusBar previously discarded the button number). Popovers can `consumeCloseRequest()` so a menu closes after an item fires |
 
 **Security.** The dbusmenu is **bar-only**: `BarApp` supplies `DbusMenuBackend`,
 `qypr-lock` leaves it null, so a right-click on a locked machine cannot open (say)
 nm-applet's connection editor. Verified: the lock `App` sets `.sni` but not
-`.dbusMenu`, so `SNITrayHost::onSecondaryClick` early-returns there.
+`.dbusMenu`, so `SNITrayHost::onSecondaryClick` (now
+`BackgroundAppsIndicator`) early-returns there.
 
 **Verified** against the live `nm-applet` tray menu: `GetLayout` parsed all 20
 items with the right disabled/separator/submenu/checkmark flags and stripped GTK
@@ -1708,7 +1710,7 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 | `src/ui/indicators/WifiIndicator.hpp/.cpp` | WiFi signal icon + QS toggle |
 | `src/ui/indicators/BluetoothIndicator.hpp/.cpp` | BT icon + QS toggle |
 | `src/ui/indicators/DNDIndicator.hpp/.cpp` | DND toggle |
-| `src/ui/indicators/SNITrayHost.hpp/.cpp` | Third-party tray icon host |
+| `src/ui/indicators/BackgroundAppsIndicator.hpp/.cpp` | Overflow chevron: passive modules and unclaimed tray apps |
 | `src/system/BatteryBackend.hpp/.cpp` | UPower D-Bus monitor |
 | `src/system/VolumeBackend.hpp/.cpp` | PipeWire/PA volume control |
 | `src/system/BrightnessBackend.hpp/.cpp` | Backlight via logind/sysfs |
