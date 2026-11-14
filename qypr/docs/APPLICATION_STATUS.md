@@ -57,6 +57,31 @@ claims-bluetooth = overskride
 same way. `pinned` and `hidden` list tray Ids for the background-apps
 overflow and are read now, but nothing uses them yet.)
 
+## removable-devices
+
+Drives come from UDisks2 (`src/system/UDisksBackend.hpp`), pushed on
+InterfacesAdded/Removed and PropertiesChanged; nothing is polled. A drive is
+removable when UDisks2 says so (`Removable`, `MediaRemovable`, `Ejectable`)
+or it sits on a hot-plug bus (USB, SD, FireWire). sysfs `removable` is not
+used: a USB hard disk reports 0 there because its medium can't be taken out,
+yet it can certainly be unplugged.
+
+- A drive with a volume in `/etc/fstab` or `/etc/crypttab` (UDisks2's
+  `Block.Configuration`) is *fixed*: a permanent part of the system, so it
+  makes the module passive instead of putting it on the bar. Any other
+  attached drive shows the module.
+- **Eject** runs the same sequence file managers use: unmount every mounted
+  volume, lock every unlocked LUKS container, then `PowerOff` (or `Eject`
+  for media that can only be ejected). The first failure stops it. A busy
+  volume lists the processes holding files under its mount point. While an
+  operation runs, or after it fails, the module stays on the bar.
+- **Open** opens a mounted volume in the file manager (`xdg-open`), mounting
+  it first if needed.
+- Polkit decides what needs a password. UDisks2 asks it, and the session's
+  polkit agent shows the prompt; the bar never elevates privileges itself.
+- Ids `usb` and `usb-eject` build this module. Listing several of them gives
+  one instance.
+
 ## notification-apps
 
 One icon per application that has live notifications, from the notification
@@ -102,7 +127,9 @@ XEmbed-only tray clients need a separate compatibility bridge.
 
 Unit tests: `tests/test_status_area.cpp` (claims follow the layout, `[tray]`
 config, composite menus, the tray host skipping claimed items, modules
-forwarding gestures, right click / Menu key routing),
+forwarding gestures, right click / Menu key routing, alias dedupe),
+`tests/test_removable_drives.cpp` (UDisks2 reduction, the removal plan, busy
+processes, the module and its flyout),
 `NotificationAppsIndicatorDynamic` in `tests/test_indicators.cpp`, and
 `TrayAndNotificationAppsAreDistinct` in `tests/test_flyouts.cpp`.
 

@@ -11,6 +11,7 @@
 #include "system/PowerProfilesBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
 
@@ -30,6 +31,7 @@ void BarBackendLifecycle::start() {
     if (backends_.bluetooth) backends_.bluetooth->start();
     if (backends_.volume) backends_.volume->start();
     if (backends_.sni) backends_.sni->start();
+    if (backends_.udisks) backends_.udisks->start();
 
     if (backends_.powerProfiles) {
         backends_.powerProfiles->setOnChange([this] { invalidator_.invalidate(); });

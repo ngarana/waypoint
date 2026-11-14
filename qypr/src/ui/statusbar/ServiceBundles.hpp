@@ -19,6 +19,7 @@ class DndState;
 class NightLightBackend;
 class SystemActions;
 class PowerProfilesBackend;
+class UDisksBackend;
 class IdleInhibitor;
 class DesktopIndex;
 class KeyboardLayout;

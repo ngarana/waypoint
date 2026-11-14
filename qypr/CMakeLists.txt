@@ -172,6 +172,7 @@ set(QYPR_SHARED_SOURCES
     src/system/NetworkManagerClient.cpp
     src/system/PowerProfilesBackend.cpp
     src/system/PulseLoop.cpp
+    src/system/RemovableDrives.cpp
     src/system/SessionMapper.cpp
     src/system/SNIBackend.cpp
     src/system/StateCache.cpp
@@ -181,6 +182,7 @@ set(QYPR_SHARED_SOURCES
     src/system/SystemBus.cpp
     src/system/SystemStats.cpp
     src/system/ToplevelBackend.cpp
+    src/system/UDisksBackend.cpp
     src/system/VolumeBackend.cpp
     src/system/WifiBackend.cpp
     src/system/WifiOperations.cpp
@@ -201,6 +203,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/NotificationIndicator.cpp
     src/ui/indicators/PagerIndicator.cpp
     src/ui/indicators/PowerMenuIndicator.cpp
+    src/ui/indicators/RemovableDevicesIndicator.cpp
     src/ui/indicators/SNITrayHost.cpp
     src/ui/indicators/SimpleIconIndicator.cpp
     src/ui/indicators/AdditionalIndicators.cpp
@@ -216,6 +219,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/Theme.cpp
     src/ui/statusbar/IndicatorHost.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
+    src/ui/statusbar/ListFlyout.cpp
     src/ui/statusbar/MenuPopover.cpp
     src/ui/statusbar/MenuSource.cpp
     src/ui/statusbar/PopoverManager.cpp
@@ -425,6 +429,7 @@ add_executable(qypr-test
     tests/test_qs.cpp
     tests/test_desktop.cpp
     tests/test_status_area.cpp
+    tests/test_removable_drives.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
     ${QYPR_BAR_ONLY_SOURCES}

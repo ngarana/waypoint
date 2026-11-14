@@ -46,6 +46,8 @@ struct SystemBackends {
     NightLightBackend* nightLight = nullptr;
     SystemActions* power = nullptr;
     PowerProfilesBackend* powerProfiles = nullptr;
+    // Removable drives (UDisks2). Session-only: never reaches the lock screen.
+    UDisksBackend* udisks = nullptr;
     IdleInhibitor* idleInhibitor = nullptr;
     DesktopIndex* desktopIndex = nullptr;
     KeyboardLayout* keyboardLayout = nullptr;
@@ -70,6 +72,7 @@ struct SystemBackends {
             dbusMenu = nullptr;
             power = nullptr;
             powerProfiles = nullptr;
+            udisks = nullptr;
             loop = nullptr;
         } else {
             session.workspace = workspace;

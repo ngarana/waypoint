@@ -34,6 +34,14 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
     };
 
     std::vector<std::unique_ptr<StatusIndicator>> result;
+    // Aliases ("usb-eject" → removable-devices) build the same module under
+    // its canonical id; listing two of them, or none (every registered id),
+    // must still yield one instance. The first occurrence keeps its place.
+    auto keepFirst = [&](std::unique_ptr<StatusIndicator> ind) {
+        const bool seen = std::ranges::any_of(
+            result, [&](const auto& existing) { return existing->id() == ind->id(); });
+        if (!seen) { result.push_back(std::move(ind)); }
+    };
 
     // No config: every indicator, grouped by compiled zone, ordered by priority.
     if (!sel) {
@@ -46,7 +54,7 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
         });
         for (const auto& entry : sortedEntries) {
             if (!isAllowed(entry)) { continue; }
-            if (auto ind = entry.factory(synced)) { result.push_back(std::move(ind)); }
+            if (auto ind = entry.factory(synced)) { keepFirst(std::move(ind)); }
         }
         return result;
     }
@@ -60,7 +68,7 @@ std::vector<std::unique_ptr<StatusIndicator>> IndicatorRegistry::createAll(
             if (!isAllowed(*it)) continue;       // unsafe in current runtime: drop
             if (auto ind = it->factory(synced)) {
                 ind->setZone(zone);  // honour the zone it was listed under
-                result.push_back(std::move(ind));
+                keepFirst(std::move(ind));
             }
         }
     };

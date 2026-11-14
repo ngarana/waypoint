@@ -275,6 +275,25 @@ void testRightClickAndMenuKeyOpenContextMenu() {
     EXPECT_TRUE(bar.popovers().active() == nullptr);
 }
 
+void testAliasesBuildOneModule() {
+    qypr::SystemBackends b;
+    qypr::IndicatorRegistry::ModuleSelection modules;
+    modules.left = {"usb"};
+    modules.right = {"usb-eject", "clock", "removable-devices"};
+    const auto built = qypr::IndicatorRegistry::instance().createAll(b, &modules);
+    EXPECT_EQ(built.size(), 2U);
+    EXPECT_EQ(built[0]->id(), std::string("removable-devices"));
+    EXPECT_TRUE(built[0]->zone() == qypr::Zone::Left);  // first listing wins
+    EXPECT_EQ(built[1]->id(), std::string("clock"));
+    // No module list (every registered id): still one instance per module.
+    const auto everything = qypr::IndicatorRegistry::instance().createAll(b, nullptr);
+    std::vector<std::string> ids;
+    ids.reserve(everything.size());
+    for (const auto& ind : everything) { ids.push_back(ind->id()); }
+    std::ranges::sort(ids);
+    EXPECT_TRUE(std::ranges::adjacent_find(ids) == ids.end());
+}
+
 void testStatusAreaDetailRequestOpensAnchoredFlyout() {
     qypr::EventLoop loop;
     AreaHost host;
@@ -315,6 +334,7 @@ void runStatusAreaBarTests() {
         {"RightClickAndMenuKeyOpenContextMenu", testRightClickAndMenuKeyOpenContextMenu},
         {"StatusAreaDetailRequestOpensAnchoredFlyout",
          testStatusAreaDetailRequestOpensAnchoredFlyout},
+        {"AliasesBuildOneModule", testAliasesBuildOneModule},
     };
     for (const auto& [name, run] : tests) {
         std::cout << "Running test: " << name << "...\n";

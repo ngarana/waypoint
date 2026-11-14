@@ -22,6 +22,7 @@
 #include "system/SNIBackend.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "system/VolumeBackend.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/WifiBackend.hpp"
 #include "system/WorkspaceBackend.hpp"
 #include "ui/Theme.hpp"
@@ -64,6 +65,7 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
     if (backends.bluetooth != nullptr) { backends.bluetooth->setOnChange(onChange); }
     if (backends.volume != nullptr) { backends.volume->setOnChange(onChange); }
     if (backends.sni != nullptr) { backends.sni->setOnChange(onChange); }
+    if (backends.udisks != nullptr) { backends.udisks->setOnChange(onChange); }
     if (backends.mpris != nullptr) { backends.mpris->setOnChange(onChange); }
     if (backends.idleInhibitor != nullptr) { backends.idleInhibitor->setOnChange(onChange); }
     if (backends.keyboardLayout != nullptr) { backends.keyboardLayout->setOnChange(onChange); }

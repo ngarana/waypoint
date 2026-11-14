@@ -41,6 +41,7 @@
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
 #include "system/SystemBus.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
@@ -128,6 +129,8 @@ private:
     NotificationActions notificationActions_{sessionBus_};
     SystemActions power_{loop_};
     PowerProfilesBackend powerProfiles_{loop_, systemBus_};
+    // Removable drives over UDisks2 (bar-only: never constructed by the lock).
+    UDisksBackend udisks_{loop_, systemBus_};
     // IP-derived coarse location lookup is bar-only; qypr-lock consumes only
     // the private cache and never opens a network connection.
     NetworkSolarLocation solarLocation_{loop_};
@@ -152,6 +155,7 @@ private:
                              .nightLight = &nightLight_,
                              .power = &power_,
                              .powerProfiles = &powerProfiles_,
+                             .udisks = &udisks_,
                              .idleInhibitor = &idleInhibitor_,
                              .desktopIndex = &desktopIndex_,
                              .keyboardLayout = &kbLayout_,

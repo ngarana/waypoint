@@ -1,5 +1,5 @@
-// AdditionalIndicators.hpp - Dedicated convenience indicators for USB, KDE Connect, WhatsApp,
-// Email.
+// AdditionalIndicators.hpp - Dedicated convenience indicators for KDE Connect, WhatsApp, Email.
+// Removable drives live in RemovableDevicesIndicator.
 #pragma once
 
 #include <string>
@@ -8,32 +8,6 @@
 #include "ui/indicators/SimpleIconIndicator.hpp"
 
 namespace qypr {
-
-class UsbIndicator : public SimpleIconIndicator {
-public:
-    explicit UsbIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updatePresence();
-    std::vector<std::string> mountedDrives_;
-};
-
-class UsbEjectIndicator : public SimpleIconIndicator {
-public:
-    explicit UsbEjectIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updatePresence();
-    std::vector<std::string> mountedDrives_;
-};
 
 class KdeConnectIndicator : public SimpleIconIndicator {
 public:
@@ -88,8 +62,6 @@ private:
 using MailIndicator = EmailIndicator;
 using MailboxIndicator = EmailIndicator;
 using InboxIndicator = EmailIndicator;
-using UsbManagerIndicator = UsbIndicator;
-using EjectIndicator = UsbEjectIndicator;
 using KdeconnectIndicator = KdeConnectIndicator;
 
 }  // namespace qypr
