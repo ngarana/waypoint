@@ -21,6 +21,7 @@ class SystemActions;
 class PowerProfilesBackend;
 class UDisksBackend;
 class KdeConnectBackend;
+class ApplicationsBackend;
 class IdleInhibitor;
 class DesktopIndex;
 class KeyboardLayout;

@@ -8,6 +8,9 @@
 //                  native section the module supplies;
 //   middle click → SecondaryActivate.
 //
+// App modules (whatsapp, email) also forward left click to an app that has
+// no window open but sits in the tray (activate()).
+//
 // The binding resolves the claimed item freshly on every call: tray items
 // come and go with their processes, and the backend rebuilds its list on each
 // change, so neither pointers nor indices are cached.
@@ -44,6 +47,9 @@ public:
 
     // Forward middle click. False when no applet is bound.
     bool secondaryActivate(double x, double y) const;
+    // The applet's Activate (a tray app shows its hidden window). False when
+    // no applet is bound.
+    bool activate(double x, double y) const;
 
 private:
     SNIBackend* sni_ = nullptr;

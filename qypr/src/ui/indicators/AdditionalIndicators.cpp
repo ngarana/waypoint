@@ -1,211 +1,62 @@
-// AdditionalIndicators.cpp - Extra status bar icons (WhatsApp, email).
+// AdditionalIndicators.cpp - The whatsapp and email app modules.
 #include "ui/indicators/AdditionalIndicators.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <string>
-#include <vector>
+#include <utility>
 
-#include "notifications/NotificationActions.hpp"
-#include "notifications/NotificationMonitor.hpp"
-#include "system/DesktopIndex.hpp"
-#include "system/ToplevelBackend.hpp"
+#include "system/SNIBackend.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
+#include "ui/statusbar/StatusArea.hpp"
 
 namespace qypr {
 
-namespace {
+AppModuleIndicator::AppModuleIndicator(const SystemBackends& backends, const std::string& id,
+                                       int priority, std::string label, std::string glyph,
+                                       std::string fallback)
+    : AppStatusIndicator(backends, id, priority),
+      label_(std::move(label)),
+      glyph_(std::move(glyph)),
+      fallback_(std::move(fallback)),
+      tray_(backends, id) {}
 
-std::string lower(std::string s) {
-    std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::tolower(c); });
-    return s;
+std::vector<std::string> AppModuleIndicator::patterns() const {
+    // In a bar the status area adds the [tray] claims; a free-standing
+    // module uses the defaults.
+    return backends_.statusArea != nullptr ? backends_.statusArea->claimPatterns(id())
+                                           : StatusArea::defaultClaims(id());
 }
 
-std::vector<const Notification*> getMatchingNotifications(const SystemBackends& b,
-                                                          const std::vector<std::string>& needles) {
-    std::vector<const Notification*> matched;
-    if (b.notifications == nullptr) return matched;
-    for (const auto& note : b.notifications->notifications()) {
-        const std::string app = lower(note.app);
-        const std::string de = lower(note.desktopEntry);
-        for (const auto& needle : needles) {
-            if (app.find(needle) != std::string::npos ||
-                (!de.empty() && de.find(needle) != std::string::npos)) {
-                matched.push_back(&note);
-                break;
-            }
+std::vector<AppStatus> AppModuleIndicator::select(std::vector<AppStatus> all) const {
+    const auto claims = patterns();
+    std::erase_if(all, [&](const AppStatus& app) {
+        return !app.matchesAny(claims) || (!app.hasNews() && app.windows.empty());
+    });
+    // Nothing on screen, but the app sits in the tray (its icon is claimed
+    // by this module, so this is the only place it shows).
+    if (all.empty()) {
+        if (const SNIItem* item = tray_.item()) {
+            AppStatus app;
+            app.key = item->id;
+            std::ranges::transform(app.key, app.key.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+            app.name = !item->title.empty() ? item->title : label_;
+            app.icon = !item->iconName.empty() ? item->iconName : glyph_;
+            all.push_back(std::move(app));
         }
     }
-    return matched;
+    return all;
 }
-
-int countMatchingNotifications(const SystemBackends& b, const std::vector<std::string>& needles) {
-    return static_cast<int>(getMatchingNotifications(b, needles).size());
-}
-
-void dismissMatchingNotifications(const SystemBackends& b,
-                                  const std::vector<std::string>& needles) {
-    if (b.notificationActions == nullptr) return;
-    const auto matched = getMatchingNotifications(b, needles);
-    for (const auto* n : matched) {
-        if (n->daemonId != 0) { b.notificationActions->close(n->daemonId); }
-    }
-}
-
-bool activateOrLaunchApp(const SystemBackends& b, const std::vector<std::string>& appKeywords,
-                         const std::string& fallbackCmd) {
-    if (b.toplevel != nullptr) {
-        const auto snap = b.toplevel->snapshot();
-        for (const auto& w : snap.windows) {
-            const std::string wId = lower(w.appId);
-            const std::string wTitle = lower(w.title);
-            for (const auto& kw : appKeywords) {
-                if (wId.find(kw) != std::string::npos || wTitle.find(kw) != std::string::npos) {
-                    b.toplevel->activate(w.id);
-                    return true;
-                }
-            }
-        }
-    }
-
-    if (b.desktopIndex != nullptr && b.loop != nullptr) {
-        if (!b.desktopIndex->loaded()) { b.desktopIndex->load(); }
-        for (const auto& kw : appKeywords) {
-            const DesktopEntry* entry = b.desktopIndex->resolve(kw);
-            if (entry != nullptr) {
-                launchDetached(*b.loop, entry->exec, entry->terminal);
-                return true;
-            }
-        }
-    }
-
-    if (b.loop != nullptr && !fallbackCmd.empty()) {
-        launchDetached(*b.loop, fallbackCmd, /*terminal=*/false);
-        return true;
-    }
-
-    return false;
-}
-
-}  // namespace
-
-// --- WhatsappIndicator ---
 
 WhatsappIndicator::WhatsappIndicator(const SystemBackends& backends)
-    : SimpleIconIndicator(backends, "whatsapp", Zone::Right, 264, "󰖣", "WhatsApp",
-                          "whatsapp-symbolic") {
-    updateRunningState();
-}
-
-void WhatsappIndicator::poll(int64_t) {
-    updateRunningState();
-}
-
-void WhatsappIndicator::onBackendUpdate() {
-    updateRunningState();
-}
-
-void WhatsappIndicator::updateRunningState() {
-    const int notifCount = countMatchingNotifications(backends_, {"whatsapp", "whats"});
-    bool windowOpen = false;
-    if (backends_.toplevel != nullptr) {
-        for (const auto& w : backends_.toplevel->snapshot().windows) {
-            const std::string wId = lower(w.appId);
-            if (wId.find("whatsapp") != std::string::npos) {
-                windowOpen = true;
-                break;
-            }
-        }
-    }
-    running_ = (notifCount > 0) || windowOpen;
-    visible = running_;
-    loaded_ = true;
-}
-
-std::string WhatsappIndicator::icon() const {
-    return countMatchingNotifications(backends_, {"whatsapp", "whats"}) > 0 ? "󰖣" : "󰖥";
-}
-
-std::string WhatsappIndicator::label() const {
-    const int n = countMatchingNotifications(backends_, {"whatsapp", "whats"});
-    return n > 0 ? std::to_string(n) : std::string{};
-}
-
-bool WhatsappIndicator::onClick(double, double) {
-    activateOrLaunchApp(backends_, {"whatsapp", "whatsapp-for-linux"},
-                        "xdg-open https://web.whatsapp.com");
-    dismissMatchingNotifications(backends_, {"whatsapp", "whats"});
-    return true;
-}
-
-bool WhatsappIndicator::onSecondaryClick(double, double) {
-    dismissMatchingNotifications(backends_, {"whatsapp", "whats"});
-    return true;
-}
-
-// --- EmailIndicator ---
+    : AppModuleIndicator(backends, "whatsapp", 264, "WhatsApp", "\U000F05A3",
+                         "xdg-open https://web.whatsapp.com") {}
 
 EmailIndicator::EmailIndicator(const SystemBackends& backends)
-    : SimpleIconIndicator(backends, "email", Zone::Right, 265, "󰇰", "Email",
-                          "mail-unread-symbolic") {
-    updateRunningState();
-}
+    : AppModuleIndicator(backends, "email", 265, "Email", "\U000F01F0", "xdg-open mailto:") {}
 
-void EmailIndicator::poll(int64_t) {
-    updateRunningState();
-}
-
-void EmailIndicator::onBackendUpdate() {
-    updateRunningState();
-}
-
-void EmailIndicator::updateRunningState() {
-    const int notifCount = countMatchingNotifications(
-        backends_, {"mail", "thunderbird", "evolution", "geary", "kmail"});
-    bool windowOpen = false;
-    if (backends_.toplevel != nullptr) {
-        for (const auto& w : backends_.toplevel->snapshot().windows) {
-            const std::string wId = lower(w.appId);
-            if (wId.find("thunderbird") != std::string::npos ||
-                wId.find("evolution") != std::string::npos ||
-                wId.find("geary") != std::string::npos || wId.find("mail") != std::string::npos) {
-                windowOpen = true;
-                break;
-            }
-        }
-    }
-    running_ = (notifCount > 0) || windowOpen;
-    visible = running_;
-    loaded_ = true;
-}
-
-std::string EmailIndicator::icon() const {
-    return countMatchingNotifications(backends_,
-                                      {"mail", "thunderbird", "evolution", "geary", "kmail"}) > 0
-               ? "󰇰"
-               : "󰇮";
-}
-
-std::string EmailIndicator::label() const {
-    const int n = countMatchingNotifications(
-        backends_, {"mail", "thunderbird", "evolution", "geary", "kmail"});
-    return n > 0 ? std::to_string(n) : std::string{};
-}
-
-bool EmailIndicator::onClick(double, double) {
-    activateOrLaunchApp(backends_, {"thunderbird", "evolution", "geary", "kmail", "mail"},
-                        "xdg-open mailto:");
-    dismissMatchingNotifications(backends_, {"mail", "thunderbird", "evolution", "geary", "kmail"});
-    return true;
-}
-
-bool EmailIndicator::onSecondaryClick(double, double) {
-    dismissMatchingNotifications(backends_, {"mail", "thunderbird", "evolution", "geary", "kmail"});
-    return true;
-}
-
-REGISTER_INDICATOR("whatsapp", Zone::Right, 264, WhatsappIndicator)
-REGISTER_INDICATOR("email", Zone::Right, 265, EmailIndicator)
-REGISTER_INDICATOR("mail", Zone::Right, 266, MailIndicator)
+REGISTER_SESSION_INDICATOR("whatsapp", Zone::Right, 264, WhatsappIndicator)
+REGISTER_SESSION_INDICATOR("email", Zone::Right, 265, EmailIndicator)
+REGISTER_SESSION_INDICATOR("mail", Zone::Right, 266, MailIndicator)
 
 }  // namespace qypr

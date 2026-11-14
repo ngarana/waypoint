@@ -158,6 +158,7 @@ set(QYPR_SHARED_SOURCES
     src/notifications/NotificationStore.cpp
     src/notifications/NotificationTransport.cpp
     src/power/SystemActions.cpp
+    src/system/ApplicationsBackend.cpp
     src/system/BatteryBackend.cpp
     src/system/BluetoothAgent.cpp
     src/system/BluetoothBackend.cpp
@@ -190,6 +191,8 @@ set(QYPR_SHARED_SOURCES
     src/system/WifiSnapshotReducer.cpp
     src/system/WorkspaceBackend.cpp
     src/ui/indicators/ActiveWindowIndicator.cpp
+    src/ui/indicators/AppStatus.cpp
+    src/ui/indicators/AppStatusIndicator.cpp
     src/ui/indicators/BatteryIndicator.cpp
     src/ui/indicators/BluetoothIndicator.cpp
     src/ui/indicators/BrightnessIndicator.cpp
@@ -433,6 +436,7 @@ add_executable(qypr-test
     tests/test_status_area.cpp
     tests/test_removable_drives.cpp
     tests/test_phone_link.cpp
+    tests/test_app_status.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
     ${QYPR_BAR_ONLY_SOURCES}

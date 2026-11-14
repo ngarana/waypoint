@@ -1711,6 +1711,9 @@ path (initial report on sink-attach, re-report on group change, dedup on repeat)
 | `src/ui/indicators/BluetoothIndicator.hpp/.cpp` | BT icon + QS toggle |
 | `src/ui/indicators/DNDIndicator.hpp/.cpp` | DND toggle |
 | `src/ui/indicators/BackgroundAppsIndicator.hpp/.cpp` | Overflow chevron: passive modules and unclaimed tray apps |
+| `src/ui/indicators/AppStatus.hpp/.cpp` | One record per app: notifications, LauncherEntry state and windows merged by desktop id |
+| `src/ui/indicators/AppStatusIndicator.hpp/.cpp` | App buttons (badge, progress, focus/launch, app menu); base of `notification-apps`, `whatsapp`, `email` |
+| `src/system/ApplicationsBackend.hpp/.cpp` | Unity LauncherEntry signals + `org.freedesktop.Application` activation (session bus) |
 | `src/system/BatteryBackend.hpp/.cpp` | UPower D-Bus monitor |
 | `src/system/VolumeBackend.hpp/.cpp` | PipeWire/PA volume control |
 | `src/system/BrightnessBackend.hpp/.cpp` | Backlight via logind/sysfs |

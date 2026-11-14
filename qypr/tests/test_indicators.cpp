@@ -1312,13 +1312,13 @@ TEST(NotificationAppsIndicatorDynamic) {
 
     // Chat has newest postedAt (3000) so it should be first
     EXPECT_EQ(ind.apps()[0].name, "Chat");
-    EXPECT_EQ(ind.apps()[0].count, 1);
-    EXPECT_TRUE(ind.apps()[0].hasCritical);
+    EXPECT_EQ(ind.apps()[0].count(), 1);
+    EXPECT_TRUE(ind.apps()[0].critical);
 
-    // Mail is second, count 2
-    EXPECT_EQ(ind.apps()[1].desktopEntry, "thunderbird");
-    EXPECT_EQ(ind.apps()[1].count, 2);
-    EXPECT_FALSE(ind.apps()[1].hasCritical);
+    // Mail is second, count 2 (keyed by its desktop-entry hint)
+    EXPECT_EQ(ind.apps()[1].key, "thunderbird");
+    EXPECT_EQ(ind.apps()[1].count(), 2);
+    EXPECT_FALSE(ind.apps()[1].critical);
 
     // General tooltip
     EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos || !ind.tooltip().empty());
@@ -1345,9 +1345,12 @@ TEST(NotificationAppsIndicatorDynamic) {
     ind.onHoverLeave();
     EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos);
 
-    // Click interactions
+    // Click interactions. Right click is not consumed: it opens the app's
+    // menu (here just "Clear notification"; no NotificationActions → none).
     EXPECT_TRUE(ind.onClick(15.0, 18.0));
-    EXPECT_TRUE(ind.onSecondaryClick(15.0, 18.0));
+    EXPECT_FALSE(ind.onSecondaryClick(15.0, 18.0));
+    EXPECT_TRUE(ind.hasContextMenu());
+    EXPECT_TRUE(ind.createContextMenu(15.0, 18.0) == nullptr);
     EXPECT_TRUE(ind.onMiddleClick(15.0, 18.0));
     // Click outside buttons (gap or past bounds)
     EXPECT_FALSE(ind.onClick(1000.0, 18.0));

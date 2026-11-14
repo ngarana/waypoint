@@ -52,4 +52,12 @@ bool TrayAppBinding::secondaryActivate(double x, double y) const {
     return true;
 }
 
+bool TrayAppBinding::activate(double x, double y) const {
+    const SNIItem* it = item();
+    if (it == nullptr) return false;
+    sni_->activate(static_cast<size_t>(sni_->indexOf(it->service, it->path)), static_cast<int>(x),
+                   static_cast<int>(y));
+    return true;
+}
+
 }  // namespace qypr

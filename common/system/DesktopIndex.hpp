@@ -13,6 +13,16 @@ namespace qypr {
 
 class EventLoop;
 
+// One `[Desktop Action <id>]` group listed in the entry's `Actions=` key: a
+// verb the app offers besides its main command ("New Window", "Compose").
+struct DesktopAction {
+    std::string id;    // the group's <id> (what ActivateAction takes)
+    std::string name;  // display label
+    std::string exec;  // field codes stripped; may be "" for D-Bus-only actions
+    std::string icon;
+    bool operator==(const DesktopAction&) const = default;
+};
+
 struct DesktopEntry {
     std::string id;    // desktop-file id (basename without ".desktop")
     std::string name;  // display name
@@ -28,6 +38,15 @@ struct DesktopEntry {
     // time so search() is a single find() per entry instead of re-lowercasing
     // four fields on every keystroke (waylaunch's optimisation).
     std::string searchKey;
+    // The app's own verbs, in `Actions=` order (groups not listed there, or
+    // without a Name, are ignored as the spec says).
+    std::vector<DesktopAction> actions;
+    // `DBusActivatable=true`: the app implements org.freedesktop.Application
+    // on the bus name equal to its id, so it can be activated without a spawn.
+    bool dbusActivatable = false;
+    // `StartupWMClass`: the window class / Wayland app id its windows carry
+    // when that differs from the id (browser web apps: crx_<app-id>).
+    std::string startupWMClass;
 };
 
 class DesktopIndex {
@@ -63,6 +82,14 @@ public:
     // id's trailing component (org.mozilla.firefox → firefox), then exact display
     // name, then name prefix. Null when nothing matches.
     [[nodiscard]] const DesktopEntry* resolve(const std::string& key) const;
+
+    // The entry a window belongs to: exact id, then StartupWMClass, then
+    // resolve(). Windows report their Wayland app id / X11 class, which is
+    // the desktop id for well-behaved apps and the StartupWMClass otherwise.
+    [[nodiscard]] const DesktopEntry* resolveWindow(const std::string& appId) const;
+
+    // The entry with exactly this desktop-file id (case-insensitive).
+    [[nodiscard]] const DesktopEntry* byId(const std::string& id) const;
 
     // --- pure helpers (static; unit-tested without the filesystem) ---
     // Parse one .desktop file body. False (skip) when it is NoDisplay/Hidden,

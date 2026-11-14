@@ -35,16 +35,36 @@ std::vector<std::string> StatusArea::defaultClaims(const std::string& moduleId) 
     if (moduleId == "volume") return {"pasystray"};
     if (moduleId == "removable-devices") return {"udiskie"};
     if (moduleId == "phone-link") return {"kdeconnect*", "org.kde.kdeconnect*", "kde connect"};
+    // App modules: matched against an app's desktop id, name and the names
+    // its notifications and windows use (AppStatus::matches).
+    if (moduleId == "whatsapp") return {"*whatsapp*"};
+    if (moduleId == "email") {
+        return {"category:email",      "*mail*",      "thunderbird*",   "org.mozilla.thunderbird*",
+                "net.thunderbird*",    "betterbird*", "eu.betterbird*", "evolution",
+                "org.gnome.evolution", "geary",       "org.gnome.geary"};
+    }
     return {};
+}
+
+const std::vector<std::string>& StatusArea::appModules() {
+    static const std::vector<std::string> kModules = {"whatsapp", "email"};
+    return kModules;
+}
+
+std::vector<std::string> StatusArea::claimPatterns(const std::string& moduleId) const {
+    return inLayout(moduleId) ? claimsFor(moduleId) : std::vector<std::string>{};
 }
 
 bool StatusArea::patternMatches(const std::string& pattern, const std::string& value) {
     if (pattern.empty() || value.empty()) return false;
     const std::string v = lower(value);
-    if (pattern.back() == '*') {
-        const std::string_view prefix(pattern.data(), pattern.size() - 1);
-        return v.starts_with(prefix);
-    }
+    const bool head = pattern.front() == '*';
+    const bool tail = pattern.size() > 1 && pattern.back() == '*';
+    const std::string_view core(pattern.data() + (head ? 1 : 0),
+                                pattern.size() - (head ? 1 : 0) - (tail ? 1 : 0));
+    if (head && tail) return v.find(core) != std::string::npos;
+    if (head) return v.ends_with(core);
+    if (tail) return v.starts_with(core);
     return v == pattern;
 }
 
@@ -53,7 +73,8 @@ void StatusArea::configure(const Config* config) {
     pinned_.clear();
     hidden_.clear();
     if (config == nullptr) return;
-    for (const char* module : {"wifi", "bluetooth", "volume", "removable-devices", "phone-link"}) {
+    for (const char* module :
+         {"wifi", "bluetooth", "volume", "removable-devices", "phone-link", "whatsapp", "email"}) {
         auto extra = lowerAll(config->getList("tray", std::string("claims-") + module));
         if (!extra.empty()) extraClaims_.emplace_back(module, std::move(extra));
     }

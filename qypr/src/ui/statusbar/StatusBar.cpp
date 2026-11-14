@@ -22,6 +22,7 @@
 #include "system/SNIBackend.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "system/VolumeBackend.hpp"
+#include "system/ApplicationsBackend.hpp"
 #include "system/KdeConnectBackend.hpp"
 #include "system/UDisksBackend.hpp"
 #include "system/WifiBackend.hpp"
@@ -68,6 +69,7 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
     if (backends.sni != nullptr) { backends.sni->setOnChange(onChange); }
     if (backends.udisks != nullptr) { backends.udisks->setOnChange(onChange); }
     if (backends.kdeConnect != nullptr) { backends.kdeConnect->setOnChange(onChange); }
+    if (backends.applications != nullptr) { backends.applications->setOnChange(onChange); }
     if (backends.mpris != nullptr) { backends.mpris->setOnChange(onChange); }
     if (backends.idleInhibitor != nullptr) { backends.idleInhibitor->setOnChange(onChange); }
     if (backends.keyboardLayout != nullptr) { backends.keyboardLayout->setOnChange(onChange); }

@@ -21,6 +21,7 @@ namespace qypr {
 BarApp::BarApp() = default;
 
 int BarApp::run() {
+    backendLifecycle_.setOnNotificationsChanged([this] { statusBar_.refreshFromBackends(); });
     themeRuntime_.setOnPaletteTransition([this](const std::string& mode) {
         if (mode == "dark") { syncNightLightWithPalette(); }
     });

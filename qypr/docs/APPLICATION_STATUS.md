@@ -7,7 +7,7 @@ tray icon *and* a notification-apps entry for nm-applet):
 | Question | Owner | Source |
 |---|---|---|
 | What state is the system in? (network, Bluetooth, sound, drives, phone) | native modules: `wifi`, `bluetooth`, `volume`, … | system services (NetworkManager, BlueZ, PipeWire, …) |
-| Which apps want my attention? | `notification-apps` | the notification daemon (one icon per app with live notifications) |
+| Which apps want my attention? | `notification-apps` (and `whatsapp`, `email` for one kind of app) | the notification daemon, the apps' own LauncherEntry (unread count, progress, urgency), their windows and desktop files |
 | What else is running or relevant? | `background-apps` (the overflow chevron; old ids `sni`, `tray`) | native modules that are passive right now, and StatusNotifierItem apps not claimed by a native module |
 
 All three are session-only and hidden on the lock screen.
@@ -22,8 +22,8 @@ NetworkManager's secret agent: it answers Wi-Fi password prompts). So qypr
 decides at runtime instead, in `StatusArea` (`src/ui/statusbar/StatusArea.hpp`).
 
 Each native module **claims** the tray applets that duplicate it, matched on
-the item's StatusNotifierItem `Id` (case-insensitive; a trailing `*` is a
-prefix match):
+the item's StatusNotifierItem `Id` (case-insensitive; `*` at the end is a
+prefix match, at the start a suffix match, at both ends a substring match):
 
 | Module | Claims by default |
 |---|---|
@@ -32,6 +32,13 @@ prefix match):
 | `volume` | `pasystray` |
 | `removable-devices` | `udiskie` |
 | `phone-link` | `kdeconnect*`, `org.kde.kdeconnect*`, `kde connect` |
+| `whatsapp` | `*whatsapp*` |
+| `email` | `category:email`, `*mail*`, `thunderbird*`, `org.mozilla.thunderbird*`, `net.thunderbird*`, `betterbird*`, `eu.betterbird*`, `evolution`, `org.gnome.evolution`, `geary`, `org.gnome.geary` |
+
+The app modules (`whatsapp`, `email`) match the same patterns against apps
+as well: an app's desktop id, name, notification app names and window app
+ids, and `category:<Name>` against its desktop-entry categories (see
+[App status](#app-status-notification-apps-whatsapp-email)).
 
 A claimed applet's icon is never drawn. Its menu moves onto the module:
 
@@ -53,8 +60,8 @@ claims-wifi = iwgtk
 claims-bluetooth = overskride
 ```
 
-(`claims-volume`, `claims-removable-devices` and `claims-phone-link` work the
-same way.) The same section places the apps nothing claims:
+(`claims-volume`, `claims-removable-devices`, `claims-phone-link`,
+`claims-whatsapp` and `claims-email` work the same way.) The same section places the apps nothing claims:
 
 ```ini
 [tray]
@@ -108,15 +115,56 @@ plugins, is coalesced into one re-read.
   them. The module is session-sensitive, so they never reach the lock screen.
 - Ids `kde-connect` and `phone-connect` build this module.
 
-## notification-apps
+## App status (`notification-apps`, `whatsapp`, `email`)
 
-One icon per application that has live notifications, from the notification
-daemon. It does not use StatusNotifierItem.
+An app reports its state through channels that know nothing of each other,
+and each names the app differently:
 
-- Left click focuses the app's window (matched by desktop entry / app id) or
-  launches it, and clears its notifications.
-- Right/middle click dismisses that app's notifications.
-- The tooltip shows the count and the latest title.
+| Channel | Carries | Names the app by |
+|---|---|---|
+| Notification daemon | live notifications, critical urgency | `desktop-entry` hint, else app name |
+| Unity LauncherEntry (`src/system/ApplicationsBackend.hpp`) | the app's own unread count, a progress fraction, urgency, a quicklist (dbusmenu) | `application://<id>.desktop` |
+| wlr-foreign-toplevel | open windows | Wayland app id (the desktop id, or the entry's `StartupWMClass`: `crx_<id>` for browser web apps) |
+| Desktop entry | name, icon, categories, `Actions=`, `DBusActivatable` | file id |
+
+`buildAppStatus()` (`src/ui/indicators/AppStatus.hpp`) resolves every name
+through the desktop index and merges what refers to the same `.desktop` file
+into one record. A notification without the hint joins its app when another
+notification tied the same app name to an entry. Without a match the
+lowercased raw name is the key, so the merge degrades to exact names. The
+index is read the first time an app has something to show, not at startup.
+
+LauncherEntry updates are pushed by the apps (Telegram, Thunderbird, Element,
+Signal, Chromium and Electron apps, Firefox downloads, …) as a broadcast
+`Update` signal; each carries only what changed. An entry goes when its app
+leaves the bus or has nothing left to show. Some apps only send it while
+`com.canonical.Unity` is owned, so the bar asks for that name, without
+replacing or queueing behind an owner (Plasma's task manager, a dock), and
+lets a shell that starts later take it over.
+
+**notification-apps** shows every app with something to say: notifications,
+an unread count, progress or urgency. Apps that a `whatsapp` or `email`
+module in the layout shows are left to that module, the way native modules
+claim tray applets. **whatsapp** and **email** (old id `mail`) show the apps their claims match,
+while such an app has news, a window open or a tray icon. They also claim
+that app's tray icon, so it doesn't appear in the overflow as well.
+
+Each app is one button: the app's icon, a badge (the app's own count when it
+sends one, from 1; otherwise its notifications, from 2), a progress bar, and
+a dot for critical notifications or urgency.
+
+- **Left click** focuses the app's window (the next one when one of its
+  windows is focused, so repeated clicks cycle). An app module whose app has
+  no window but a tray icon forwards `Activate` to the tray icon, which shows
+  the app's hidden window. Otherwise the app is started: `Activate` on its
+  bus name for a `DBusActivatable` entry (its `Exec` if that call fails), its
+  `Exec` otherwise. The app's notifications are cleared.
+- **Right click** (or Menu) opens the app's menu: its desktop actions ("New
+  Window", "New Private Window"; `ActivateAction` for a `DBusActivatable`
+  entry), its LauncherEntry quicklist, the tray icon's menu (app modules),
+  and "Clear notifications".
+- **Middle click** clears the app's notifications.
+- The tooltip shows the counts, the progress and the latest notification.
 
 Notification cards and history stay with `notifications`.
 
@@ -163,7 +211,8 @@ XEmbed-only tray clients need a separate compatibility bridge.
 - [KDE StatusNotifierItem tutorial](https://techbase.kde.org/Development/Tutorials/PortToKStatusNotifierItem): Passive/Active item visibility.
 - [KDE Plasma panel](https://docs.kde.org/stable_kf6/en/plasma-desktop/plasma-desktop/panel.html): system tray and hidden entries.
 - [Microsoft notification area](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area): application status icons and their actions.
-- [Desktop Entry specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/): `OnlyShowIn` / `NotShowIn`.
+- [Desktop Entry specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/): `OnlyShowIn` / `NotShowIn`, `Actions`, `StartupWMClass`, `DBusActivatable` and the `org.freedesktop.Application` interface.
+- [Unity LauncherAPI](https://wiki.ubuntu.com/Unity/LauncherAPI): the `com.canonical.Unity.LauncherEntry` `Update` signal (count, progress, urgent, quicklist).
 
 ## Verification
 
@@ -174,7 +223,10 @@ the chevron, modules forwarding gestures, right click / Menu key routing,
 alias dedupe),
 `tests/test_removable_drives.cpp` (UDisks2 reduction, the removal plan, busy
 processes, the module and its flyout), `tests/test_phone_link.cpp` (device
-list, status line, reachability policy, flyout),
+list, status line, reachability policy, flyout), `tests/test_app_status.cpp`
+(desktop actions and `StartupWMClass`, LauncherEntry updates and expiry, the
+merged app record, app claims, the app modules, the app menu,
+notification-apps leaving claimed apps to their module),
 `NotificationAppsIndicatorDynamic` in `tests/test_indicators.cpp`, and
 `TrayAndNotificationAppsAreDistinct` in `tests/test_flyouts.cpp`.
 

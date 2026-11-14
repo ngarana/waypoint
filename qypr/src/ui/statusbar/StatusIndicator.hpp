@@ -50,6 +50,9 @@ struct SystemBackends {
     UDisksBackend* udisks = nullptr;
     // Paired phones (KDE Connect). Session-only: carries phone notifications.
     KdeConnectBackend* kdeConnect = nullptr;
+    // App badges, progress, quicklists (Unity LauncherEntry) and D-Bus
+    // activation. Session-only.
+    ApplicationsBackend* applications = nullptr;
     IdleInhibitor* idleInhibitor = nullptr;
     DesktopIndex* desktopIndex = nullptr;
     KeyboardLayout* keyboardLayout = nullptr;
@@ -76,6 +79,7 @@ struct SystemBackends {
             powerProfiles = nullptr;
             udisks = nullptr;
             kdeConnect = nullptr;
+            applications = nullptr;
             loop = nullptr;
         } else {
             session.workspace = workspace;

@@ -39,11 +39,20 @@ struct SNIItem;
 class StatusArea {
 public:
     // ── Claims ──────────────────────────────────────────────────────────
-    // Built-in identities each native module supersedes (lowercase; a
-    // trailing '*' is a prefix match). Matched against a tray item's Id and,
-    // for app-level records, a notification's desktop-entry / app name.
+    // Built-in identities each native module supersedes (lowercase; '*' at
+    // the end is a prefix match, at the start a suffix match, at both ends a
+    // substring match). Matched against a tray item's Id and, for the app
+    // modules, an app's names (AppStatus::matches, which also takes
+    // "category:<Name>").
     static std::vector<std::string> defaultClaims(const std::string& moduleId);
     static bool patternMatches(const std::string& pattern, const std::string& value);
+
+    // Modules that show one app's status (whatsapp, email): notification-apps
+    // leaves the apps they claim to them.
+    static const std::vector<std::string>& appModules();
+    // `moduleId`'s claims (defaults plus [tray] claims-<module>), or none
+    // while it is not in the layout.
+    [[nodiscard]] std::vector<std::string> claimPatterns(const std::string& moduleId) const;
 
     // Read the [tray] section: `claims-<module>` extends a module's claims,
     // `pinned` / `hidden` list background-app keys (tray Id or desktop id).
