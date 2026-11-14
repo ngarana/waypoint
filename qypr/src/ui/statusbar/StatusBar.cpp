@@ -34,14 +34,16 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
                      const IndicatorRegistry::ModuleSelection* sel)
     : loop_(loop),
       host_(host),
-      detailBackends_(backends),
+      detailBackends_(withStatusArea(backends)),
       sessionSurface_(backends.sessionSurface),
       wifi_(backends.wifi) {
     popovers_.setEventLoop(&loop);
 
     // One bucketing + tile-attachment path shared with reloadModules.
-    indicators_.load(backends, sel);
+    indicators_.load(detailBackends_, sel);
+    syncStatusArea(backends);
     indicators_.attachTiles(qsPanel_, [this](const std::string& id) { openIndicatorDetail(id); });
+    refreshIndicators();
 
     // Build internal QS panel tiles (header, power, wifi combo, volume, media).
     // Only on the session surface (QL-7): command tiles must not exist on lock.
@@ -91,12 +93,14 @@ void StatusBar::reloadModules(const SystemBackends& backends,
     // Close any open popover — the indicators are about to be destroyed.
     popovers_.clear();
     detailIndicators_.clear();
-    detailBackends_ = backends;
+    detailBackends_ = withStatusArea(backends);
 
-    indicators_.load(backends, sel);
+    indicators_.load(detailBackends_, sel);
+    syncStatusArea(backends);
     indicators_.attachTiles(
         qsPanel_, [this](const std::string& id) { openIndicatorDetail(id); },
         /*clearFirst=*/true);
+    refreshIndicators();
     if (sessionSurface_) {
         qsPanel_.buildTiles(
             loop_, backends, [this]() { openIndicatorDetail("wifi"); },
@@ -104,6 +108,39 @@ void StatusBar::reloadModules(const SystemBackends& backends,
     }
     cascadeTheme();
     host_.invalidate();
+}
+
+SystemBackends StatusBar::withStatusArea(const SystemBackends& backends) {
+    SystemBackends out = backends;
+    out.statusArea = &statusArea_;
+    return out;
+}
+
+// Indicators built by load() have not seen the status area's layout yet; the
+// claims it carries decide what the tray host and claimed modules show, so
+// every indicator recomputes once instead of waiting for the next push.
+void StatusBar::refreshIndicators() {
+    indicators_.forEach([](StatusIndicator& ind) { ind.onBackendUpdate(); });
+}
+
+void StatusBar::syncStatusArea(const SystemBackends& backends) {
+    statusArea_.configure(backends.config);
+    std::vector<std::string> ids;
+    indicators_.forEach([&](StatusIndicator& ind) { ids.push_back(ind.id()); });
+    statusArea_.setLayoutModules(std::move(ids));
+    // Passive modules leave the strip and are listed behind the overflow. The
+    // same visibility policy as the strip applies: a session-sensitive module
+    // never lists itself while locked.
+    statusArea_.setPassiveProvider([this] {
+        std::vector<OverflowEntry> out;
+        indicators_.forEach([&](StatusIndicator& ind) {
+            if (ind.sensitive() && !sessionContentVisible_) { return; }
+            if (!isInteractive(ind)) { return; }
+            auto entry = ind.overflowEntry();
+            if (!entry.id.empty()) { out.push_back(std::move(entry)); }
+        });
+        return out;
+    });
 }
 
 void StatusBar::resetAutoDismiss() {
@@ -317,6 +354,8 @@ StatusBarInput::Context StatusBar::makeInputContext() {
         .sessionContentVisible = sessionContentVisible_,
         .onToggleQuickSettings = [this] { toggleQuickSettings(); },
         .onActivateIndicator = [this](StatusIndicator& ind) { activateIndicator(ind); },
+        .onOpenContextMenu = [this](StatusIndicator& ind, double x,
+                                    double y) { openContextMenu(ind, x, y); },
         .onResetAutoDismiss = [this] { resetAutoDismiss(); },
     };
 }
@@ -380,10 +419,48 @@ void StatusBar::openIndicatorDetail(const std::string& id) {
     if (ind && ind->hasDetailedView()) { activateIndicator(*ind); }
 }
 
+void StatusBar::openContextMenu(StatusIndicator& ind, double x, double y) {
+    if (!isInteractive(ind)) { return; }
+    if (auto view = ind.createContextMenu(x, y)) {
+        view->setTheme(theme());
+        popovers_.open(std::move(view), ind.bounds.x + ind.bounds.w, 0);
+        popovers_.setOwnerId(ind.id());
+        placeActivePopover();
+        resetAutoDismiss();
+    }
+    host_.invalidate();
+}
+
+void StatusBar::openDetailAnchored(const std::string& moduleId, const std::string& anchorId) {
+    auto* ind = indicators_.findById(moduleId);
+    if (ind == nullptr || !ind->hasDetailedView() || !isInteractive(*ind)) { return; }
+    ind->onActivate();
+    if (auto view = ind->createDetailedView()) {
+        view->setTheme(theme());
+        auto* anchor = indicators_.findById(anchorId);
+        const double anchorX = anchor ? anchor->bounds.x + anchor->bounds.w : 0.0;
+        popovers_.open(std::move(view), anchorX, 0);
+        // Owned by the chevron: placement anchors there, and clicking the
+        // chevron again closes it like any other flyout.
+        popovers_.setOwnerId(anchor ? anchorId : moduleId);
+        placeActivePopover();
+        resetAutoDismiss();
+    }
+    host_.invalidate();
+}
+
+void StatusBar::takeStatusAreaRequest() {
+    if (auto req = statusArea_.takeDetailRequest()) {
+        openDetailAnchored(req->moduleId, req->anchorId);
+    }
+}
+
 bool StatusBar::handlePointerButton(double x, double y, uint32_t button, bool pressed,
                                     int64_t now) {
     auto ctx = makeInputContext();
-    return input_.handlePointerButton(ctx, x, y, button, pressed, now);
+    const bool handled = input_.handlePointerButton(ctx, x, y, button, pressed, now);
+    takeStatusAreaRequest();
+    return handled;
 }
 
 void StatusBar::handlePointerLeave(int64_t now) {
@@ -398,7 +475,9 @@ bool StatusBar::handleScroll(double x, double y, double dx, double dy) {
 
 bool StatusBar::handleKey(uint32_t keysym) {
     auto ctx = makeInputContext();
-    return input_.handleKey(ctx, keysym);
+    const bool handled = input_.handleKey(ctx, keysym);
+    takeStatusAreaRequest();
+    return handled;
 }
 
 bool StatusBar::handleTextInput(const std::string& utf8) {

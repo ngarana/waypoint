@@ -44,15 +44,18 @@ void testScrollRoutesEveryZone() {
     }
 }
 
-void testTrayAliasesShareOneHost() {
+void testTrayAndNotificationAppsAreDistinct() {
+    // notification-apps groups notifications per app; the tray host is a
+    // separate module. Neither may appear on the lock screen.
     qypr::SystemBackends b;
     b.sessionSurface = true;
     qypr::IndicatorRegistry::ModuleSelection modules;
     modules.left = {"notification-apps"};
-    modules.right = {"sni", "notification-apps"};
+    modules.right = {"sni"};
     const auto indicators = qypr::IndicatorRegistry::instance().createAll(b, &modules);
-    EXPECT_EQ(indicators.size(), 1U);
+    EXPECT_EQ(indicators.size(), 2U);
     EXPECT_EQ(indicators.front()->id(), "notification-apps");
+    EXPECT_EQ(indicators.back()->id(), "sni");
     b.hasSession = false;
     EXPECT_TRUE(qypr::IndicatorRegistry::instance().createAll(b, &modules).empty());
 }
@@ -441,7 +444,7 @@ void runStatusBarFlyoutTests() {
          testQuickSettingsVolumeDetailsWithoutBarModule},
         {"StatusBarFlyoutSwitchToggleAndDismiss", testStatusBarFlyoutSwitchToggleAndDismiss},
         {"ScrollRoutesEveryZone", testScrollRoutesEveryZone},
-        {"TrayAliasesShareOneHost", testTrayAliasesShareOneHost},
+        {"TrayAndNotificationAppsAreDistinct", testTrayAndNotificationAppsAreDistinct},
         {"StatusBarFlyoutPlacementAllZonesAndEdges", testStatusBarFlyoutPlacementAllZonesAndEdges},
         {"FlyoutOverflowScrollAndClip", testFlyoutOverflowScrollAndClip},
         {"FlyoutSliderCaptureAndRelease", testFlyoutSliderCaptureAndRelease},

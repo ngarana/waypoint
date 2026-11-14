@@ -17,6 +17,8 @@ typedef struct _cairo_surface cairo_surface_t;
 
 namespace qypr {
 
+class StatusArea;
+
 enum class Zone { Left, Center, Right };
 
 struct SystemBackends {
@@ -53,6 +55,9 @@ struct SystemBackends {
     MprisController* mpris = nullptr;
     const Config* config = nullptr;
     bool sessionSurface = false;
+    // Cross-module status-area state (tray claims, overflow). Owned by the
+    // StatusBar that creates the indicators; null for free-standing tests.
+    StatusArea* statusArea = nullptr;
 
     void sync() {
         if (!hasSession) {
@@ -98,6 +103,8 @@ class StatusIndicator : public Widget,
                         public ICompactView,
                         public ITileProvider,
                         public IDetailProvider,
+                        public IContextMenuProvider,
+                        public IOverflowProvider,
                         public IIndicatorLifecycle,
                         public IIndicatorInput,
                         public IIndicatorPolicy {
@@ -140,6 +147,17 @@ public:
     // --- Detailed View (Individual Popover) ---
     bool hasDetailedView() const override { return false; }
     std::unique_ptr<DetailedPopover> createDetailedView() override { return nullptr; }
+
+    // --- Context menu (right-click, when onSecondaryClick did not consume) ---
+    bool hasContextMenu() const override { return false; }
+    std::unique_ptr<DetailedPopover> createContextMenu(double x, double y) override {
+        (void)x;
+        (void)y;
+        return nullptr;
+    }
+
+    // --- Overflow row while passive (empty id = not in the overflow) ---
+    OverflowEntry overflowEntry() const override { return {}; }
 
     // --- Lifecycle ---
     void poll(int64_t now) override {}

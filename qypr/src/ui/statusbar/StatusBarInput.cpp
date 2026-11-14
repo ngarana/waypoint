@@ -148,8 +148,12 @@ bool StatusBarInput::handlePointerButton(Context& ctx, double x, double y, uint3
                 continue;
             }
             if (button == kBtnRight) {
-                if (ind->onSecondaryClick(x, y) && ind->hasDetailedView()) {
-                    if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*ind); }
+                if (ind->onSecondaryClick(x, y)) {
+                    if (ind->hasDetailedView() && ctx.onActivateIndicator) {
+                        ctx.onActivateIndicator(*ind);
+                    }
+                } else if (ind->hasContextMenu() && ctx.onOpenContextMenu) {
+                    ctx.onOpenContextMenu(*ind, x, y);
                 }
             } else if (button == kBtnMiddle) {
                 ind->onMiddleClick(x, y);
@@ -232,6 +236,16 @@ bool StatusBarInput::handleKey(Context& ctx, uint32_t keysym) {
         case XKB_KEY_space: {
             if (auto* focused = ctx.indicators.focused()) {
                 if (ctx.onActivateIndicator) { ctx.onActivateIndicator(*focused); }
+            }
+            return true;
+        }
+        case XKB_KEY_Menu: {
+            // Keyboard equivalent of right-click on the focused module.
+            if (auto* focused = ctx.indicators.focused()) {
+                if (focused->hasContextMenu() && ctx.onOpenContextMenu) {
+                    ctx.onOpenContextMenu(*focused, focused->bounds.x + focused->bounds.w / 2.0,
+                                          focused->bounds.y + focused->bounds.h / 2.0);
+                }
             }
             return true;
         }

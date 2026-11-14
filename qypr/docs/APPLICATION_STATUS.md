@@ -1,53 +1,119 @@
-# Persistent application status
+# Application status in the bar
 
-`notification-apps` is a StatusNotifierItem host: applications register an
-icon while they run, update their status, and supply their own actions.
-`notifications` continues to own notification cards and history. A toast
-alone does not create a persistent application indicator.
+The status area answers three different questions, and each has one owner.
+Mixing them is what produced duplicate icons (a Wi-Fi module *and* nm-applet's
+tray icon *and* a notification-apps entry for nm-applet):
 
-`notification-apps` and `sni` use the same implementation. If both appear in
-module lists, the first configured occurrence wins; defaults create one tray.
-Both are session-only and hidden on the lock screen.
+| Question | Owner | Source |
+|---|---|---|
+| What state is the system in? (network, Bluetooth, sound, drives, phone) | native modules: `wifi`, `bluetooth`, `volume`, … | system services (NetworkManager, BlueZ, PipeWire, …) |
+| Which apps want my attention? | `notification-apps` | the notification daemon (one icon per app with live notifications) |
+| What else is running in the background? | `sni` (tray host) | StatusNotifierItem apps not claimed by a native module |
 
-- Active applications appear in registration order, up to six icons.
-- Passive applications and additional icons remain accessible using the
-  overflow chevron, including when every application is passive.
-- NeedsAttention displays the app's attention icon when supplied, plus a dot.
-- Left click invokes Activate, or opens the app menu for ItemIsMenu apps.
-- Right click opens the app's D-Bus menu, falling back to ContextMenu.
-- Middle click invokes SecondaryActivate. Wheel input uses Scroll(delta,
-  orientation), as specified by StatusNotifierItem.
-- Overflow supports pointer hover, Tab/arrow navigation, Enter/Space to
-  activate and the Menu key/right click for app actions.
-- Icons disappear when the application unregisters or exits. Opening an app
-  does not clear notification history. Missing icons get an initial fallback.
+All three are session-only and hidden on the lock screen.
 
-Overflow resolves app identities again when activating: an application that
-exits while its row is visible cannot redirect that click to another app.
-Apps must publish a StatusNotifierItem; XEmbed-only tray clients require a
-separate compatibility bridge.
+## Native modules absorb the applets that duplicate them
+
+A desktop shell avoids duplicates at the source: nm-applet's autostart entry
+has `NotShowIn=KDE;GNOME;` because those desktops ship their own network
+indicator. A bar running under a compositor session cannot rely on that — the
+applets are usually started by hand, and some must keep running (nm-applet is
+NetworkManager's secret agent: it answers Wi-Fi password prompts). So qypr
+decides at runtime instead, in `StatusArea` (`src/ui/statusbar/StatusArea.hpp`).
+
+Each native module **claims** the tray applets that duplicate it, matched on
+the item's StatusNotifierItem `Id` (case-insensitive; a trailing `*` is a
+prefix match):
+
+| Module | Claims by default |
+|---|---|
+| `wifi` | `nm-applet`, `nm-tray`, `network-manager-applet`, `org.freedesktop.network-manager-applet` |
+| `bluetooth` | `blueman`, `blueman-*`, `blueberry*` |
+| `volume` | `pasystray` |
+| `removable-devices` | `udiskie` |
+| `phone-link` | `kdeconnect*`, `org.kde.kdeconnect*`, `kde connect` |
+
+A claimed applet's icon is never drawn. Its menu moves onto the module:
+
+- **Right click** (or the Menu key on a focused module) opens the applet's own
+  D-Bus menu under the module's name. An applet without a menu is asked to
+  show its own (`ContextMenu`). A module whose applet is not running has no
+  context menu, and right click keeps its old meaning (the detail flyout).
+- **Middle click** forwards `SecondaryActivate`.
+
+A claim only holds while the claiming module is in the layout. Removing `wifi`
+from `bar.conf` hands nm-applet back to the tray instead of making it
+unreachable.
+
+`[tray]` in `bar.conf` extends the claims for applets the defaults don't know:
+
+```ini
+[tray]
+claims-wifi = iwgtk
+claims-bluetooth = overskride
+```
+
+(`claims-volume`, `claims-removable-devices` and `claims-phone-link` work the
+same way. `pinned` and `hidden` list tray Ids for the background-apps
+overflow and are read now, but nothing uses them yet.)
+
+## notification-apps
+
+One icon per application that has live notifications, from the notification
+daemon. It does not use StatusNotifierItem.
+
+- Left click focuses the app's window (matched by desktop entry / app id) or
+  launches it, and clears its notifications.
+- Right/middle click dismisses that app's notifications.
+- The tooltip shows the count and the latest title.
+
+Notification cards and history stay with `notifications`.
+
+## The tray host (`sni`)
+
+Unclaimed StatusNotifierItems are shown by `sni`:
+
+- Active items appear in registration order, up to six icons. Passive items
+  and any more than six sit behind an overflow chevron, which also appears
+  when every item is passive.
+- NeedsAttention shows the attention icon when the app supplies one, plus a
+  dot.
+- Left click invokes `Activate`, or opens the menu for `ItemIsMenu` items.
+- Right click opens the item's D-Bus menu, falling back to `ContextMenu`.
+- Middle click invokes `SecondaryActivate`. The wheel calls
+  `Scroll(delta, orientation)`.
+- The overflow works with the pointer and the keyboard: Tab/arrows to move,
+  Enter/Space to activate, Menu or right click for the item's menu.
+- Items go away when the app unregisters or exits, including rows in an open
+  overflow. Overflow rows find their app again on activation, so an app that
+  exits while its row is visible can't redirect the click to a different app.
+
+XEmbed-only tray clients need a separate compatibility bridge.
 
 ## References
 
-- [Microsoft notification area](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area): registered application status icons and application-controlled actions.
-- [KDE Plasma panel](https://docs.kde.org/stable_kf6/en/plasma-desktop/plasma-desktop/panel.html): system tray and hidden entries.
+- [StatusNotifierItem specification](https://specifications.freedesktop.org/status-notifier-item/latest/status-notifier-item.html): item `Id`, status, menus and input methods.
 - [KDE StatusNotifierItem tutorial](https://techbase.kde.org/Development/Tutorials/PortToKStatusNotifierItem): Passive/Active item visibility.
-- [StatusNotifierItem specification](https://specifications.freedesktop.org/status-notifier-item/latest/status-notifier-item.html): item lifetime, status, icons, menus and input methods.
+- [KDE Plasma panel](https://docs.kde.org/stable_kf6/en/plasma-desktop/plasma-desktop/panel.html): system tray and hidden entries.
+- [Microsoft notification area](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area): application status icons and their actions.
+- [Desktop Entry specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/): `OnlyShowIn` / `NotShowIn`.
 
 ## Verification
 
-The `NotificationAppsPersistentTray` regression covers independence from toast
-history, passive-only overflow, missing icons, bounded width, attention, and
-removal/replacement while a popup is open. Registry tests cover alias deduplication.
+Unit tests: `tests/test_status_area.cpp` (claims follow the layout, `[tray]`
+config, composite menus, the tray host skipping claimed items, modules
+forwarding gestures, right click / Menu key routing),
+`NotificationAppsIndicatorDynamic` in `tests/test_indicators.cpp`, and
+`TrayAndNotificationAppsAreDistinct` in `tests/test_flyouts.cpp`.
 
-For actual desktop routing, run `python qypr/tests/tray_fixture.py` on the session
-bus. It registers three temporary apps and logs received protocol calls as JSON.
-Click Active, right/middle click it, scroll on it, open Menu and invoke its action,
-and repeat activation/context actions from Hidden in overflow. Send SIGUSR1 to
-the fixture PID to switch Hidden between Passive and NeedsAttention. Stop the
-fixture to verify automatic removal, including while overflow is open.
+On the desktop, run `python qypr/tests/tray_fixture.py` on the session bus. It
+registers three temporary apps and logs the protocol calls it receives as
+JSON. Click Active, right/middle click it, scroll on it, open Menu and invoke
+its action, and do the same from Hidden in the overflow. Send SIGUSR1 to the
+fixture's PID to switch Hidden between Passive and NeedsAttention. Stop the
+fixture to check that its items are removed, including while the overflow is
+open.
 
-Installed-session verification also caught two routing defects now fixed:
-wheel events must reach all three configured bar zones, and watcher ownership
-subscriptions must use the D-Bus service name (without the object path). Exiting
-one process removes all of its registered items, including rows in open overflow.
+For claims: with nm-applet and blueman-applet running and `wifi` and
+`bluetooth` in the layout, neither applet shows a tray icon. Right click on
+`wifi` opens nm-applet's menu, and on `bluetooth` blueman's.

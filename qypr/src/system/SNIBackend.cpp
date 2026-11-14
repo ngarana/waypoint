@@ -56,6 +56,25 @@ bool readVariantObjectPath(sd_bus_message* m, std::string* out) {
     return true;
 }
 
+// ToolTip is (s icon-name, a(iiay) icon-pixmap, s title, s description).
+bool readVariantTooltipTitle(sd_bus_message* m, std::string* out) {
+    if (sd_bus_message_enter_container(m, 'v', "(sa(iiay)ss)") <= 0) {
+        sd_bus_message_skip(m, "v");
+        return false;
+    }
+    if (sd_bus_message_enter_container(m, 'r', "sa(iiay)ss") > 0) {
+        sd_bus_message_skip(m, "s");
+        sd_bus_message_skip(m, "a(iiay)");
+        const char* title = nullptr;
+        // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion) // sd-bus takes void*
+        if (sd_bus_message_read_basic(m, 's', &title) >= 0 && title) *out = title;
+        sd_bus_message_skip(m, "s");
+        sd_bus_message_exit_container(m);
+    }
+    sd_bus_message_exit_container(m);
+    return true;
+}
+
 cairo_surface_t* pixmapToSurface(const unsigned char* argb, int w, int h) {
     cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
@@ -214,6 +233,13 @@ bool SNIBackend::start() {
 
     refresh();
     return true;
+}
+
+int SNIBackend::indexOf(const std::string& service, const std::string& path) const {
+    for (size_t i = 0; i < items_.size(); ++i) {
+        if (items_[i].service == service && items_[i].path == path) return static_cast<int>(i);
+    }
+    return -1;
 }
 
 void SNIBackend::activate(size_t index, int x, int y) {
@@ -468,6 +494,7 @@ void SNIBackend::refresh() {
         }
         clearItems();
         items_ = std::move(next);
+        prunePidCache();
         notify();
         return;
     }
@@ -501,7 +528,15 @@ void SNIBackend::refresh() {
 
     clearItems();
     items_ = std::move(next);
+    prunePidCache();
     notify();
+}
+
+void SNIBackend::prunePidCache() {
+    std::erase_if(pidCache_, [this](const auto& entry) {
+        return std::ranges::none_of(items_,
+                                    [&](const SNIItem& it) { return it.service == entry.first; });
+    });
 }
 
 // ─── Item fetch / clear ─────────────────────────────────────────────────────
@@ -558,6 +593,12 @@ SNIItem SNIBackend::fetchItem(const std::string& service, const std::string& pat
                 item.pixmap = readVariantPixmap(reply);
             } else if (std::strcmp(key, "Menu") == 0) {
                 readVariantObjectPath(reply, &item.menuPath);
+            } else if (std::strcmp(key, "Id") == 0) {
+                readVariantString(reply, &item.id);
+            } else if (std::strcmp(key, "Category") == 0) {
+                readVariantString(reply, &item.category);
+            } else if (std::strcmp(key, "ToolTip") == 0) {
+                readVariantTooltipTitle(reply, &item.tooltipTitle);
             } else {
                 sd_bus_message_skip(reply, "v");
             }
@@ -574,7 +615,30 @@ SNIItem SNIBackend::fetchItem(const std::string& service, const std::string& pat
         attentionPixmap = nullptr;
     }
     if (attentionPixmap) cairo_surface_destroy(attentionPixmap);
+    item.pid = pidFor(service);
     return item;
+}
+
+uint32_t SNIBackend::pidFor(const std::string& service) {
+    for (const auto& [name, pid] : pidCache_) {
+        if (name == service) return pid;
+    }
+    sd_bus* bus = bus_.get();
+    if (!bus) return 0;
+    // One cheap round-trip to the bus daemon per item owner, cached: lets the
+    // status area tie a tray item to the process (and so the app) behind it.
+    sd_bus_error err = SD_BUS_ERROR_NULL;
+    sd_bus_message* reply = nullptr;
+    uint32_t pid = 0;
+    if (sd_bus_call_method(bus, kDBusName, "/org/freedesktop/DBus", kDBusIface,
+                           "GetConnectionUnixProcessID", &err, &reply, "s", service.c_str()) >= 0 &&
+        reply && sd_bus_message_read(reply, "u", &pid) < 0) {
+        pid = 0;
+    }
+    sd_bus_error_free(&err);
+    if (reply) sd_bus_message_unref(reply);
+    pidCache_.emplace_back(service, pid);
+    return pid;
 }
 
 void SNIBackend::clearItems() {

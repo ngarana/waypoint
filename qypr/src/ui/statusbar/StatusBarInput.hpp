@@ -36,6 +36,9 @@ public:
         bool sessionContentVisible;
         std::function<void()> onToggleQuickSettings;
         std::function<void(StatusIndicator&)> onActivateIndicator;
+        // Right-click on an indicator that did not consume it, or the Menu
+        // key on the focused one: open its context menu (if it has one).
+        std::function<void(StatusIndicator&, double, double)> onOpenContextMenu;
         std::function<void()> onResetAutoDismiss;
     };
 

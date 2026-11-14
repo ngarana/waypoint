@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "ui/indicators/TrayAppBinding.hpp"
 #include "ui/statusbar/StatusIndicator.hpp"
 #include "system/WifiBackend.hpp"
 #include <string>
@@ -28,8 +29,16 @@ public:
     bool hasDetailedView() const override { return backend_ != nullptr; }
     std::unique_ptr<DetailedPopover> createDetailedView() override;
 
+    // Right click: the menu of the tray applet this module claims (nm-applet,
+    // blueman, pasystray — see StatusArea); middle click forwards its
+    // SecondaryActivate. Inert while the applet is not running.
+    bool hasContextMenu() const override { return tray_.bound(); }
+    std::unique_ptr<DetailedPopover> createContextMenu(double x, double y) override;
+    bool onMiddleClick(double x, double y) override { return tray_.secondaryActivate(x, y); }
+
 private:
     WifiBackend* backend_ = nullptr;
+    TrayAppBinding tray_;
     WifiSnapshot lastSnap_;
 };
 

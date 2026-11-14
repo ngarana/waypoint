@@ -8,6 +8,8 @@
 // the profile via AddAndActivateConnection, so the network becomes saved).
 #include "ui/indicators/WifiIndicator.hpp"
 
+#include "system/SNIBackend.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -460,7 +462,8 @@ private:
 
 WifiIndicator::WifiIndicator(const SystemBackends& backends)
     : StatusIndicator("wifi", Zone::Right, 300),
-      backend_(backends.wifi) {
+      backend_(backends.wifi),
+      tray_(backends, id_) {
     // Hidden until this indicator's own backend publishes a snapshot — no
     // placeholder glyph standing in for data we do not have. StateCache
     // normally seeds that snapshot before the first frame, so this is only
@@ -521,5 +524,10 @@ std::unique_ptr<DetailedPopover> WifiIndicator::createDetailedView() {
 }
 
 REGISTER_INDICATOR("wifi", Zone::Right, 300, WifiIndicator)
+
+std::unique_ptr<DetailedPopover> WifiIndicator::createContextMenu(double x, double y) {
+    const SNIItem* app = tray_.item();
+    return tray_.contextMenu(x, y, nullptr, app && !app->title.empty() ? app->title : "Network");
+}
 
 }  // namespace qypr

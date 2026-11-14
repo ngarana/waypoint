@@ -30,6 +30,7 @@ private:
     bool overOverflow(double x) const;
     SNIBackend* backend_ = nullptr;
     DbusMenuBackend* dbusMenu_ = nullptr;
+    StatusArea* area_ = nullptr;
     int pendingMenu_ = -1;
     double hoverX_ = -1;
 };

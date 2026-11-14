@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "ui/indicators/TrayAppBinding.hpp"
 #include "ui/statusbar/StatusIndicator.hpp"
 #include "system/VolumeBackend.hpp"
 #include <string>
@@ -35,8 +36,16 @@ public:
     // session later trusts. See StatusIndicator::lockInteractive().
     bool lockInteractive() const override { return true; }
 
+    // Right click: the menu of the tray applet this module claims (nm-applet,
+    // blueman, pasystray — see StatusArea); middle click forwards its
+    // SecondaryActivate. Inert while the applet is not running.
+    bool hasContextMenu() const override { return tray_.bound(); }
+    std::unique_ptr<DetailedPopover> createContextMenu(double x, double y) override;
+    bool onMiddleClick(double x, double y) override { return tray_.secondaryActivate(x, y); }
+
 private:
     VolumeBackend* backend_ = nullptr;
+    TrayAppBinding tray_;
     bool sessionSurface_ = false;  // bar only → show the per-app stream list
     VolumeSnapshot lastSnap_;
 };

@@ -18,8 +18,10 @@
 
 #include <cairo/cairo.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct sd_bus;
@@ -40,6 +42,14 @@ struct SNIItem {
     std::string menuPath;  // com.canonical.dbusmenu object path ("" if none)
 
     bool itemIsMenu = false;
+
+    // Stable identity. `service` is a unique bus name that changes on every
+    // restart, and Title is free text ("Network", "blueman"), so a native
+    // module claims an item by its spec `Id` ("nm-applet", "blueman").
+    std::string id;
+    std::string category;  // "ApplicationStatus" | "Communications" | "SystemServices" | "Hardware"
+    std::string tooltipTitle;  // ToolTip title ("Bluetooth Active"), "" when unset
+    uint32_t pid = 0;          // owning process (GetConnectionUnixProcessID), 0 = unknown
 
     // Best IconPixmap converted to a premultiplied cairo surface, or nullptr.
     // Owned by the backend (freed in clearItems / the destructor). Used only
@@ -65,6 +75,10 @@ public:
     Mode mode() const { return mode_; }
     const std::vector<SNIItem>& items() const { return items_; }
 
+    // Current index of the item registered as (service, path), or -1. Callers
+    // keep identities, never indices: the list is rebuilt on every change.
+    [[nodiscard]] int indexOf(const std::string& service, const std::string& path) const;
+
     // Fires whenever the item list or an item's icon/title/status changes.
     void setOnChange(std::function<void()> cb) { onChange_ = std::move(cb); }
 
@@ -72,9 +86,10 @@ public:
     // to position its own menu). Fire-and-forget async call.
     void activate(size_t index, int x, int y);
 
-    // Middle-click: the spec's SecondaryActivate. Fire-and-forget async.
+    // The spec's ContextMenu: asks a menu-less item to show its own menu.
     void contextMenu(size_t index, int x, int y);
 
+    // Middle-click: the spec's SecondaryActivate. Fire-and-forget async.
     void secondaryActivate(size_t index, int x, int y);
 
     // Scroll-on-tray-item: forwards the spec's Scroll(dx, dy). Fire-and-forget
@@ -110,6 +125,8 @@ private:
     void registerHost();
     void refresh();  // re-read the watcher list (host) or local list (watcher)
     SNIItem fetchItem(const std::string& service, const std::string& path);
+    uint32_t pidFor(const std::string& service);
+    void prunePidCache();
     void clearItems();
     void notify() {
         if (onChange_) onChange_();
@@ -133,6 +150,9 @@ private:
     sd_bus_slot* watcherSlot_ = nullptr;
     std::vector<SNIItem> items_;
     std::function<void()> onChange_;
+    // Unique bus name → owning PID. A unique name is never reused, so the
+    // mapping is stable for the item's lifetime; pruned with the item list.
+    std::vector<std::pair<std::string, uint32_t>> pidCache_;
 
     // Watcher-mode state (only used when mode_ == WatcherHost).
     sd_bus_slot* watcherVtableSlot_ = nullptr;

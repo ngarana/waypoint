@@ -1,6 +1,8 @@
 // BluetoothIndicator.cpp - Status bar Bluetooth indicator implementation.
 #include "ui/indicators/BluetoothIndicator.hpp"
 
+#include "system/SNIBackend.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -626,7 +628,8 @@ private:
 
 BluetoothIndicator::BluetoothIndicator(const SystemBackends& backends)
     : StatusIndicator("bluetooth", Zone::Right, 350),
-      backend_(backends.bluetooth) {
+      backend_(backends.bluetooth),
+      tray_(backends, id_) {
     // Hidden until this indicator's own backend publishes a snapshot — no
     // placeholder glyph standing in for data we do not have. StateCache
     // normally seeds that snapshot before the first frame, so this is only
@@ -697,5 +700,10 @@ std::unique_ptr<DetailedPopover> BluetoothIndicator::createDetailedView() {
 }
 
 REGISTER_INDICATOR("bluetooth", Zone::Right, 350, BluetoothIndicator)
+
+std::unique_ptr<DetailedPopover> BluetoothIndicator::createContextMenu(double x, double y) {
+    const SNIItem* app = tray_.item();
+    return tray_.contextMenu(x, y, nullptr, app && !app->title.empty() ? app->title : "Bluetooth");
+}
 
 }  // namespace qypr

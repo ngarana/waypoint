@@ -206,6 +206,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/AdditionalIndicators.cpp
     src/ui/indicators/SystemMonitorIndicator.cpp
     src/ui/indicators/TaskbarIndicator.cpp
+    src/ui/indicators/TrayAppBinding.cpp
     src/ui/indicators/VolumeIndicator.cpp
     src/ui/indicators/WifiIndicator.cpp
     src/ui/indicators/WorkspacesIndicator.cpp
@@ -216,6 +217,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/statusbar/IndicatorHost.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
     src/ui/statusbar/MenuPopover.cpp
+    src/ui/statusbar/MenuSource.cpp
     src/ui/statusbar/PopoverManager.cpp
     src/ui/statusbar/QSTile.cpp
     src/ui/statusbar/QSTileFactory.cpp
@@ -223,6 +225,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/statusbar/QuickSettingsLayout.cpp
     src/ui/statusbar/QuickSettingsModel.cpp
     src/ui/statusbar/QuickSettingsPanel.cpp
+    src/ui/statusbar/StatusArea.cpp
     src/ui/statusbar/StatusBar.cpp
     src/ui/statusbar/StatusBarInput.cpp
     src/ui/statusbar/StatusBarLayout.cpp
@@ -421,6 +424,7 @@ add_executable(qypr-test
     tests/test_notifications.cpp
     tests/test_qs.cpp
     tests/test_desktop.cpp
+    tests/test_status_area.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
     ${QYPR_BAR_ONLY_SOURCES}

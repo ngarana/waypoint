@@ -1,6 +1,8 @@
 // VolumeIndicator.cpp - Status bar volume indicator implementation.
 #include "ui/indicators/VolumeIndicator.hpp"
 
+#include "system/SNIBackend.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -244,6 +246,7 @@ private:
 VolumeIndicator::VolumeIndicator(const SystemBackends& backends)
     : StatusIndicator("volume", Zone::Right, 200),
       backend_(backends.volume),
+      tray_(backends, id_),
       sessionSurface_(backends.sessionSurface) {
     // Hidden until this indicator's own backend publishes a snapshot — no
     // placeholder glyph standing in for data we do not have. StateCache
@@ -316,5 +319,10 @@ std::unique_ptr<DetailedPopover> VolumeIndicator::createDetailedView() {
 }
 
 REGISTER_INDICATOR("volume", Zone::Right, 200, VolumeIndicator)
+
+std::unique_ptr<DetailedPopover> VolumeIndicator::createContextMenu(double x, double y) {
+    const SNIItem* app = tray_.item();
+    return tray_.contextMenu(x, y, nullptr, app && !app->title.empty() ? app->title : "Sound");
+}
 
 }  // namespace qypr

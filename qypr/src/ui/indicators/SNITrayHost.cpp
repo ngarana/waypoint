@@ -10,6 +10,7 @@
 #include "ui/indicators/AppTile.hpp"
 #include "ui/statusbar/IndicatorRegistry.hpp"
 #include "ui/statusbar/MenuPopover.hpp"
+#include "ui/statusbar/StatusArea.hpp"
 
 namespace qypr {
 namespace {
@@ -17,23 +18,32 @@ constexpr double kCell = 28;
 constexpr double kPad = 4;
 constexpr size_t kVisibleLimit = 6;
 
+// Items a native module in the layout has claimed (nm-applet under `wifi`)
+// are never drawn here: the module forwards their menu instead.
+bool unclaimed(const SNIItem& item, const StatusArea* area) {
+    return area == nullptr || !area->itemClaimed(item);
+}
+
 // Preserve registration order. Passive and excess items remain accessible in
 // overflow. Missing icon themes never remove the app's hit target.
-std::vector<size_t> stripItems(const SNIBackend* backend) {
+std::vector<size_t> stripItems(const SNIBackend* backend, const StatusArea* area) {
     std::vector<size_t> result;
     if (!backend) return result;
     const auto& items = backend->items();
     for (size_t i = 0; i < items.size(); ++i) {
-        if (items[i].status != "Passive" && result.size() < kVisibleLimit) result.push_back(i);
+        if (unclaimed(items[i], area) && items[i].status != "Passive" &&
+            result.size() < kVisibleLimit)
+            result.push_back(i);
     }
     return result;
 }
-std::vector<size_t> hiddenItems(const SNIBackend* backend) {
-    const auto strip = stripItems(backend);
+std::vector<size_t> hiddenItems(const SNIBackend* backend, const StatusArea* area) {
+    const auto strip = stripItems(backend, area);
     std::vector<size_t> result;
     if (!backend) return result;
     for (size_t i = 0; i < backend->items().size(); ++i) {
-        if (std::ranges::find(strip, i) == strip.end()) result.push_back(i);
+        if (unclaimed(backend->items()[i], area) && std::ranges::find(strip, i) == strip.end())
+            result.push_back(i);
     }
     return result;
 }
@@ -62,16 +72,17 @@ void drawIcon(Painter& p, const SNIItem& item, const Rect& box, const theme::Sta
 
 class OverflowPopover : public DetailedPopover {
 public:
-    OverflowPopover(SNIBackend* backend, DbusMenuBackend* menus)
+    OverflowPopover(SNIBackend* backend, DbusMenuBackend* menus, const StatusArea* area)
         : backend_(backend),
-          menus_(menus) {}
+          menus_(menus),
+          area_(area) {}
     [[nodiscard]] double contentWidth() const override {
         return menu_ ? menu_->contentWidth() : 300;
     }
     [[nodiscard]] double contentHeight() const override {
         return menu_ ? menu_->contentHeight()
                      : 48 + 40 * static_cast<double>(
-                                     std::max(size_t{1}, hiddenItems(backend_).size()));
+                                     std::max(size_t{1}, hiddenItems(backend_, area_).size()));
     }
     [[nodiscard]] bool wantsKeyboard() const override { return true; }
     void draw(Painter& p, int64_t now) override {
@@ -88,7 +99,7 @@ public:
         p.drawText(b.x + 14, b.y + 14, "Background applications", hdr);
         rows_.clear();
         double y = b.y + 40;
-        for (const auto index : hiddenItems(backend_)) {
+        for (const auto index : hiddenItems(backend_, area_)) {
             const auto& item = backend_->items()[index];
             const Rect r{b.x + 8, y, b.w - 16, 40};
             // Store identities, never pointers into the backend's replaceable vector.
@@ -173,6 +184,7 @@ private:
     };
     SNIBackend* backend_;
     DbusMenuBackend* menus_;
+    const StatusArea* area_;
     std::vector<Row> rows_;
     std::unique_ptr<MenuPopover> menu_;
     int selected_ = -1;
@@ -183,27 +195,30 @@ private:
 SNITrayHost::SNITrayHost(const SystemBackends& b)
     : StatusIndicator("sni", Zone::Right, 600),
       backend_(b.sni),
-      dbusMenu_(b.dbusMenu) {
+      dbusMenu_(b.dbusMenu),
+      area_(b.statusArea) {
     visible = false;
 }
 void SNITrayHost::onBackendUpdate() {
-    visible = backend_ && !backend_->items().empty();
+    visible =
+        backend_ && !(stripItems(backend_, area_).empty() && hiddenItems(backend_, area_).empty());
 }
 double SNITrayHost::measureWidth(Painter& p) {
     (void)p;
-    if (!backend_ || backend_->items().empty()) return 0;
-    return 2 * kPad + kCell * static_cast<double>(stripItems(backend_).size() +
-                                                  (!hiddenItems(backend_).empty() ? 1 : 0));
+    if (!visible) return 0;
+    return 2 * kPad + kCell * static_cast<double>(stripItems(backend_, area_).size() +
+                                                  (!hiddenItems(backend_, area_).empty() ? 1 : 0));
 }
 int SNITrayHost::iconIndexAt(double x) const {
     const double offset = x - bounds.x - kPad;
-    const auto strip = stripItems(backend_);
+    const auto strip = stripItems(backend_, area_);
     if (offset < 0 || offset >= kCell * static_cast<double>(strip.size())) return -1;
     return static_cast<int>(strip[static_cast<size_t>(offset / kCell)]);
 }
 bool SNITrayHost::overOverflow(double x) const {
-    const double start = bounds.x + kPad + kCell * static_cast<double>(stripItems(backend_).size());
-    return !hiddenItems(backend_).empty() && x >= start && x < start + kCell;
+    const double start =
+        bounds.x + kPad + kCell * static_cast<double>(stripItems(backend_, area_).size());
+    return !hiddenItems(backend_, area_).empty() && x >= start && x < start + kCell;
 }
 void SNITrayHost::onHoverMotion(double x, double y) {
     (void)y;
@@ -216,20 +231,21 @@ std::string SNITrayHost::tooltip() const {
         const auto& item = backend_->items()[index];
         return title(item) + (item.status == "NeedsAttention" ? " — Needs attention" : "");
     }
-    if (!backend_ || backend_->items().empty()) return "System tray";
-    return std::to_string(backend_->items().size()) + " tray items";
+    const size_t count = stripItems(backend_, area_).size() + hiddenItems(backend_, area_).size();
+    if (count == 0) return "System tray";
+    return std::to_string(count) + " tray items";
 }
 void SNITrayHost::draw(Painter& p, int64_t now) {
     (void)now;
     if (!visible || !backend_) return;
     double x = bounds.x + kPad;
-    for (const auto index : stripItems(backend_)) {
+    for (const auto index : stripItems(backend_, area_)) {
         const Rect r{x, bounds.y + 2, kCell, bounds.h - 4};
         if (hoverX_ >= x && hoverX_ < x + kCell) p.fillRoundedRect(r, 6, theme().colors.glassHover);
         drawIcon(p, backend_->items()[index], r, theme());
         x += kCell;
     }
-    if (!hiddenItems(backend_).empty()) {
+    if (!hiddenItems(backend_, area_).empty()) {
         const Rect r{x, bounds.y + 2, kCell, bounds.h - 4};
         if (overOverflow(hoverX_)) p.fillRoundedRect(r, 6, theme().colors.glassHover);
         const TextStyle ts{theme().font.family, 16, PANGO_WEIGHT_BOLD, theme().colors.text};
@@ -280,7 +296,7 @@ bool SNITrayHost::onScroll(double dx, double dy, double x, double y) {
 }
 std::unique_ptr<DetailedPopover> SNITrayHost::createDetailedView() {
     const int i = std::exchange(pendingMenu_, -1);
-    if (i == -2) return std::make_unique<OverflowPopover>(backend_, dbusMenu_);
+    if (i == -2) return std::make_unique<OverflowPopover>(backend_, dbusMenu_, area_);
     if (!dbusMenu_ || !backend_ || i < 0 || static_cast<size_t>(i) >= backend_->items().size())
         return nullptr;
     const auto& item = backend_->items()[i];

@@ -25,10 +25,19 @@ constexpr const char* kSubmenu = "›";
 
 MenuPopover::MenuPopover(DbusMenuBackend* backend, std::string service, std::string menuPath,
                          std::vector<MenuNode> root, std::string title)
-    : backend_(backend),
-      service_(std::move(service)),
-      menuPath_(std::move(menuPath)) {
+    : source_(std::make_unique<DbusMenuSource>(backend, std::move(service), std::move(menuPath))) {
     stack_.push_back({0, std::move(title), std::move(root)});
+}
+
+MenuPopover::MenuPopover(std::unique_ptr<MenuSource> source, std::string title)
+    : source_(std::move(source)) {
+    auto root = source_ ? source_->fetch(0) : std::vector<MenuNode>{};
+    stack_.push_back({0, std::move(title), std::move(root)});
+}
+
+bool MenuPopover::hasItems() const {
+    return std::ranges::any_of(stack_.front().items,
+                               [](const MenuNode& n) { return n.visible && !n.separator; });
 }
 
 double MenuPopover::contentWidth() const {
@@ -132,12 +141,11 @@ bool MenuPopover::handleClick(double x, double y) {
                 if (stack_.size() > 1) stack_.pop_back();
                 return true;
             case Hit::Submenu:
-                stack_.push_back({h.id, h.label,
-                                  backend_ ? backend_->fetch(service_, menuPath_, h.id)
-                                           : std::vector<MenuNode>{}});
+                stack_.push_back(
+                    {h.id, h.label, source_ ? source_->fetch(h.id) : std::vector<MenuNode>{}});
                 return true;
             case Hit::Leaf:
-                if (backend_) { backend_->clicked(service_, menuPath_, h.id); }
+                if (source_) { source_->activate(h.id); }
                 closeRequested_ = true;
                 return true;
         }

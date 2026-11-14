@@ -11,6 +11,7 @@ int main() {
 
     // Module integration tests need the complete static indicator registry.
     runStatusBarFlyoutTests();
+    runStatusAreaBarTests();
 
     // Unit tests are registered during static initialization.
     // They run automatically.
