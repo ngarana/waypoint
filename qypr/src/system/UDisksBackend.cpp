@@ -13,6 +13,7 @@
 #include <string_view>
 #include <utility>
 
+#include "system/DbusRead.hpp"
 #include "system/SystemBus.hpp"
 
 namespace qypr {
@@ -32,39 +33,9 @@ bool interesting(std::string_view iface) {
            iface == kEncryptedIface;
 }
 
-// ── Variant readers. Each consumes exactly one variant, matching or not. ──
-
-bool readString(sd_bus_message* m, char type, std::string* out) {
-    const std::array<char, 2> sig{type, '\0'};
-    if (sd_bus_message_enter_container(m, 'v', sig.data()) <= 0) {
-        sd_bus_message_skip(m, "v");
-        return false;
-    }
-    const char* s = nullptr;
-    const int r = sd_bus_message_read_basic(m, type, static_cast<void*>(&s));
-    sd_bus_message_exit_container(m);
-    if (r < 0 || s == nullptr) { return false; }
-    *out = s;
-    return true;
-}
-
-bool readBool(sd_bus_message* m, bool* out) {
-    int v = 0;
-    if (sd_bus_message_read(m, "v", "b", &v) < 0) {
-        sd_bus_message_skip(m, "v");
-        return false;
-    }
-    *out = v != 0;
-    return true;
-}
-
-bool readU64(sd_bus_message* m, uint64_t* out) {
-    if (sd_bus_message_read(m, "v", "t", out) < 0) {
-        sd_bus_message_skip(m, "v");
-        return false;
-    }
-    return true;
-}
+using dbus::readBool;
+using dbus::readString;
+using dbus::readU64;
 
 // UDisks2 passes paths as NUL-terminated byte strings (ay).
 std::string bytesToString(const void* data, size_t size) {
@@ -188,22 +159,6 @@ void readBlockProp(sd_bus_message* m, std::string_view key, UDisksBlock* b) {
     }
 }
 
-// Walk one interface's a{sv}.
-template <typename Fn>
-void readProps(sd_bus_message* m, const Fn& onProp) {
-    if (sd_bus_message_enter_container(m, 'a', "{sv}") <= 0) { return; }
-    while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
-        const char* key = nullptr;
-        if (sd_bus_message_read(m, "s", &key) < 0 || key == nullptr) {
-            sd_bus_message_exit_container(m);
-            break;
-        }
-        onProp(std::string_view(key));
-        sd_bus_message_exit_container(m);
-    }
-    sd_bus_message_exit_container(m);
-}
-
 // GetManagedObjects reply a{oa{sa{sv}}} → the subset the bar reads.
 bool parseObjects(sd_bus_message* m, UDisksObjects* out) {
     if (sd_bus_message_enter_container(m, 'a', "{oa{sa{sv}}}") <= 0) { return false; }
@@ -221,13 +176,15 @@ bool parseObjects(sd_bus_message* m, UDisksObjects* out) {
                 const std::string_view name = iface != nullptr ? iface : "";
                 if (name == kDriveIface) {
                     isDrive = true;
-                    readProps(m, [&](std::string_view k) { readDriveProp(m, k, &drive); });
+                    dbus::forEachProperty(m,
+                                          [&](std::string_view k) { readDriveProp(m, k, &drive); });
                 } else if (name == kBlockIface) {
                     isBlock = true;
-                    readProps(m, [&](std::string_view k) { readBlockProp(m, k, &block); });
+                    dbus::forEachProperty(m,
+                                          [&](std::string_view k) { readBlockProp(m, k, &block); });
                 } else if (name == kFilesystemIface) {
                     block.hasFilesystem = true;
-                    readProps(m, [&](std::string_view k) {
+                    dbus::forEachProperty(m, [&](std::string_view k) {
                         if (k == "MountPoints") {
                             readByteStrings(m, &block.mountPoints);
                         } else {
@@ -236,7 +193,7 @@ bool parseObjects(sd_bus_message* m, UDisksObjects* out) {
                     });
                 } else if (name == kEncryptedIface) {
                     block.hasEncrypted = true;
-                    readProps(m, [&](std::string_view k) {
+                    dbus::forEachProperty(m, [&](std::string_view k) {
                         if (k == "CleartextDevice") {
                             readString(m, 'o', &block.cleartext);
                         } else {

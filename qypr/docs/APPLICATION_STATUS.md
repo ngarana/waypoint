@@ -82,6 +82,25 @@ yet it can certainly be unplugged.
 - Ids `usb` and `usb-eject` build this module. Listing several of them gives
   one instance.
 
+## phone-link
+
+A phone paired through KDE Connect (`src/system/KdeConnectBackend.hpp`),
+read from kdeconnectd on the session bus and refreshed when it signals a
+change. A burst of signals, such as a phone reconnecting and reloading all its
+plugins, is coalesced into one re-read.
+
+- On the bar while a paired device is connected or a device asks to pair;
+  in the overflow while paired devices are out of reach; absent without the
+  daemon or a paired device. A stale record of a phone (same name and type
+  as a connected device: what a reinstall leaves behind) is not listed.
+- The flyout shows battery and signal, **Ring**, **Clipboard** /
+  **Files…** (the desktop's file chooser portal) and **Browse** (SFTP), plus
+  the phone's notifications. **Dismiss** clears a notification on the phone.
+  Pairing requests offer **Accept** / **Reject**.
+- Phone notifications stay in memory only, for as long as the phone has
+  them. The module is session-sensitive, so they never reach the lock screen.
+- Ids `kde-connect` and `phone-connect` build this module.
+
 ## notification-apps
 
 One icon per application that has live notifications, from the notification
@@ -129,7 +148,8 @@ Unit tests: `tests/test_status_area.cpp` (claims follow the layout, `[tray]`
 config, composite menus, the tray host skipping claimed items, modules
 forwarding gestures, right click / Menu key routing, alias dedupe),
 `tests/test_removable_drives.cpp` (UDisks2 reduction, the removal plan, busy
-processes, the module and its flyout),
+processes, the module and its flyout), `tests/test_phone_link.cpp` (device
+list, status line, reachability policy, flyout),
 `NotificationAppsIndicatorDynamic` in `tests/test_indicators.cpp`, and
 `TrayAndNotificationAppsAreDistinct` in `tests/test_flyouts.cpp`.
 

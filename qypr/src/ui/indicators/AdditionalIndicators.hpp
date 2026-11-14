@@ -1,5 +1,6 @@
-// AdditionalIndicators.hpp - Dedicated convenience indicators for KDE Connect, WhatsApp, Email.
-// Removable drives live in RemovableDevicesIndicator.
+// AdditionalIndicators.hpp - Dedicated convenience indicators for WhatsApp and email.
+// Removable drives and phones have native modules (RemovableDevicesIndicator,
+// PhoneLinkIndicator).
 #pragma once
 
 #include <string>
@@ -8,24 +9,6 @@
 #include "ui/indicators/SimpleIconIndicator.hpp"
 
 namespace qypr {
-
-class KdeConnectIndicator : public SimpleIconIndicator {
-public:
-    explicit KdeConnectIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    std::string label() const override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updateRunningState();
-    pid_t cachedPid_ = 0;
-    int64_t lastCheckMs_ = 0;
-    bool running_ = false;
-};
-
-using PhoneConnectIndicator = KdeConnectIndicator;
 
 class WhatsappIndicator : public SimpleIconIndicator {
 public:
@@ -62,6 +45,5 @@ private:
 using MailIndicator = EmailIndicator;
 using MailboxIndicator = EmailIndicator;
 using InboxIndicator = EmailIndicator;
-using KdeconnectIndicator = KdeConnectIndicator;
 
 }  // namespace qypr

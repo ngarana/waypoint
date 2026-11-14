@@ -8,6 +8,7 @@
 #include "system/BatteryBackend.hpp"
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
+#include "system/KdeConnectBackend.hpp"
 #include "system/PowerProfilesBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
@@ -32,6 +33,7 @@ void BarBackendLifecycle::start() {
     if (backends_.volume) backends_.volume->start();
     if (backends_.sni) backends_.sni->start();
     if (backends_.udisks) backends_.udisks->start();
+    if (backends_.kdeConnect) backends_.kdeConnect->start();
 
     if (backends_.powerProfiles) {
         backends_.powerProfiles->setOnChange([this] { invalidator_.invalidate(); });

@@ -167,6 +167,7 @@ set(QYPR_SHARED_SOURCES
     src/system/BrightnessBackend.cpp
     src/system/DbusMenuBackend.cpp
     src/system/IdleInhibitor.cpp
+    src/system/KdeConnectBackend.cpp
     src/system/KeyboardLayout.cpp
     src/system/NightLightBackend.cpp
     src/system/NetworkManagerClient.cpp
@@ -202,6 +203,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/NotificationAppsIndicator.cpp
     src/ui/indicators/NotificationIndicator.cpp
     src/ui/indicators/PagerIndicator.cpp
+    src/ui/indicators/PhoneLinkIndicator.cpp
     src/ui/indicators/PowerMenuIndicator.cpp
     src/ui/indicators/RemovableDevicesIndicator.cpp
     src/ui/indicators/SNITrayHost.cpp
@@ -430,6 +432,7 @@ add_executable(qypr-test
     tests/test_desktop.cpp
     tests/test_status_area.cpp
     tests/test_removable_drives.cpp
+    tests/test_phone_link.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
     ${QYPR_BAR_ONLY_SOURCES}

@@ -1,12 +1,8 @@
-// AdditionalIndicators.cpp - Extra status bar icons (KDE Connect, WhatsApp, email).
+// AdditionalIndicators.cpp - Extra status bar icons (WhatsApp, email).
 #include "ui/indicators/AdditionalIndicators.hpp"
-
-#include <csignal>
 
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -91,98 +87,7 @@ bool activateOrLaunchApp(const SystemBackends& b, const std::vector<std::string>
     return false;
 }
 
-bool isProcessRunning(const std::vector<std::string>& procNames, pid_t& cachedPid) {
-    if (cachedPid > 0 && kill(cachedPid, 0) == 0) {
-        std::ifstream comm("/proc/" + std::to_string(cachedPid) + "/comm");
-        std::string name;
-        if (comm >> name) {
-            for (const auto& target : procNames) {
-                if (name == target) return true;
-            }
-        }
-    }
-    cachedPid = 0;
-    std::error_code ec;
-    if (!std::filesystem::exists("/proc", ec)) return false;
-    for (const auto& entry : std::filesystem::directory_iterator("/proc", ec)) {
-        const std::string fn = entry.path().filename().string();
-        if (fn.empty() || !std::isdigit(static_cast<unsigned char>(fn[0]))) continue;
-        std::ifstream comm(entry.path() / "comm");
-        std::string name;
-        if (comm >> name) {
-            for (const auto& target : procNames) {
-                if (name == target) {
-                    cachedPid = static_cast<pid_t>(std::strtol(fn.c_str(), nullptr, 10));
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
 }  // namespace
-
-// --- KdeConnectIndicator ---
-
-KdeConnectIndicator::KdeConnectIndicator(const SystemBackends& backends)
-    : SimpleIconIndicator(backends, "kde-connect", Zone::Right, 262, "󰄜", "KDE Connect",
-                          "smartphone-symbolic") {
-    updateRunningState();
-}
-
-void KdeConnectIndicator::poll(int64_t now) {
-    if (now - lastCheckMs_ >= 1000) {
-        lastCheckMs_ = now;
-        updateRunningState();
-    }
-}
-
-void KdeConnectIndicator::onBackendUpdate() {
-    updateRunningState();
-}
-
-void KdeConnectIndicator::updateRunningState() {
-    const int notifCount = countMatchingNotifications(backends_, {"kdeconnect", "kde-connect"});
-    bool windowOpen = false;
-    if (backends_.toplevel != nullptr) {
-        for (const auto& w : backends_.toplevel->snapshot().windows) {
-            const std::string wId = lower(w.appId);
-            if (wId.find("kdeconnect") != std::string::npos) {
-                windowOpen = true;
-                break;
-            }
-        }
-    }
-    const bool procActive =
-        isProcessRunning({"kdeconnectd", "kdeconnect-app", "kdeconnect-indicator"}, cachedPid_);
-    running_ = (notifCount > 0) || windowOpen || procActive;
-    visible = running_;
-    loaded_ = true;
-
-    if (notifCount > 0) {
-        tooltipText_ = "KDE Connect (" + std::to_string(notifCount) + " notification" +
-                       (notifCount > 1 ? "s" : "") + ")";
-    } else {
-        tooltipText_ = "KDE Connect (Connected)";
-    }
-}
-
-std::string KdeConnectIndicator::label() const {
-    const int n = countMatchingNotifications(backends_, {"kdeconnect", "kde-connect"});
-    return n > 0 ? std::to_string(n) : std::string{};
-}
-
-bool KdeConnectIndicator::onClick(double, double) {
-    activateOrLaunchApp(backends_, {"kdeconnect", "kde-connect"}, "kdeconnect-app");
-    dismissMatchingNotifications(backends_, {"kdeconnect", "kde-connect"});
-    return true;
-}
-
-bool KdeConnectIndicator::onSecondaryClick(double, double) {
-    dismissMatchingNotifications(backends_, {"kdeconnect", "kde-connect"});
-    return true;
-}
 
 // --- WhatsappIndicator ---
 
@@ -299,8 +204,6 @@ bool EmailIndicator::onSecondaryClick(double, double) {
     return true;
 }
 
-REGISTER_INDICATOR("kde-connect", Zone::Right, 262, KdeConnectIndicator)
-REGISTER_INDICATOR("phone-connect", Zone::Right, 263, PhoneConnectIndicator)
 REGISTER_INDICATOR("whatsapp", Zone::Right, 264, WhatsappIndicator)
 REGISTER_INDICATOR("email", Zone::Right, 265, EmailIndicator)
 REGISTER_INDICATOR("mail", Zone::Right, 266, MailIndicator)

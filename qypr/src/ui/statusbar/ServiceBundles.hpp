@@ -20,6 +20,7 @@ class NightLightBackend;
 class SystemActions;
 class PowerProfilesBackend;
 class UDisksBackend;
+class KdeConnectBackend;
 class IdleInhibitor;
 class DesktopIndex;
 class KeyboardLayout;

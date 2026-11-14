@@ -285,6 +285,11 @@ void testAliasesBuildOneModule() {
     EXPECT_EQ(built[0]->id(), std::string("removable-devices"));
     EXPECT_TRUE(built[0]->zone() == qypr::Zone::Left);  // first listing wins
     EXPECT_EQ(built[1]->id(), std::string("clock"));
+    modules.left = {"kde-connect", "phone-connect"};
+    modules.right = {"phone-link"};
+    const auto phones = qypr::IndicatorRegistry::instance().createAll(b, &modules);
+    EXPECT_EQ(phones.size(), 1U);
+    EXPECT_EQ(phones[0]->id(), std::string("phone-link"));
     // No module list (every registered id): still one instance per module.
     const auto everything = qypr::IndicatorRegistry::instance().createAll(b, nullptr);
     std::vector<std::string> ids;
