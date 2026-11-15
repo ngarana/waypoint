@@ -100,6 +100,8 @@ waylaunch --debug
 full-screen overlay that grabs the keyboard and
 lists open windows grouped by application, most-recently-used first, with the
 previous app preselected — so a quick Alt+Tab flips to the last window.
+Each card has a neutral outline; the selected card adds an accent fill and a
+stronger accent outline.
 
 Bind it in Hyprland (`~/.config/hypr/hyprland.conf`):
 

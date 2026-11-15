@@ -39,6 +39,11 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
                 card.card.x + 1, card.card.y + 1, card.card.w - 2, card.card.h - 2,
                 std::max(0, layout.corner_radius - 3),
                 Color::from_rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.13));
+        } else {
+            renderer.rounded_rect(card.card.x + 1, card.card.y + 1, card.card.w - 2,
+                                  card.card.h - 2, std::max(0, layout.corner_radius - 3),
+                                  Color::from_rgba(theme.background_alt.r, theme.background_alt.g,
+                                                   theme.background_alt.b, 0.18));
         }
 
         std::string label = group.display_name.empty() ? "?" : group.display_name.substr(0, 1);
@@ -96,14 +101,18 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
                                  badge_width - 8, 1, true);
         }
 
-        if (selected) {
-            if (cairo_t* cr = renderer.cr()) {
-                Renderer::round_rect_path(cr, card.card.x + 2, card.card.y + 2, card.card.w - 4,
-                                          card.card.h - 4, std::max(0, layout.corner_radius - 4));
+        if (cairo_t* cr = renderer.cr()) {
+            Renderer::round_rect_path(cr, card.card.x + 2, card.card.y + 2, card.card.w - 4,
+                                      card.card.h - 4, std::max(0, layout.corner_radius - 4));
+            if (selected) {
                 cairo_set_source_rgba(cr, theme.accent.r, theme.accent.g, theme.accent.b, 0.95);
                 cairo_set_line_width(cr, 3.0);
-                cairo_stroke(cr);
+            } else {
+                cairo_set_source_rgba(cr, theme.foreground.r, theme.foreground.g,
+                                      theme.foreground.b, 0.32);
+                cairo_set_line_width(cr, 1.25);
             }
+            cairo_stroke(cr);
         }
     }
 }
