@@ -115,6 +115,11 @@ void WlrForeignToplevelBackend::bind_manager(zwlr_foreign_toplevel_manager_v1* m
     zwlr_foreign_toplevel_manager_v1_add_listener(manager_, &manager_listener, this);
 }
 
+zwlr_foreign_toplevel_handle_v1* WlrForeignToplevelBackend::find_handle(uintptr_t handle_id) const {
+    auto const it = handle_map_.find(handle_id);
+    return it == handle_map_.end() ? nullptr : it->second;
+}
+
 bool WlrForeignToplevelBackend::init(wl_display* /*display*/, wl_registry* registry) {
     return registry != nullptr;
 }
@@ -214,7 +219,11 @@ void WlrForeignToplevelBackend::handle_toplevel_state(zwlr_foreign_toplevel_hand
             // one spelling of the flag values, mapped onto this client's
             // model at its boundary.
             qypr::ToplevelStates decoded{
-                .active = false, .minimized = false, .maximized = false, .fullscreen = false};
+                .active = false,
+                .minimized = false,
+                .maximized = false,
+                .fullscreen = false,
+            };
             if (state && state->data) {
                 decoded = qypr::decodeToplevelStates(static_cast<uint32_t*>(state->data),
                                                      state->size / sizeof(uint32_t));

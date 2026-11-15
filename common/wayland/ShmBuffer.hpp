@@ -9,6 +9,7 @@
 #include <cairo/cairo.h>
 #include <wayland-client.h>
 
+#include <cstdint>
 #include <memory>
 
 namespace qypr {
@@ -16,6 +17,9 @@ namespace qypr {
 class ShmBuffer {
 public:
     static std::unique_ptr<ShmBuffer> create(wl_shm* shm, int width, int height);
+    static std::unique_ptr<ShmBuffer> create(wl_shm* shm, int width, int height, int stride,
+                                            uint32_t wl_shm_format);
+    static cairo_format_t cairoFormatForWlShmFormat(uint32_t wl_shm_format);
     ~ShmBuffer();
 
     ShmBuffer(const ShmBuffer&) = delete;
@@ -25,6 +29,8 @@ public:
     cairo_surface_t* cairoSurface() const { return cairo_; }
     int width() const { return width_; }
     int height() const { return height_; }
+    int stride() const { return stride_; }
+    uint32_t format() const { return format_; }
 
     bool busy() const { return busy_; }
     void markBusy() { busy_ = true; }
@@ -44,6 +50,8 @@ private:
     size_t size_ = 0;
     int width_ = 0;
     int height_ = 0;
+    int stride_ = 0;
+    uint32_t format_ = 0;
     bool busy_ = false;
     int drawnHeight_ = 0;
 };

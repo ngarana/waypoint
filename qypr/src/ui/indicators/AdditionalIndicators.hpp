@@ -1,95 +1,59 @@
-// AdditionalIndicators.hpp - Dedicated convenience indicators for USB, KDE Connect, WhatsApp,
-// Email.
+// AdditionalIndicators.hpp - App modules: one app's status, by name.
+//
+// whatsapp and email show the AppStatus records their claims match
+// (StatusArea::defaultClaims, extended by [tray] claims-whatsapp /
+// claims-email): a WhatsApp client, a mail client (any desktop entry in the
+// Email category). The module is on the bar while such an app has something
+// to say, has a window open, or sits in the tray; notification-apps then
+// leaves the app to it. Gestures: AppStatusIndicator. Removable drives and
+// phones have their own modules (RemovableDevicesIndicator,
+// PhoneLinkIndicator).
 #pragma once
 
 #include <string>
 #include <vector>
 
-#include "ui/indicators/SimpleIconIndicator.hpp"
+#include "ui/indicators/AppStatusIndicator.hpp"
+#include "ui/indicators/TrayAppBinding.hpp"
 
 namespace qypr {
 
-class UsbIndicator : public SimpleIconIndicator {
+class AppModuleIndicator : public AppStatusIndicator {
 public:
-    explicit UsbIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
+    AppModuleIndicator(const SystemBackends& backends, const std::string& id, int priority,
+                       std::string label, std::string glyph, std::string fallback);
+
+    // The claims this module matches apps against.
+    [[nodiscard]] std::vector<std::string> patterns() const;
+
+protected:
+    [[nodiscard]] std::vector<AppStatus> select(std::vector<AppStatus> all) const override;
+    [[nodiscard]] bool tracksWindows() const override { return true; }
+    [[nodiscard]] std::string fallbackCommand() const override { return fallback_; }
+    [[nodiscard]] std::string emptyTooltip() const override { return label_ + " is not running"; }
+    [[nodiscard]] const TrayAppBinding* tray() const override { return &tray_; }
 
 private:
-    void updatePresence();
-    std::vector<std::string> mountedDrives_;
+    std::string label_;
+    std::string glyph_;  // drawn for a tray-only app without a themed icon
+    std::string fallback_;
+    TrayAppBinding tray_;
 };
 
-class UsbEjectIndicator : public SimpleIconIndicator {
-public:
-    explicit UsbEjectIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updatePresence();
-    std::vector<std::string> mountedDrives_;
-};
-
-class KdeConnectIndicator : public SimpleIconIndicator {
-public:
-    explicit KdeConnectIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    std::string label() const override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updateRunningState();
-    pid_t cachedPid_ = 0;
-    int64_t lastCheckMs_ = 0;
-    bool running_ = false;
-};
-
-using PhoneConnectIndicator = KdeConnectIndicator;
-
-class WhatsappIndicator : public SimpleIconIndicator {
+class WhatsappIndicator : public AppModuleIndicator {
 public:
     explicit WhatsappIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    std::string icon() const override;
-    std::string label() const override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updateRunningState();
-    bool running_ = false;
 };
 
 using WhatsAppIndicator = WhatsappIndicator;
 
-class EmailIndicator : public SimpleIconIndicator {
+class EmailIndicator : public AppModuleIndicator {
 public:
     explicit EmailIndicator(const SystemBackends& backends);
-    void poll(int64_t now) override;
-    void onBackendUpdate() override;
-    std::string icon() const override;
-    std::string label() const override;
-    bool onClick(double x, double y) override;
-    bool onSecondaryClick(double x, double y) override;
-
-private:
-    void updateRunningState();
-    bool running_ = false;
 };
 
 using MailIndicator = EmailIndicator;
 using MailboxIndicator = EmailIndicator;
 using InboxIndicator = EmailIndicator;
-using UsbManagerIndicator = UsbIndicator;
-using EjectIndicator = UsbEjectIndicator;
-using KdeconnectIndicator = KdeConnectIndicator;
 
 }  // namespace qypr

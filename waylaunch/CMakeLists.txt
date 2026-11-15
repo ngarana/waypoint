@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 project(waylaunch VERSION 0.1.0 LANGUAGES C CXX)
 
+# Pre-release / build-metadata suffix, for example "-rc.1" or
+# "+build.abcdef0". Stable builds leave this empty.
+set(WAYLAUNCH_VERSION_EXTRA "" CACHE STRING "Version pre-release / build-metadata suffix")
+if(NOT WAYLAUNCH_VERSION_EXTRA STREQUAL "" AND
+   NOT WAYLAUNCH_VERSION_EXTRA MATCHES "^[+-][0-9A-Za-z.-]+$")
+    message(FATAL_ERROR
+        "WAYLAUNCH_VERSION_EXTRA must be empty or a SemVer suffix beginning with '-' or '+'.")
+endif()
+set(WAYLAUNCH_VERSION_STRING "${PROJECT_VERSION}${WAYLAUNCH_VERSION_EXTRA}")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Version.hpp.in"
+    "${CMAKE_BINARY_DIR}/generated/WaylaunchVersion.hpp"
+    @ONLY)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -100,6 +115,21 @@ else()
     set(HAS_FOREIGN_TOPLEVEL FALSE)
 endif()
 
+# Hyprland's per-toplevel export extension requires the foreign-toplevel handle
+# API, introduced in version 2 of the export manager.
+set(TOPLEVEL_EXPORT_XML ${LIBWL_COMMON}/protocols/hyprland-toplevel-export-v1.xml)
+if(HAS_FOREIGN_TOPLEVEL AND EXISTS ${TOPLEVEL_EXPORT_XML})
+    add_custom_command(
+        OUTPUT ${PROTOCOL_BUILD_DIR}/hyprland-toplevel-export-v1-protocol.c ${PROTOCOL_BUILD_DIR}/hyprland-toplevel-export-v1-client-protocol.h
+        COMMAND ${WAYLAND_SCANNER} private-code ${TOPLEVEL_EXPORT_XML} ${PROTOCOL_BUILD_DIR}/hyprland-toplevel-export-v1-protocol.c
+        COMMAND ${WAYLAND_SCANNER} client-header ${TOPLEVEL_EXPORT_XML} ${PROTOCOL_BUILD_DIR}/hyprland-toplevel-export-v1-client-protocol.h
+        DEPENDS ${TOPLEVEL_EXPORT_XML} ${FOREIGN_TOPLEVEL_XML}
+    )
+    set(HAS_TOPLEVEL_EXPORT TRUE)
+else()
+    set(HAS_TOPLEVEL_EXPORT FALSE)
+endif()
+
 # Collect generated protocol sources
 set(PROTOCOL_SOURCES
     ${PROTOCOL_BUILD_DIR}/xdg-shell-protocol.c
@@ -110,6 +140,9 @@ if(HAS_SCREENCOPY)
 endif()
 if(HAS_FOREIGN_TOPLEVEL)
     list(APPEND PROTOCOL_SOURCES ${PROTOCOL_BUILD_DIR}/wlr-foreign-toplevel-management-protocol.c)
+endif()
+if(HAS_TOPLEVEL_EXPORT)
+    list(APPEND PROTOCOL_SOURCES ${PROTOCOL_BUILD_DIR}/hyprland-toplevel-export-v1-protocol.c)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -185,6 +218,11 @@ set(SOURCES
     src/switcher/switcher_state_machine.cpp
     src/switcher/switcher_input_controller.cpp
     src/switcher/switcher_renderer.cpp
+    src/switcher/hyprland_toplevel_export.cpp
+    src/switcher/switcher_layout.cpp
+    src/switcher/thumbnail.cpp
+    src/switcher/preview_scheduler.cpp
+    src/switcher/switcher_previews.cpp
     src/power/power_action_backend.cpp
     src/power/power_manager.cpp
     src/power/power_state_machine.cpp
@@ -212,6 +250,7 @@ add_executable(waylaunch ${SOURCES})
 
 target_include_directories(waylaunch PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/generated
     ${LIBWL_COMMON}
     ${PROTOCOL_BUILD_DIR}
     ${WAYLAND_INCLUDE_DIRS}
@@ -254,13 +293,18 @@ endif()
 if(HAS_FOREIGN_TOPLEVEL)
     target_compile_definitions(waylaunch PRIVATE HAS_FOREIGN_TOPLEVEL)
 endif()
+if(HAS_TOPLEVEL_EXPORT)
+    target_compile_definitions(waylaunch PRIVATE HAS_TOPLEVEL_EXPORT)
+endif()
 
 # waylaunchd (indexing daemon) + waylaunchctl (control CLI)
 add_executable(waylaunchd src/content/waylaunchd_main.cpp)
+target_include_directories(waylaunchd PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(waylaunchd PRIVATE waylaunch_content)
 target_compile_options(waylaunchd PRIVATE -Wall -Wextra)
 
 add_executable(waylaunchctl src/content/waylaunchctl_main.cpp)
+target_include_directories(waylaunchctl PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(waylaunchctl PRIVATE waylaunch_content)
 target_compile_options(waylaunchctl PRIVATE -Wall -Wextra)
 
@@ -289,6 +333,8 @@ if(BUILD_TESTING)
         src/switcher/switcher_state_machine.cpp
         src/switcher/switcher_input_controller.cpp
         src/switcher/switcher_renderer.cpp
+        src/switcher/switcher_layout.cpp
+        src/switcher/thumbnail.cpp
         src/ui/renderer.cpp
         ${LIBWL_COMMON}/core/EventLoop.cpp
         ${LIBWL_COMMON}/core/Process.cpp
@@ -323,6 +369,47 @@ if(BUILD_TESTING)
     # assert-based — keep the checks alive under Release-family builds (NDEBUG).
     target_compile_options(app_switcher_test PRIVATE -UNDEBUG)
     add_test(NAME app_switcher_test COMMAND app_switcher_test)
+
+    add_executable(switcher_layout_test
+        tests/switcher_layout_test.cpp
+        src/switcher/switcher_layout.cpp
+    )
+    target_include_directories(switcher_layout_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_compile_options(switcher_layout_test PRIVATE -Wall -Wextra -UNDEBUG)
+    add_test(NAME switcher_layout_test COMMAND switcher_layout_test)
+
+    add_executable(preview_scheduler_test
+        tests/preview_scheduler_test.cpp
+        src/switcher/preview_scheduler.cpp
+    )
+    target_include_directories(preview_scheduler_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_compile_options(preview_scheduler_test PRIVATE -Wall -Wextra -UNDEBUG)
+    add_test(NAME preview_scheduler_test COMMAND preview_scheduler_test)
+
+    add_executable(switcher_previews_test
+        tests/switcher_previews_test.cpp
+        src/switcher/app_switcher_manager.cpp
+        src/switcher/preview_scheduler.cpp
+        src/switcher/switcher_previews.cpp
+        src/switcher/thumbnail.cpp
+    )
+    target_include_directories(switcher_previews_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${LIBWL_COMMON}
+        ${CAIRO_INCLUDE_DIRS}
+    )
+    target_link_libraries(switcher_previews_test PRIVATE ${CAIRO_LIBRARIES})
+    target_compile_options(switcher_previews_test PRIVATE -Wall -Wextra -UNDEBUG)
+    add_test(NAME switcher_previews_test COMMAND switcher_previews_test)
+
+    add_executable(thumbnail_test
+        tests/thumbnail_test.cpp
+        src/switcher/thumbnail.cpp
+    )
+    target_include_directories(thumbnail_test PRIVATE ${CMAKE_SOURCE_DIR}/include ${CAIRO_INCLUDE_DIRS})
+    target_link_libraries(thumbnail_test PRIVATE ${CAIRO_LIBRARIES})
+    target_compile_options(thumbnail_test PRIVATE -Wall -Wextra -UNDEBUG)
+    add_test(NAME thumbnail_test COMMAND thumbnail_test)
     set_tests_properties(content_indexer_test PROPERTIES TIMEOUT 60)
     set_tests_properties(content_freshness_test PROPERTIES TIMEOUT 60)
 

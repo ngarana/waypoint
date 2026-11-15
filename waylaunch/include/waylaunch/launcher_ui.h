@@ -27,6 +27,7 @@ class WlrForeignToplevelBackend;
 class AppSwitcherManager;
 class SwitcherInputController;
 class SwitcherRenderer;
+class SwitcherPreviews;
 class PowerActionBackend;
 class PowerManager;
 class PowerInputController;
@@ -225,6 +226,9 @@ class LauncherUI {
     std::unique_ptr<AppSwitcherManager> switcher_manager_;
     std::unique_ptr<SwitcherInputController> switcher_input_;
     std::unique_ptr<SwitcherRenderer> switcher_renderer_;
+    std::unique_ptr<SwitcherPreviews> switcher_previews_;
+    int switcher_preview_timer_fd_ = -1;
+    int switcher_columns_ = 1;
     bool switcher_mode_ = false;       // launched as the dedicated Alt+Tab overlay
     bool switcher_reverse_ = false;    // preselect the far end (Alt+Shift+Tab)
     bool switcher_shown_ = false;      // switcher currently mapped (visible this cycle)

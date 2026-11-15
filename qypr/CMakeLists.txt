@@ -2,8 +2,13 @@ cmake_minimum_required(VERSION 3.20)
 project(qypr VERSION 0.1.0 LANGUAGES C CXX)
 
 # Pre-release / build-metadata suffix appended to the semantic version string
-# (e.g. "-rc1", "-dev+gabcdef0"). Leave empty for stable releases.
+# (e.g. "-rc.1", "+build.abcdef0"). Leave empty for stable releases.
 set(QYPR_VERSION_EXTRA "" CACHE STRING "Version pre-release / build-metadata suffix")
+if(NOT QYPR_VERSION_EXTRA STREQUAL "" AND
+   NOT QYPR_VERSION_EXTRA MATCHES "^[+-][0-9A-Za-z.-]+$")
+    message(FATAL_ERROR
+        "QYPR_VERSION_EXTRA must be empty or a SemVer suffix beginning with '-' or '+'.")
+endif()
 
 # -----------------------------------------------------------------------------
 # Standards & defaults
@@ -106,6 +111,7 @@ qypr_gen_protocol(wlr-gamma-control-unstable-v1
 # -----------------------------------------------------------------------------
 # Version header (generated)
 # -----------------------------------------------------------------------------
+set(QYPR_VERSION_STRING "${PROJECT_VERSION}${QYPR_VERSION_EXTRA}")
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/core/Version.hpp.in"
     "${CMAKE_BINARY_DIR}/generated/Version.hpp"
@@ -158,6 +164,7 @@ set(QYPR_SHARED_SOURCES
     src/notifications/NotificationStore.cpp
     src/notifications/NotificationTransport.cpp
     src/power/SystemActions.cpp
+    src/system/ApplicationsBackend.cpp
     src/system/BatteryBackend.cpp
     src/system/BluetoothAgent.cpp
     src/system/BluetoothBackend.cpp
@@ -167,11 +174,13 @@ set(QYPR_SHARED_SOURCES
     src/system/BrightnessBackend.cpp
     src/system/DbusMenuBackend.cpp
     src/system/IdleInhibitor.cpp
+    src/system/KdeConnectBackend.cpp
     src/system/KeyboardLayout.cpp
     src/system/NightLightBackend.cpp
     src/system/NetworkManagerClient.cpp
     src/system/PowerProfilesBackend.cpp
     src/system/PulseLoop.cpp
+    src/system/RemovableDrives.cpp
     src/system/SessionMapper.cpp
     src/system/SNIBackend.cpp
     src/system/StateCache.cpp
@@ -181,12 +190,15 @@ set(QYPR_SHARED_SOURCES
     src/system/SystemBus.cpp
     src/system/SystemStats.cpp
     src/system/ToplevelBackend.cpp
+    src/system/UDisksBackend.cpp
     src/system/VolumeBackend.cpp
     src/system/WifiBackend.cpp
     src/system/WifiOperations.cpp
     src/system/WifiSnapshotReducer.cpp
     src/system/WorkspaceBackend.cpp
     src/ui/indicators/ActiveWindowIndicator.cpp
+    src/ui/indicators/AppStatus.cpp
+    src/ui/indicators/AppStatusIndicator.cpp
     src/ui/indicators/BatteryIndicator.cpp
     src/ui/indicators/BluetoothIndicator.cpp
     src/ui/indicators/BrightnessIndicator.cpp
@@ -200,12 +212,15 @@ set(QYPR_SHARED_SOURCES
     src/ui/indicators/NotificationAppsIndicator.cpp
     src/ui/indicators/NotificationIndicator.cpp
     src/ui/indicators/PagerIndicator.cpp
+    src/ui/indicators/PhoneLinkIndicator.cpp
     src/ui/indicators/PowerMenuIndicator.cpp
-    src/ui/indicators/SNITrayHost.cpp
+    src/ui/indicators/RemovableDevicesIndicator.cpp
+    src/ui/indicators/BackgroundAppsIndicator.cpp
     src/ui/indicators/SimpleIconIndicator.cpp
     src/ui/indicators/AdditionalIndicators.cpp
     src/ui/indicators/SystemMonitorIndicator.cpp
     src/ui/indicators/TaskbarIndicator.cpp
+    src/ui/indicators/TrayAppBinding.cpp
     src/ui/indicators/VolumeIndicator.cpp
     src/ui/indicators/WifiIndicator.cpp
     src/ui/indicators/WorkspacesIndicator.cpp
@@ -213,9 +228,12 @@ set(QYPR_SHARED_SOURCES
     src/ui/PaletteReader.cpp
     src/ui/PaletteSource.cpp
     src/ui/Theme.cpp
+    src/ui/statusbar/AppletLink.cpp
     src/ui/statusbar/IndicatorHost.cpp
     src/ui/statusbar/IndicatorRegistry.cpp
+    src/ui/statusbar/ListFlyout.cpp
     src/ui/statusbar/MenuPopover.cpp
+    src/ui/statusbar/MenuSource.cpp
     src/ui/statusbar/PopoverManager.cpp
     src/ui/statusbar/QSTile.cpp
     src/ui/statusbar/QSTileFactory.cpp
@@ -223,6 +241,7 @@ set(QYPR_SHARED_SOURCES
     src/ui/statusbar/QuickSettingsLayout.cpp
     src/ui/statusbar/QuickSettingsModel.cpp
     src/ui/statusbar/QuickSettingsPanel.cpp
+    src/ui/statusbar/StatusArea.cpp
     src/ui/statusbar/StatusBar.cpp
     src/ui/statusbar/StatusBarInput.cpp
     src/ui/statusbar/StatusBarLayout.cpp
@@ -284,6 +303,8 @@ set(QYPR_LOCK_ONLY_SOURCES
     src/video/VideoPlayer.cpp
     src/auth/PamAuthenticator.cpp
     src/auth/FingerprintAuthenticator.cpp
+    src/auth/FprintdDbus.cpp
+    src/system/SleepMonitor.cpp
 )
 
 # qypr-bar is exactly the shared set: lock-only sources were never in it,
@@ -414,10 +435,15 @@ add_executable(qypr-test
     tests/test_wayland.cpp
     tests/test_lock.cpp
     tests/test_bar.cpp
+    tests/test_flyouts.cpp
     tests/test_indicators.cpp
     tests/test_notifications.cpp
     tests/test_qs.cpp
     tests/test_desktop.cpp
+    tests/test_status_area.cpp
+    tests/test_removable_drives.cpp
+    tests/test_phone_link.cpp
+    tests/test_app_status.cpp
     tests/mocks.cpp
     ${QYPR_SHARED_SOURCES}
     ${QYPR_BAR_ONLY_SOURCES}
@@ -436,6 +462,7 @@ enable_testing()
 add_test(NAME qypr-test COMMAND qypr-test)
 
 target_compile_definitions(qypr-test PRIVATE TESTING)
+target_compile_options(qypr-test PRIVATE -UNDEBUG)
 
 if(ENABLE_COVERAGE)
     target_compile_options(qypr-test PRIVATE --coverage -O0 -g)
@@ -472,8 +499,9 @@ install(FILES man/man1/qypr-lock.1 man/man1/qypr-bar.1 man/man1/qypr-record.1
 # Example configuration (copy to $XDG_CONFIG_HOME/qypr/bar.conf to use).
 install(FILES examples/bar.conf DESTINATION share/qypr/examples)
 
-# PAM services (copy to /etc/pam.d/ to enable): qypr-lock is the password
-# stack kept free of pam_fprintd, qypr-fingerprint the parallel finger stack.
+# PAM service (copy to /etc/pam.d/ to enable): qypr-lock is the password stack,
+# kept free of pam_fprintd so a typed password never waits behind a scan.
+# Fingerprint unlock needs no PAM file: it talks to fprintd over D-Bus.
 # Installed under share (not /etc) deliberately: writing to /etc from `cmake
 # --install` would fight the distro package manager, which owns /etc/pam.d.
-install(FILES pam/qypr-lock pam/qypr-fingerprint DESTINATION share/qypr/pam)
+install(FILES pam/qypr-lock DESTINATION share/qypr/pam)

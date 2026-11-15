@@ -337,7 +337,7 @@ TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     view->draw(p, qypr::nowMs() + 10000);
 
     EXPECT_FALSE(view->wantsKeyboard());
-    EXPECT_EQ(view->autoDismissMs(), 6000);
+    EXPECT_EQ(view->autoDismissMs(), 0);
 
     // Click the secured unsaved row (first row below the header + subheader).
     const double rowY = 12.0 + 30.0 + 24.0 + 17.0;
@@ -354,7 +354,7 @@ TEST(WifiPopoverPasswordJoinsSecuredNetwork) {
     // the editor must close and release the keyboard).
     EXPECT_TRUE(view->handleKey(XKB_KEY_Return));
     EXPECT_FALSE(view->wantsKeyboard());
-    EXPECT_EQ(view->autoDismissMs(), 6000);
+    EXPECT_EQ(view->autoDismissMs(), 0);
 
     // Escape also cancels the editor.
     view->draw(p, qypr::nowMs() + 10000);
@@ -705,14 +705,15 @@ TEST(SNIParseItemRef) {
     EXPECT_EQ(service, std::string(":1.42"));
     EXPECT_EQ(path, std::string("/StatusNotifierItem"));
 }
-TEST(SNITrayHostConstruction) {
+TEST(BackgroundAppsConstruction) {
     qypr::SystemBackends const backends{};  // no backend
-    qypr::SNITrayHost host(backends);
+    qypr::BackgroundAppsIndicator host(backends);
 
-    EXPECT_EQ(host.id(), std::string("sni"));
+    EXPECT_EQ(host.id(), std::string("background-apps"));
     EXPECT_TRUE(static_cast<int>(host.zone()) == static_cast<int>(qypr::Zone::Right));
     EXPECT_EQ(host.priority(), 600);
     EXPECT_EQ(host.icon(), std::string(""));  // custom multi-icon draw
+    EXPECT_TRUE(host.listsOverflow());
 
     // No backend → hidden, zero width, click is a no-op (not a crash).
     host.onBackendUpdate();
@@ -726,51 +727,64 @@ TEST(SNITrayHostConstruction) {
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
 
-    EXPECT_EQ(host.tooltip(), std::string("System tray"));
+    EXPECT_EQ(host.tooltip(), std::string("Nothing running in the background"));
 }
-TEST(SNITrayHostVisibleWithItems) {
-    // Drive the indicator from a backend whose item list we populate directly
-    // (no bus needed): the tray host mirrors item count for visibility/width.
+TEST(BackgroundAppsCollapseBehindChevron) {
+    // Tray apps are the last resort: with no pins and nothing asking for
+    // attention, every app sits behind the chevron and the bar spends one
+    // cell on all of them.
     qypr::EventLoop loop;
     qypr::SystemBus session(loop, qypr::BusKind::Session);
     qypr::SNIBackend sni(session);
     sni.items_.push_back(qypr::SNIItem{.service = ":1.51",
-                                       .path = "/org/blueman/sni",
-                                       .iconName = "blueman",
-                                       .title = "blueman",
+                                       .path = "/org/telegram/sni",
+                                       .iconName = "telegram",
+                                       .title = "Telegram",
                                        .status = "Active",
-                                       .menuPath = "/org/blueman/sni/menu",
+                                       .menuPath = "/org/telegram/sni/menu",
                                        .pixmap = nullptr});
     sni.items_.push_back(qypr::SNIItem{.service = ":1.17",
-                                       .path = "/org/ayatana/NotificationItem/nm_applet",
-                                       .iconName = "nm-signal-75",
-                                       .title = "Network",
+                                       .path = "/StatusNotifierItem",
+                                       .iconName = "steam",
+                                       .title = "Steam",
                                        .status = "Active",
                                        .menuPath = "",
                                        .pixmap = nullptr});
 
     qypr::SystemBackends backends{};
     backends.sni = &sni;
-    qypr::SNITrayHost host(backends);
-
+    qypr::BackgroundAppsIndicator host(backends);
     host.onBackendUpdate();
     EXPECT_TRUE(host.visible);
 
     cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
     cairo_t* cr = cairo_create(surf);
     qypr::Painter p(cr);
-    // Two 18px icons + one 6px gap + 2*8px side pad = 68px.
-    EXPECT_NEAR(host.measureWidth(p), (2 * 18.0) + 6.0 + (2 * 8.0), 0.01);
+    EXPECT_NEAR(host.measureWidth(p), 36.0, 0.01);  // chevron + 4px padding each side
+    EXPECT_EQ(host.tooltip(), std::string("2 background apps"));
+
+    // The chevron opens the overflow through the default detailed-view path.
+    host.bounds = {.x = 100, .y = 0, .w = host.measureWidth(p), .h = 36};
+    EXPECT_FALSE(host.onClick(100 + 4 + 2, 18));
+    EXPECT_TRUE(host.hasDetailedView());
+    auto pop = host.createDetailedView();
+    EXPECT_TRUE(pop != nullptr);
+    EXPECT_FALSE(host.hasDetailedView());  // consumed
+
+    // Asking for attention earns a cell next to the chevron.
+    sni.items_[1].status = "NeedsAttention";
+    host.onBackendUpdate();
+    EXPECT_NEAR(host.measureWidth(p), 64.0, 0.01);
+    host.bounds.w = host.measureWidth(p);
+    host.onHoverMotion(100 + 4 + 2, 18);
+    EXPECT_EQ(host.tooltip(), std::string("Steam — needs attention"));
+    // A click on the strip icon activates the app (the mocked async call is a
+    // no-op) and is consumed.
+    EXPECT_TRUE(host.onClick(100 + 4 + 2, 18));
+    host.onHoverLeave();
+    EXPECT_EQ(host.tooltip(), std::string("1 background app"));
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
-
-    // Tooltip reflects the count when more than one item.
-    EXPECT_EQ(host.tooltip(), std::string("2 tray items"));
-
-    // A click within the first icon's slot resolves without a bus (the mock's
-    // async call is a no-op) and is consumed.
-    host.bounds = {.x = 100, .y = 0, .w = host.measureWidth(p), .h = 36};
-    EXPECT_TRUE(host.onClick(100 + 8 + 2, 18));
 }
 
 // -----------------------------------------------------------------------------
@@ -1037,7 +1051,7 @@ TEST(LockRuntimeLacksSessionBundleAndSessionIndicators) {
         EXPECT_TRUE(ind->id() != "taskbar");
         EXPECT_TRUE(ind->id() != "pager");
         EXPECT_TRUE(ind->id() != "power");
-        EXPECT_TRUE(ind->id() != "sni");
+        EXPECT_TRUE(ind->id() != "background-apps");
         EXPECT_TRUE(ind->id() != "keyboard-layout");
     }
 
@@ -1298,13 +1312,13 @@ TEST(NotificationAppsIndicatorDynamic) {
 
     // Chat has newest postedAt (3000) so it should be first
     EXPECT_EQ(ind.apps()[0].name, "Chat");
-    EXPECT_EQ(ind.apps()[0].count, 1);
-    EXPECT_TRUE(ind.apps()[0].hasCritical);
+    EXPECT_EQ(ind.apps()[0].count(), 1);
+    EXPECT_TRUE(ind.apps()[0].critical);
 
-    // Mail is second, count 2
-    EXPECT_EQ(ind.apps()[1].desktopEntry, "thunderbird");
-    EXPECT_EQ(ind.apps()[1].count, 2);
-    EXPECT_FALSE(ind.apps()[1].hasCritical);
+    // Mail is second, count 2 (keyed by its desktop-entry hint)
+    EXPECT_EQ(ind.apps()[1].key, "thunderbird");
+    EXPECT_EQ(ind.apps()[1].count(), 2);
+    EXPECT_FALSE(ind.apps()[1].critical);
 
     // General tooltip
     EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos || !ind.tooltip().empty());
@@ -1331,9 +1345,12 @@ TEST(NotificationAppsIndicatorDynamic) {
     ind.onHoverLeave();
     EXPECT_TRUE(ind.tooltip().find("apps") != std::string::npos);
 
-    // Click interactions
+    // Click interactions. Right click is not consumed: it opens the app's
+    // menu (here just "Clear notification"; no NotificationActions → none).
     EXPECT_TRUE(ind.onClick(15.0, 18.0));
-    EXPECT_TRUE(ind.onSecondaryClick(15.0, 18.0));
+    EXPECT_FALSE(ind.onSecondaryClick(15.0, 18.0));
+    EXPECT_TRUE(ind.hasContextMenu());
+    EXPECT_TRUE(ind.createContextMenu(15.0, 18.0) == nullptr);
     EXPECT_TRUE(ind.onMiddleClick(15.0, 18.0));
     // Click outside buttons (gap or past bounds)
     EXPECT_FALSE(ind.onClick(1000.0, 18.0));

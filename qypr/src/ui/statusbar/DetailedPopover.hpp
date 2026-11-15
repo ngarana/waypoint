@@ -4,6 +4,7 @@
 #include "core/Types.hpp"
 #include "render/Painter.hpp"
 #include "ui/Theme.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -26,6 +27,7 @@ public:
     // Return true when consumed. Default: unused.
     virtual bool handleSecondaryClick(double x, double y) { return false; }
     virtual bool handleDrag(double x, double y) { return false; }
+    virtual void handleRelease() {}
     // Pointer moved with no button held. Popovers with internal hover states
     // (e.g. the notification centre's cards) override this to track the cursor.
     // Return true when the pointer is inside the popover so the host repaints and
@@ -42,30 +44,48 @@ public:
     // open, and releases it on close. Default: pointer-only.
     virtual bool wantsKeyboard() const { return false; }
 
-    // Auto-dismiss: when > 0, the host closes this popover after that many
-    // milliseconds without *interaction* (click/scroll/drag/keyboard over it — a
-    // parked pointer does not count). Every bar popover is transient by default,
-    // so it defaults to a timeout; the persistent ones (Quick Settings, the
-    // keyboard-driven launcher) override this to 0. The notification centre and
-    // slider popup set their own values.
-    virtual int autoDismissMs() const { return 6000; }
+    // Deliberately opened controls stay available until explicitly dismissed.
+    virtual int autoDismissMs() const { return 0; }
 
     // Polled by the host right after handleClick: return true (once) to ask the
     // manager to close this popover — e.g. a menu that just fired an item. The
     // default popover never self-closes.
     virtual bool consumeCloseRequest() { return false; }
 
-    // Check if pointer is inside popover bounds
-    bool contains(double px, double py) const { return getBounds().contains(px, py); }
+    bool contains(double px, double py) const { return visibleBounds().contains(px, py); }
 
-    // Get popover rectangle bounds (calculated dynamically based on anchor)
+    void setViewport(const Rect& viewport) { viewport_ = viewport; }
+    double availableWidth() const { return viewport_.w > 0 ? viewport_.w : contentWidth(); }
+    double maxScroll() const {
+        return viewport_.h > 0 ? std::max(0.0, contentHeight() - viewport_.h) : 0.0;
+    }
+    bool scrollViewport(double delta) {
+        if (maxScroll() <= 0 || delta == 0) { return false; }
+        scrollOffset_ = std::clamp(scrollOffset_ + delta, 0.0, maxScroll());
+        return true;
+    }
+
     Rect getBounds() const {
-        double w = contentWidth();
-        double h = contentHeight();
-        // Shift popover left so the anchor point aligns with the top-right of
-        // popover. growUp extends upward from the anchor instead of down, so a
-        // bottom-anchored bar opens its panels toward the screen centre.
-        return {anchorX - w, growUp ? anchorY - h : anchorY, w, h};
+        const double w = std::min(contentWidth(), availableWidth());
+        const double h = contentHeight();
+        double x = anchorX - w;
+        double y = growUp ? anchorY - h : anchorY;
+        if (viewport_.w > 0 && viewport_.h > 0) {
+            x = std::clamp(x, viewport_.x, viewport_.x + viewport_.w - w);
+            y = std::clamp(y, viewport_.y, viewport_.y + std::max(0.0, viewport_.h - h));
+            y -= std::clamp(scrollOffset_, 0.0, maxScroll());
+        }
+        return {x, y, w, h};
+    }
+
+    Rect visibleBounds() const {
+        Rect b = getBounds();
+        if (viewport_.h > 0) {
+            const double bottom = std::min(b.y + b.h, viewport_.y + viewport_.h);
+            b.y = std::max(b.y, viewport_.y);
+            b.h = std::max(0.0, bottom - b.y);
+        }
+        return b;
     }
 
     // Anchor point (set by PopoverManager or StatusBar)
@@ -112,6 +132,8 @@ protected:
     }
 
 private:
+    Rect viewport_;
+    double scrollOffset_ = 0;
     bool backdropEnabled_ = false;
     double backdropAlpha_ = -1.0;
     bool backdropConfigured_ = false;

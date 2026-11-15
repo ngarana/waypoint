@@ -124,6 +124,12 @@ bool Config::load(const std::string& path) {
                     get_str(*colors, "border", config_.theme.colors.border);
                 config_.theme.colors.selection =
                     get_str(*colors, "selection", config_.theme.colors.selection);
+                config_.theme.colors.switcher_selected_outline =
+                    get_str(*colors, "switcher_selected_outline",
+                            config_.theme.colors.switcher_selected_outline);
+                config_.theme.colors.switcher_unselected_outline =
+                    get_str(*colors, "switcher_unselected_outline",
+                            config_.theme.colors.switcher_unselected_outline);
             }
             if (auto* font = (*theme)["input_font"].as_table()) {
                 config_.theme.input_font.family =
@@ -231,6 +237,9 @@ bool Config::load(const std::string& path) {
             sw.card_size = get_int(*switcher, "card_size", sw.card_size);
             sw.corner_radius = get_int(*switcher, "corner_radius", sw.corner_radius);
             sw.show_app_names = get_bool(*switcher, "show_app_names", sw.show_app_names);
+            sw.previews = get_bool(*switcher, "previews", sw.previews);
+            sw.live_previews = get_bool(*switcher, "live_previews", sw.live_previews);
+            sw.preview_height = get_int(*switcher, "preview_height", sw.preview_height);
             sw.group_by_app = get_bool(*switcher, "group_by_app", sw.group_by_app);
             sw.quick_actions = get_bool(*switcher, "quick_actions", sw.quick_actions);
             sw.activate_command = get_str(*switcher, "activate_command", sw.activate_command);
@@ -374,6 +383,8 @@ bool Config::save(const std::string& path) const {
     write_color("success", config_.theme.colors.success);
     write_color("border", config_.theme.colors.border);
     write_color("selection", config_.theme.colors.selection);
+    write_color("switcher_selected_outline", config_.theme.colors.switcher_selected_outline);
+    write_color("switcher_unselected_outline", config_.theme.colors.switcher_unselected_outline);
 
     auto write_font = [&](const std::string& sec, const ConfigFont& f) {
         file << "\n[" << sec << "]\n";
@@ -428,6 +439,9 @@ bool Config::save(const std::string& path) const {
     file << "card_size = " << sw.card_size << "\n";
     file << "corner_radius = " << sw.corner_radius << "\n";
     file << "show_app_names = " << (sw.show_app_names ? "true" : "false") << "\n";
+    file << "previews = " << (sw.previews ? "true" : "false") << "\n";
+    file << "live_previews = " << (sw.live_previews ? "true" : "false") << "\n";
+    file << "preview_height = " << sw.preview_height << "\n";
     file << "group_by_app = " << (sw.group_by_app ? "true" : "false") << "\n";
     file << "quick_actions = " << (sw.quick_actions ? "true" : "false") << "\n";
     file << "activate_command = \"" << toml_escape(sw.activate_command) << "\"\n";

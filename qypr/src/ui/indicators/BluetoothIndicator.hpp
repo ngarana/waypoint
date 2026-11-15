@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "ui/indicators/TrayAppBinding.hpp"
 #include "ui/statusbar/StatusIndicator.hpp"
 #include "system/BluetoothBackend.hpp"
 #include <string>
@@ -28,8 +29,21 @@ public:
     bool hasDetailedView() const override { return backend_ != nullptr; }
     std::unique_ptr<DetailedPopover> createDetailedView() override;
 
+    // One surface: right click and the Menu key open the same picker. The
+    // tray applet this module claims (blueman — see StatusArea) is merged
+    // into it: the picker's last row opens the applet's menu (AppletLink).
+    // Middle click forwards the applet's SecondaryActivate.
+    bool onSecondaryClick(double /*x*/, double /*y*/) override { return hasDetailedView(); }
+    bool hasContextMenu() const override { return hasDetailedView(); }
+    std::unique_ptr<DetailedPopover> createContextMenu(double /*x*/, double /*y*/) override {
+        return createDetailedView();
+    }
+    std::unique_ptr<DetailedPopover> createAppletMenu() override;
+    bool onMiddleClick(double x, double y) override { return tray_.secondaryActivate(x, y); }
+
 private:
     BluetoothBackend* backend_ = nullptr;
+    TrayAppBinding tray_;
     BluetoothSnapshot lastSnap_;
 };
 

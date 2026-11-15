@@ -162,9 +162,8 @@ public:
         return popover_layout::boundedWidth(kMenuMinW, kMenuMaxW, required);
     }
 
-    // Transient like a real notification panel: fade away after a spell of no
-    // interaction. Any hover/click/scroll over it resets the host's timer.
-    int autoDismissMs() const override { return 8000; }
+    // Reading and interacting with notifications has no inactivity deadline.
+    int autoDismissMs() const override { return 0; }
 
     double contentHeight() const override {
         const auto& notes = list();
@@ -185,7 +184,6 @@ public:
 
     void draw(Painter& p, int64_t now) override {
         auto b = getBounds();
-        b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
 
         // The standalone bar uses the same backdrop as the strip; the lock
         // screen keeps the notification panel's original glass card.

@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "core/Audit.hpp"
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
 
@@ -113,6 +114,7 @@ void LockController::onAuthResult(PamAuthenticator::Result result, const std::st
             hasError_ = false;
             unlocking_ = true;
             stopFingerprint();  // password won the race; drop the pending finger
+            audit::log(audit::Level::Notice, "unlocked by password");
             host_.requestUnlock();
             break;
         case PamAuthenticator::Result::Failure:
@@ -132,8 +134,10 @@ void LockController::onAuthResult(PamAuthenticator::Result result, const std::st
 }
 
 void LockController::startFingerprint() {
-    if (fp_ == nullptr || !fingerprintEnabled_) { return; }
-    if (fp_->running()) { return; }
+    if (fp_ == nullptr || !fingerprintEnabled_ || unlocking_) { return; }
+    // Locked out: stays password-only for the rest of this lock, including
+    // the restart the App's resume handler asks for.
+    if (fp_->running() || fp_->lockedOut()) { return; }
     fingerprint_ = FingerprintState::Waiting;
     fingerprintError_ = false;
     fp_->start(
@@ -165,7 +169,20 @@ void LockController::onFingerprintResult(FingerprintAuthenticator::Result result
             hasError_ = false;
             unlocking_ = true;
             password_.clear();
+            audit::log(audit::Level::Notice, "unlocked by fingerprint");
             host_.requestUnlock();
+            break;
+        case FingerprintAuthenticator::Result::LockedOut:
+            fingerprint_ = FingerprintState::Disabled;
+            fingerprintError_ = false;
+            audit::log(audit::Level::Notice,
+                       "fingerprint locked out after too many failed attempts; password required");
+            // Say why the finger stopped working, unless a password attempt
+            // owns the status line.
+            if (!pam_.busy() && password_.empty() && !unlocking_) {
+                statusMessage_ = message + ". Enter your password.";
+                hasError_ = true;
+            }
             break;
         case FingerprintAuthenticator::Result::Unavailable:
             fingerprint_ = FingerprintState::Disabled;

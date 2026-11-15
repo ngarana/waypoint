@@ -803,8 +803,8 @@ TEST(QuickSettingsLayoutComputation) {
     EXPECT_TRUE(tiles[3]->bounds.y > tiles[0]->bounds.y);
 
     // Close button bounds
-    EXPECT_NEAR(res.closeBounds.x, 100.0 + 380.0 - 14.0 - 24.0, 0.001);
-    EXPECT_NEAR(res.closeBounds.y, 50.0 + 8.0, 0.001);
+    EXPECT_NEAR(res.closeBounds.x, 100.0 + 380.0 - 14.0 - 32.0, 0.001);
+    EXPECT_NEAR(res.closeBounds.y, 50.0 + 14.0 + 8.0, 0.001);
 }
 
 // -----------------------------------------------------------------------------

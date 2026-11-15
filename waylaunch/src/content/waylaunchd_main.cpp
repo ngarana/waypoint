@@ -3,6 +3,7 @@
 // Indexer + inotify FsWatcher, and serves a control socket. Queries never touch
 // this process: the launcher reads the index file directly (WAL).
 
+#include "WaylaunchVersion.hpp"
 #include "waylaunch/content/config.h"
 #include "waylaunch/content/control.h"
 #include "waylaunch/content/fs_watcher.h"
@@ -14,6 +15,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 #include <csignal>
 #include <fcntl.h>
@@ -38,7 +40,11 @@ void on_signal(int) {
     }
 }
 
-std::string yesno(bool b) { return b ? "yes" : "no"; }
+void append_yesno(std::string& out, std::string_view label, bool value) {
+    out.append(label.data(), label.size());
+    out.append(value ? "yes" : "no");
+    out.push_back('\n');
+}
 
 std::string build_status(const ContentConfig& cfg, Indexer& indexer, FsWatcher& watcher,
                          Store& reader) {
@@ -48,8 +54,8 @@ std::string build_status(const ContentConfig& cfg, Indexer& indexer, FsWatcher& 
     for (size_t i = 0; i < cfg.roots.size(); i++) roots += (i ? "," : "") + cfg.roots[i];
     std::string out;
     out += "running: yes\n";
-    out += "paused: " + yesno(s.paused) + "\n";
-    out += "crawling: " + yesno(s.crawling) + "\n";
+    append_yesno(out, "paused: ", s.paused);
+    append_yesno(out, "crawling: ", s.crawling);
     out +=
         "match: " + std::string(cfg.match == MatchMode::Substring ? "substring" : "prefix") + "\n";
     out += "db: " + ContentConfig::db_path() + "\n";
@@ -59,7 +65,7 @@ std::string build_status(const ContentConfig& cfg, Indexer& indexer, FsWatcher& 
     out += "size_cap_mb: " + std::to_string(cfg.max_index_mb) + "\n";
     // Surfaced so a stalled crawl is visible in `waylaunchctl status` rather
     // than only as a line in the journal.
-    out += "size_capped: " + yesno(s.size_capped) + "\n";
+    append_yesno(out, "size_capped: ", s.size_capped);
     out += "roots: " + roots + "\n";
     out += "total_files: " + std::to_string(st.total) + "\n";
     out += "indexed_files: " + std::to_string(st.indexed) + "\n";
@@ -68,8 +74,8 @@ std::string build_status(const ContentConfig& cfg, Indexer& indexer, FsWatcher& 
     out += "errors: " + std::to_string(s.errors) + "\n";
     out += "queued: " + std::to_string(s.queued) + "\n";
     out += "watches: " + std::to_string(watcher.watch_count()) + "\n";
-    out += "watch_limit_hit: " + yesno(watcher.watch_limit_hit()) + "\n";
-    out += "watch_degraded: " + yesno(s.watch_degraded) + "\n";
+    append_yesno(out, "watch_limit_hit: ", watcher.watch_limit_hit());
+    append_yesno(out, "watch_degraded: ", s.watch_degraded);
     out += "reconcile_interval_s: " + std::to_string(s.reconcile_interval_s) + "\n";
     out += "last_reconcile_ago_s: " + std::to_string(s.last_reconcile_ago_s) + "\n";
     return out;
@@ -105,7 +111,7 @@ int main(int argc, char** argv) {
             print_help();
             return 0;
         } else if (a == "--version") {
-            std::printf("waylaunchd 0.1.0\n");
+            std::printf("waylaunchd %s\n", WAYLAUNCH_VERSION_STRING);
             return 0;
         } else {
             std::fprintf(stderr, "waylaunchd: unknown option '%s'\n", a.c_str());

@@ -37,10 +37,13 @@
 #include "system/BrightnessBackend.hpp"
 #include "system/DbusMenuBackend.hpp"
 #include "system/DndState.hpp"
+#include "system/ApplicationsBackend.hpp"
+#include "system/KdeConnectBackend.hpp"
 #include "system/NightLightBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
 #include "system/SystemBus.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
@@ -128,6 +131,12 @@ private:
     NotificationActions notificationActions_{sessionBus_};
     SystemActions power_{loop_};
     PowerProfilesBackend powerProfiles_{loop_, systemBus_};
+    // Removable drives over UDisks2 (bar-only: never constructed by the lock).
+    UDisksBackend udisks_{loop_, systemBus_};
+    // Paired phones over KDE Connect (bar-only).
+    KdeConnectBackend kdeConnect_{loop_, sessionBus_};
+    // App badges / quicklists (LauncherEntry) and D-Bus activation (bar-only).
+    ApplicationsBackend applications_{loop_, sessionBus_};
     // IP-derived coarse location lookup is bar-only; qypr-lock consumes only
     // the private cache and never opens a network connection.
     NetworkSolarLocation solarLocation_{loop_};
@@ -152,6 +161,9 @@ private:
                              .nightLight = &nightLight_,
                              .power = &power_,
                              .powerProfiles = &powerProfiles_,
+                             .udisks = &udisks_,
+                             .kdeConnect = &kdeConnect_,
+                             .applications = &applications_,
                              .idleInhibitor = &idleInhibitor_,
                              .desktopIndex = &desktopIndex_,
                              .keyboardLayout = &kbLayout_,

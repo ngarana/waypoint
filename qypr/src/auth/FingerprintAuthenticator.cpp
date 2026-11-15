@@ -1,17 +1,9 @@
+// FingerprintAuthenticator.cpp - fprintd-driven fingerprint unlock (see header).
 #include "auth/FingerprintAuthenticator.hpp"
-
-#include <security/pam_appl.h>
-#include <pwd.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <array>
-#include <chrono>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
-#include <thread>
+#include <utility>
 
 #include "core/EventLoop.hpp"
 
@@ -19,243 +11,338 @@ namespace qypr {
 
 namespace {
 
-std::string currentUser() {
-    if (const passwd* pw = getpwuid(getuid())) { return pw->pw_name; }
-    return "";
+// Permanent for this lock: no reader, no fprintd, nothing enrolled, or polkit
+// says no. Retrying cannot help, so report Unavailable at once.
+bool isFatal(const FprintdError& e) {
+    static constexpr std::array<const char*, 6> kFatal = {
+        fprintd_error::kNoSuchDevice,     fprintd_error::kServiceUnknown,
+        fprintd_error::kNoEnrolledPrints, fprintd_error::kPermissionDenied,
+        fprintd_error::kAccessDenied,     "org.freedesktop.DBus.Error.ServiceNotFound",
+    };
+    return std::ranges::any_of(kFatal, [&e](const char* name) { return e.name == name; });
 }
 
-struct ConvData {
-    EventLoop* loop = nullptr;
-    FingerprintAuthenticator::Info* info = nullptr;
-    // Set once the stack says anything (PAM_TEXT_INFO / PAM_ERROR_MSG).
-    // pam_fprintd only talks after it has claimed the reader and started
-    // verifying, so this is how the worker tells a real miss or timeout from
-    // an attempt that never reached the reader (see workerMain()).
-    bool engaged = false;
-};
-
-// Dedicated-service conversation (swaylock#445 style): every echo prompt is
-// answered with an empty reply — the pam_fprintd module never needs a typed
-// secret, it reads the finger itself. Info/error messages are SDDM-style:
-// captured here on the worker thread and posted to the loop so the status
-// line can show progress while pam_authenticate() stays blocked.
-int conversation(int numMsg, const pam_message** msg, pam_response** resp, void* appdata) {
-    if (numMsg <= 0) { return PAM_CONV_ERR; }
-    auto* data = static_cast<ConvData*>(appdata);
-
-    // NOLINTBEGIN(cppcoreguidelines-owning-memory) // PAM takes ownership via *resp
-    // NOLINTBEGIN(cppcoreguidelines-no-malloc,hicpp-no-malloc) // PAM takes ownership via *resp
-    auto* replies =
-        static_cast<pam_response*>(calloc(static_cast<size_t>(numMsg), sizeof(pam_response)));
-    // NOLINTEND(cppcoreguidelines-no-malloc,hicpp-no-malloc)
-    // NOLINTEND(cppcoreguidelines-owning-memory)
-    if (replies == nullptr) { return PAM_BUF_ERR; }
-
-    for (int i = 0; i < numMsg; ++i) {
-        switch (msg[i]->msg_style) {
-            case PAM_PROMPT_ECHO_OFF:
-            case PAM_PROMPT_ECHO_ON:
-                replies[i].resp = strdup("");
-                break;
-            case PAM_ERROR_MSG:
-            case PAM_TEXT_INFO: {
-                data->engaged = true;
-                if (data->loop != nullptr && data->info != nullptr && *data->info) {
-                    std::string text = msg[i]->msg != nullptr ? msg[i]->msg : "";
-                    const bool isError = msg[i]->msg_style == PAM_ERROR_MSG;
-                    auto cb = *data->info;
-                    data->loop->post([cb = std::move(cb), text = std::move(text), isError] {
-                        cb(text, isError);
-                    });
-                }
-                replies[i].resp = nullptr;
-                break;
-            }
-            default:
-                replies[i].resp = nullptr;
-                break;
-        }
-        replies[i].resp_retcode = 0;
-    }
-    *resp = replies;
-    return PAM_SUCCESS;
+std::string describe(const FprintdError& e) {
+    return e.message.empty() ? e.name : e.message;
 }
 
-// Hard misconfiguration: retrying is pointless, report Unavailable once.
-// PAM_AUTHINFO_UNAVAIL is deliberately absent: pam_fprintd returns it for an
-// ordinary verification timeout as well as for a missing reader, so the code
-// alone would switch fingerprint off after the first idle timeout.
-bool isHardFailure(int rc) {
-    switch (rc) {
-        case PAM_MODULE_UNKNOWN:
-        case PAM_SERVICE_ERR:
-        case PAM_USER_UNKNOWN:
-        case PAM_BUF_ERR:
-        case PAM_CONV_ERR:
-            return true;
-        default:
-            return false;
-    }
+// Statuses that ask for another touch within the same scan (done == false).
+const char* retryPrompt(const std::string& result) {
+    if (result == "verify-retry-scan") { return "Scan again"; }
+    if (result == "verify-swipe-too-short") { return "Swipe was too short, try again"; }
+    if (result == "verify-finger-not-centered") { return "Finger not centred, try again"; }
+    if (result == "verify-remove-and-retry") { return "Lift your finger and try again"; }
+    return nullptr;
 }
+
+constexpr const char* kLockedOutMessage = "Too many fingerprint attempts";
 
 }  // namespace
 
-FingerprintAuthenticator::FingerprintAuthenticator(EventLoop& loop, std::string service)
+FingerprintAuthenticator::FingerprintAuthenticator(EventLoop& loop, FprintdTransport& fprintd)
     : loop_(loop),
-      service_(std::move(service)) {}
+      fprintd_(fprintd) {
+    fprintd_.setHandlers([this](const std::string& result, bool done) { onStatus(result, done); },
+                         [this] { onVanished(); });
+}
 
 FingerprintAuthenticator::~FingerprintAuthenticator() {
-    stop();
-    if (worker_.joinable()) {
-        // A blocked pam_authenticate() (fingerprint timeout, typically 30s)
-        // must not stall unlock/exit on the loop thread. Join only a worker
-        // known to have finished; otherwise detach and let process exit reap
-        // it. Its late result is already invalidated by stop()'s generation
-        // bump, and the first thing a woken worker does is drop its result.
-        if (finished_.load()) {
-            worker_.join();
-        } else {
-            worker_.detach();
-        }
+    cancelTimer();
+    fprintd_.setHandlers({}, {});
+    // Best effort, fire-and-forget: the process is usually exiting, and fprintd
+    // drops a vanished client's claim anyway. No completion may touch `this`.
+    if (scanning_) {
+        fprintd_.verifyStop([](const FprintdError&) {});
+    }
+    if (claimed_) {
+        fprintd_.release([](const FprintdError&) {});
     }
 }
 
-bool FingerprintAuthenticator::moduleInstalled() {
-    // pam_fprintd.so lives in /usr/lib/security on Arch (with a compat
-    // /usr/lib64/security symlink); check both plus the loader's lib dir.
-    static constexpr std::array<const char*, 3> kPaths = {
-        "/usr/lib/security/pam_fprintd.so",
-        "/lib/security/pam_fprintd.so",
-        "/usr/lib64/security/pam_fprintd.so",
+FprintdTransport::Reply FingerprintAuthenticator::guard(
+    void (FingerprintAuthenticator::*handler)(const FprintdError&)) {
+    return [this, alive = std::weak_ptr<uint64_t>(run_), handler](const FprintdError& e) {
+        if (alive.expired()) { return; }
+        (this->*handler)(e);
     };
-    for (const char* p : kPaths) {
-        std::error_code ec;
-        if (std::filesystem::exists(p, ec)) { return true; }
-    }
-    return false;
-}
-
-bool FingerprintAuthenticator::serviceInstalled(const std::string& pamDir) const {
-    std::error_code ec;
-    return std::filesystem::is_regular_file(std::filesystem::path(pamDir) / service_, ec);
 }
 
 void FingerprintAuthenticator::start(Done done, Info info) {
-    if (running_.load()) { return; }
-    if (worker_.joinable()) {
-        // Reap a finished previous run without blocking: a still-blocked
-        // worker was already invalidated by stop()'s generation bump, so
-        // detach it instead of joining a potentially 30s pam_authenticate().
-        if (finished_.load()) {
-            worker_.join();
-        } else {
-            worker_.detach();
-        }
+    if (running_) { return; }
+    ++*run_;
+    done_ = std::move(done);
+    info_ = std::move(info);
+    if (lockedOut()) {
+        // No fresh attempts for a new start(): the reader is not touched.
+        trace("start refused: locked out");
+        report(Result::LockedOut, kLockedOutMessage);
+        return;
     }
-    running_.store(true);
-    finished_.store(false);
-    const uint64_t gen = generation_.load() + 1;
-    generation_.store(gen);
-    worker_ = std::thread([this, done = std::move(done), info = std::move(info), gen]() mutable {
-        // `done` binds to workerMain's const-ref (it lives in this capture,
-        // on the same thread); `info` moves (forwarded into posted lambdas).
-        workerMain(done, std::move(info), gen);
-    });
+    running_ = true;
+    silentFailures_ = 0;
+    needsRestart_ = false;
+    cancelTimer();
+    trace("start");
+    reconcile();
 }
 
 void FingerprintAuthenticator::stop() {
-    generation_.fetch_add(1);
-    running_.store(false);
-    // Deliberately no join(): called from the loop thread on every unlock /
-    // collapse, and the worker may be blocked in pam_authenticate() until its
-    // timeout. The generation bump makes any late Success a no-op.
+    if (!running_ && !claimed_ && !scanning_) { return; }
+    running_ = false;
+    ++*run_;
+    needsRestart_ = false;
+    cancelTimer();
+    trace("stop");
+    reconcile();
 }
 
-void FingerprintAuthenticator::workerMain(const Done& done, Info info, uint64_t generation) {
-    const std::string service = service_;
-    const std::string user = currentUser();
-    auto finish = [&](auto&& postFn) {
-        finished_.store(true);
-        if (generation == generation_.load()) {
-            loop_.post(std::forward<decltype(postFn)>(postFn));
-        }
-    };
-    auto stillCurrent = [&] {
-        return generation == generation_.load() && running_.load();
-    };
+void FingerprintAuthenticator::suspend(std::function<void()> ready) {
+    sleeping_ = true;
+    quiesced_ = std::move(ready);
+    cancelTimer();  // no attempts while asleep; resume() starts afresh
+    trace("suspend: ending scan, keeping claim");
+    reconcile();
+}
 
-    if (user.empty()) {
-        running_.store(false);
-        finish([done] { done(Result::Unavailable, "unknown user"); });
+void FingerprintAuthenticator::resume() {
+    sleeping_ = false;
+    quiesced_ = nullptr;  // SleepMonitor's own timeout already let sleep proceed
+    silentFailures_ = 0;
+    needsRestart_ = false;
+    trace("resume");
+    reconcile();
+}
+
+// The one place calls are issued. Order matters: end a scan before anything
+// else, release before re-claiming, and only then start the next attempt.
+void FingerprintAuthenticator::reconcile() {
+    if (inflight_) { return; }  // its completion calls back in here
+
+    if (scanning_ && (!wantScan() || needsRestart_)) {
+        inflight_ = true;
+        trace("VerifyStop");
+        fprintd_.verifyStop(guard(&FingerprintAuthenticator::onVerifyStopped));
+        return;
+    }
+    if (scanning_) { return; }  // a wanted scan is live: wait for VerifyStatus
+
+    if ((claimed_ && (!running_ || needsReclaim_)) || (!claimed_ && releaseFirst_ && wantScan())) {
+        inflight_ = true;
+        releaseFirst_ = false;
+        trace("Release");
+        fprintd_.release(guard(&FingerprintAuthenticator::onReleased));
         return;
     }
 
-    // Retry failed attempts until success, stop(), or the reader proves
-    // unusable. Consecutive attempts that never reached the reader:
-    int silentFailures = 0;
-    for (;;) {
-        ConvData data{&loop_, &info};
-        pam_conv const conv{.conv = conversation, .appdata_ptr = &data};
-        pam_handle_t* pamh = nullptr;
+    // Quiet: no scan, no call in flight. Let a pending suspend proceed.
+    if (sleeping_ && quiesced_) {
+        auto ready = std::move(quiesced_);
+        quiesced_ = nullptr;
+        trace("quiesced");
+        ready();
+    }
 
-        int rc = pam_start(service.c_str(), user.c_str(), &conv, &pamh);
-        if (rc == PAM_SUCCESS) { rc = pam_authenticate(pamh, 0); }
-        // Deliberately no pam_acct_mgmt(): this worker only *verifies identity*
-        // to return to an existing session. The shipped qypr-fingerprint
-        // service defines no `account` stack, so acct_mgmt falls through to
-        // pam_warn+deny and would turn every successful verification into a
-        // transient failure (infinite retry, never unlocks). The password path
-        // on `qypr-lock` (or `login`) keeps its own acct_mgmt untouched.
+    if (!wantScan() || timer_ >= 0) { return; }
+    inflight_ = true;
+    if (!claimed_) {
+        trace("Claim");
+        fprintd_.claim(guard(&FingerprintAuthenticator::onClaimed));
+    } else {
+        trace("VerifyStart");
+        fprintd_.verifyStart(guard(&FingerprintAuthenticator::onVerifyStarted));
+    }
+}
 
-        std::string const message = pamh != nullptr ? pam_strerror(pamh, rc) : "pam_start failed";
-        pam_end(pamh, rc);
-
-        if (!stillCurrent()) {
-            finished_.store(true);
-            return;  // stopped while blocked: drop the late result
-        }
-
-        if (rc == PAM_SUCCESS) {
-            running_.store(false);
-            finish([done] { done(Result::Success, ""); });
-            return;
-        }
-        if (isHardFailure(rc)) {
-            running_.store(false);
-            finish([done, message] { done(Result::Unavailable, message); });
-            return;
-        }
-
-        // Return codes cannot tell a miss from a reader that is out of reach.
-        // pam_fprintd answers a 30 s timeout and "no reader / no enrolled
-        // finger / reader claimed elsewhere" alike with PAM_AUTHINFO_UNAVAIL,
-        // and the shipped single-`sufficient` stack flattens every failure to
-        // PAM_PERM_DENIED anyway. What differs is whether the module spoke:
-        // it always announces "Place your ... finger on the reader" once it
-        // holds the reader. An attempt that spoke was a real mismatch or
-        // timeout — retry promptly, forever. A silent one never got that far —
-        // back off (doubling), and give up after kMaxSilentFailures in a row.
-        std::chrono::milliseconds backoff = retryBackoff_;
-        if (data.engaged) {
-            silentFailures = 0;
-        } else if (++silentFailures >= kMaxSilentFailures) {
-            running_.store(false);
-            finish([done, message] { done(Result::Unavailable, message); });
-            return;
-        } else {
-            backoff = retryBackoff_ * (1U << static_cast<unsigned>(silentFailures - 1));
-        }
-
-        // Sleep in small slices so stop() shortens the wait.
-        constexpr auto kSlice = std::chrono::milliseconds(50);
-        for (auto slept = std::chrono::milliseconds(0); slept < backoff; slept += kSlice) {
-            if (!stillCurrent()) {
-                finished_.store(true);
-                return;
+void FingerprintAuthenticator::onClaimed(const FprintdError& error) {
+    inflight_ = false;
+    if (!error.failed()) {
+        claimed_ = true;
+        needsReclaim_ = false;
+        trace("claimed");
+    } else {
+        trace("Claim failed: " + error.name + " " + error.message);
+        if (wantScan()) {
+            if (isFatal(error)) {
+                giveUp(describe(error));
+            } else {
+                // Possibly our own stale claim (a Release that failed): drop it
+                // before the next try. Harmless if someone else holds it.
+                releaseFirst_ = error.name == fprintd_error::kAlreadyInUse;
+                silentFailure(describe(error));
             }
-            std::this_thread::sleep_for(std::min(kSlice, backoff - slept));
         }
     }
+    reconcile();
+}
+
+void FingerprintAuthenticator::onVerifyStarted(const FprintdError& error) {
+    inflight_ = false;
+    if (!error.failed()) {
+        scanning_ = true;  // owed a VerifyStop from here on, wanted or not
+        trace("scanning");
+        if (wantScan()) { notify("Place your finger on the reader", false); }
+    } else {
+        trace("VerifyStart failed: " + error.name + " " + error.message);
+        if (wantScan()) {
+            if (isFatal(error)) {
+                giveUp(describe(error));
+            } else if (silentFailure(describe(error))) {
+                // Claim lost (fprintd restarted) or the device is wedged
+                // (e.g. still resuming): start over from a fresh claim.
+                needsReclaim_ = true;
+                if (error.name == fprintd_error::kClaimDevice) { claimed_ = false; }
+            }
+        }
+    }
+    reconcile();
+}
+
+void FingerprintAuthenticator::onVerifyStopped(const FprintdError& error) {
+    inflight_ = false;
+    // NoActionInProgress just means fprintd had already ended the scan (it does
+    // that itself when the system suspends). Either way nothing is owed now.
+    scanning_ = false;
+    needsRestart_ = false;
+    trace(error.failed() ? "VerifyStop: " + error.name : "stopped");
+    reconcile();
+}
+
+void FingerprintAuthenticator::onReleased(const FprintdError& error) {
+    inflight_ = false;
+    claimed_ = false;
+    trace(error.failed() ? "Release: " + error.name + " " + error.message : "released");
+    reconcile();
+}
+
+void FingerprintAuthenticator::onStatus(const std::string& result, bool done) {
+    trace("VerifyStatus " + result + (done ? " (done)" : ""));
+    if (!scanning_ || needsRestart_) { return; }  // not a live scan of ours
+    // While asleep fprintd ends the scan itself ("Cannot run while suspended",
+    // reported as verify-unknown-error); suspend() is already stopping it.
+    if (!wantScan()) { return; }
+
+    if (result == "verify-match") {
+        succeed();
+        return;
+    }
+    if (result == "verify-no-match") {
+        silentFailures_ = 0;  // the reader works; this was just the wrong finger
+        if (++misses_ >= kMaxMisses) {
+            lockOut();
+            return;
+        }
+        notify("Fingerprint not recognised", true);
+        restartScan(retryBackoff_);
+        return;
+    }
+    if (const char* prompt = retryPrompt(result)) {
+        silentFailures_ = 0;
+        notify(prompt, true);
+        if (done) { restartScan(retryBackoff_); }
+        return;
+    }
+    if (!done) { return; }  // unknown progress report: the scan continues
+
+    // verify-disconnected, verify-unknown-error, or a status we do not know
+    // that ended the scan: no evidence the reader works. Re-claim after a
+    // disconnect; a plain error only needs a new scan.
+    if (silentFailure(result)) {
+        if (result == "verify-disconnected") { needsReclaim_ = true; }
+        needsRestart_ = true;
+        reconcile();
+    }
+}
+
+void FingerprintAuthenticator::onVanished() {
+    trace("fprintd left the bus");
+    // The claim and any scan died with that fprintd instance; a call still in
+    // flight to it will fail and complete on its own.
+    claimed_ = false;
+    scanning_ = false;
+    needsRestart_ = false;
+    if (wantScan() && !silentFailure("fprintd restarted")) { return; }
+    reconcile();
+}
+
+bool FingerprintAuthenticator::silentFailure(const std::string& why) {
+    if (++silentFailures_ >= kMaxSilentFailures) {
+        giveUp(why);
+        return false;
+    }
+    armTimer(retryBackoff_ * (1U << static_cast<unsigned>(silentFailures_ - 1)));
+    return true;
+}
+
+void FingerprintAuthenticator::restartScan(std::chrono::milliseconds pause) {
+    needsRestart_ = true;
+    armTimer(pause);  // the next VerifyStart waits for this; VerifyStop does not
+    reconcile();
+}
+
+void FingerprintAuthenticator::succeed() {
+    trace("match");
+    running_ = false;
+    cancelTimer();
+    report(Result::Success, "");
+    reconcile();  // VerifyStop, then Release
+}
+
+void FingerprintAuthenticator::giveUp(const std::string& why) {
+    trace("unavailable: " + why);
+    running_ = false;
+    cancelTimer();
+    report(Result::Unavailable, why);
+    reconcile();
+}
+
+void FingerprintAuthenticator::lockOut() {
+    trace("locked out after " + std::to_string(misses_) + " wrong fingers");
+    running_ = false;
+    cancelTimer();
+    report(Result::LockedOut, kLockedOutMessage);
+    reconcile();  // VerifyStop, then Release: the reader is handed back
+}
+
+void FingerprintAuthenticator::armTimer(std::chrono::milliseconds delay) {
+    cancelTimer();
+    timer_ = loop_.addTimer(delay.count(), false, [this] {
+        timer_ = -1;  // one-shot timers are removed by the loop before firing
+        reconcile();
+    });
+}
+
+void FingerprintAuthenticator::cancelTimer() {
+    if (timer_ >= 0) {
+        loop_.removeTimer(timer_);
+        timer_ = -1;
+    }
+}
+
+// Results and prompts are posted, never called inline: the handlers unlock or
+// repaint, and must not run inside a D-Bus callback of ours. A result from a
+// run that stop() (or a later start()) ended is dropped.
+void FingerprintAuthenticator::report(Result result, std::string message) {
+    if (!done_) { return; }
+    loop_.post([run = std::weak_ptr<uint64_t>(run_), id = *run_, cb = done_, result,
+                message = std::move(message)] {
+        auto current = run.lock();
+        if (!current || *current != id) { return; }
+        cb(result, message);
+    });
+}
+
+void FingerprintAuthenticator::notify(std::string message, bool isError) {
+    if (!info_) { return; }
+    loop_.post([run = std::weak_ptr<uint64_t>(run_), id = *run_, cb = info_,
+                message = std::move(message), isError] {
+        auto current = run.lock();
+        if (!current || *current != id) { return; }
+        cb(message, isError);
+    });
+}
+
+void FingerprintAuthenticator::trace(const std::string& event) const {
+    if (trace_) { trace_(event); }
 }
 
 }  // namespace qypr

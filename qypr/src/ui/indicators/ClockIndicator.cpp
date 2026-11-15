@@ -1,3 +1,4 @@
+#include <xkbcommon/xkbcommon-keysyms.h>
 // ClockIndicator.cpp - Status bar clock indicator implementation.
 #include "ui/indicators/ClockIndicator.hpp"
 
@@ -85,7 +86,6 @@ public:
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
-        b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
         if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius))
             p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
 
@@ -227,14 +227,31 @@ public:
         return false;
     }
 
-    bool handleDrag(double x, double y) override {
+    bool handleMotion(double x, double y) override {
         hoverX_ = x;
         hoverY_ = y;
         return false;
     }
 
+    bool handleKey(uint32_t keysym) override {
+        if (keysym == XKB_KEY_Left || keysym == XKB_KEY_Page_Up) {
+            --monthOffset_;
+            return true;
+        }
+        if (keysym == XKB_KEY_Right || keysym == XKB_KEY_Page_Down) {
+            ++monthOffset_;
+            return true;
+        }
+        if (keysym == XKB_KEY_Home) {
+            monthOffset_ = 0;
+            return true;
+        }
+        return false;
+    }
+
     bool handleScroll(double, double dy) override {
-        monthOffset_ += (dy > 0 ? -1 : 1);  // scroll up = earlier month
+        if (dy == 0) { return false; }
+        monthOffset_ += (dy > 0 ? 1 : -1);  // scroll up = earlier month
         return true;
     }
 

@@ -151,6 +151,8 @@ extern int g_tests_failed;
 #include "ui/statusbar/QuickSettingsPanel.hpp"
 #include "ui/statusbar/PopoverManager.hpp"
 #include "ui/statusbar/DetailedPopover.hpp"
+#include "ui/statusbar/MenuPopover.hpp"
+#include "system/ApplicationsBackend.hpp"
 #include "ui/statusbar/SliderPopover.hpp"
 #include "core/Config.hpp"
 #include "core/Process.hpp"  // QL-5/QL-6 spawn regressions
@@ -181,7 +183,7 @@ extern int g_tests_failed;
 #include "ui/indicators/DNDIndicator.hpp"
 #include "ui/indicators/VolumeIndicator.hpp"
 #include "ui/indicators/WifiIndicator.hpp"
-#include "ui/indicators/SNITrayHost.hpp"
+#include "ui/indicators/BackgroundAppsIndicator.hpp"
 #include "ui/indicators/WorkspacesIndicator.hpp"
 #include "ui/indicators/PagerIndicator.hpp"
 #include "ui/indicators/ActiveWindowIndicator.hpp"
@@ -206,10 +208,6 @@ void mock_pam_set_expected_password(const char* p);
 void mock_pam_force_rc(int rc);
 const char* mock_pam_last_user();
 const char* mock_pam_last_service();
-void mock_fp_force_rc(int rc);
-void mock_fp_fail_n_times(int n);
-void mock_fp_silent_fail_n_times(int n);
-int mock_fp_attempts();
 
 void mock_xkb_reset();
 void mock_xkb_set_sym(uint32_t s);
@@ -220,6 +218,10 @@ void mock_xkb_set_layouts(uint32_t count);
 
 // -----------------------------------------------------------------------------
 // Tests
+// Integration tests run after static indicator registration.
+void runStatusBarFlyoutTests();
+void runStatusAreaBarTests();
+void runAppStatusBarTests();
 // -----------------------------------------------------------------------------
 
 // Temp-config helper shared by the config/theme suites.

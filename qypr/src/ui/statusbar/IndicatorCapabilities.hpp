@@ -49,6 +49,38 @@ public:
     virtual std::unique_ptr<DetailedPopover> createDetailedView() = 0;
 };
 
+// Right-click menu (Windows notification-area convention: left click shows
+// the module's flyout, right click its context menu). Routed only when
+// onSecondaryClick() did not consume the click.
+class IContextMenuProvider {
+public:
+    virtual ~IContextMenuProvider() = default;
+    virtual bool hasContextMenu() const = 0;
+    // `x,y` is the pointer, for menus that differ per sub-item.
+    virtual std::unique_ptr<DetailedPopover> createContextMenu(double x, double y) = 0;
+};
+
+// One row of the status-area overflow: a module that is relevant but passive
+// (an always-attached drive, a paired phone that is out of reach) leaves the
+// strip and is listed behind the overflow chevron instead (Plasma's Passive
+// status, Windows' hidden-icons area).
+struct OverflowEntry {
+    std::string id;        // indicator id; activating the row opens its flyout
+    std::string title;     // "SharedDrive"
+    std::string subtitle;  // "USB drive · 3.6 TB"
+    std::string iconName;  // freedesktop icon name ("" = glyph only)
+    std::string glyph;     // Nerd Font fallback
+    bool attention = false;
+};
+
+class IOverflowProvider {
+public:
+    virtual ~IOverflowProvider() = default;
+    // Non-empty `id` while this module is passive: it is then hidden from the
+    // strip by its own `visible` flag and listed in the overflow.
+    virtual OverflowEntry overflowEntry() const = 0;
+};
+
 // Frame-loop lifecycle: polling, backend pushes, activation, animation.
 class IIndicatorLifecycle {
 public:
@@ -71,13 +103,14 @@ public:
 
 // Visibility/interactivity policy: session sensitivity, lock-screen
 // allow-list (default deny, see LOCK_SECURITY_REVIEW QL-1/QL-2/QL-4),
-// QS-only applets.
+// QS-only applets, and the overflow host.
 class IIndicatorPolicy {
 public:
     virtual ~IIndicatorPolicy() = default;
     virtual bool sensitive() const = 0;
     virtual bool lockInteractive() const = 0;
     virtual bool qsOnly() const = 0;
+    virtual bool listsOverflow() const = 0;
 };
 
 }  // namespace qypr

@@ -60,6 +60,8 @@ public:
     }
     void setOnSecondary(std::function<void()> cb) { onSecondary_ = std::move(cb); }
     virtual void onDrag(double x, double y) {}
+    virtual bool canDragAt(double x, double y) const { return false; }
+    bool hasSecondaryAction() const { return static_cast<bool>(onSecondary_); }
     virtual bool onScroll(double dx, double dy) { return false; }
     virtual bool handleKey(uint32_t keysym) { return false; }
 
@@ -136,6 +138,9 @@ public:
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
     void onDrag(double x, double y) override;
+    bool canDragAt(double x, double y) const override {
+        return bounds.contains(x, y) && !iconBounds_.contains(x, y);
+    }
     bool handleKey(uint32_t keysym) override;
 
 private:
@@ -298,6 +303,9 @@ public:
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
     void onDrag(double x, double y) override;
+    bool canDragAt(double x, double y) const override {
+        return bounds.contains(x, y) && !iconBounds_.contains(x, y) && !moreBounds_.contains(x, y);
+    }
     bool handleKey(uint32_t keysym) override;
 
 private:
@@ -312,6 +320,7 @@ private:
     std::function<void()> onIconClick_;
     std::function<bool()> dimmed_;
 
+    Rect moreBounds_;
     Rect trackBounds_;
     Rect iconBounds_;
 };
@@ -327,6 +336,7 @@ public:
     std::string title() const override { return "Media"; }
     void draw(Painter& p, int64_t now) override;
     void onClick(double x, double y) override;
+    bool handleKey(uint32_t keysym) override;
 
 private:
     MprisController* mpris_ = nullptr;

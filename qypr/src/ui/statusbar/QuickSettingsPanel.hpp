@@ -26,7 +26,8 @@ public:
     // clicked (its right power strip toggles the radio instead).
     // The `backends` pointer is borrowed for the panel's lifetime.
     void buildTiles(EventLoop& loop, const SystemBackends& backends,
-                    const std::function<void()>& onOpenWifi = {});
+                    const std::function<void()>& onOpenWifi = {},
+                    const std::function<void()>& onOpenVolume = {});
 
     // Live tile refresh, driven by StatusBar::notifyBackendUpdate (the panel
     // deliberately does not own a backend callback: StatusBar owns the single
@@ -55,8 +56,8 @@ public:
     bool handleScroll(double dx, double dy) override;
     bool handleKey(uint32_t keysym) override;
     bool consumeCloseRequest() override;
-    // Persistent: QS is a deliberate panel with its own pointer-leave dismissal;
-    // it must not time out while open.
+    void handleRelease() override { activeDragTile_ = nullptr; }
+    // Persistent: dismiss by Escape, outside click, or the close button.
     int autoDismissMs() const override { return 0; }
 
     // Geometry shorthands bound to the live theme (replacing the old
@@ -74,6 +75,8 @@ public:
 
 private:
     void layoutTiles();
+    std::vector<QSTile*> interactiveTiles();
+    int focusedControl_ = -1;
 
     // Grid tile ownership, ordering, and dedupe policy. The fixed singles
     // below stay panel-owned.

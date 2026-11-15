@@ -57,7 +57,8 @@ double QuickSettingsLayout::computeContentHeight(const QSLayoutMetrics& m, bool 
                                                  const std::vector<std::unique_ptr<QSTile>>& tiles,
                                                  bool hasVolume, bool hasMedia) {
     double h = m.pad;
-    if (hasHeader) { h += kHeaderH; }
+    h += kHeaderH;  // reserve a header row for close even without account data
+    (void)hasHeader;
 
     const auto grid = gridTiles(wifiCombo, tiles);
     const int toggleCount = static_cast<int>(grid.size());
@@ -92,10 +93,10 @@ QSLayoutResult QuickSettingsLayout::layout(const Rect& popBounds, const QSLayout
     res.popBounds = popBounds;
 
     // Close button (×) at top right — a subtle circular button.
-    res.closeBounds = {.x = popBounds.x + popBounds.w - m.pad - 24.0,
-                       .y = popBounds.y + 8.0,
-                       .w = 24.0,
-                       .h = 24.0};
+    res.closeBounds = {.x = popBounds.x + popBounds.w - m.pad - 32.0,
+                       .y = popBounds.y + m.pad + 8.0,
+                       .w = 32.0,
+                       .h = 36.0};
 
     double y = popBounds.y + m.pad;
     const double contentW = popBounds.w - (2 * m.pad);
@@ -103,25 +104,25 @@ QSLayoutResult QuickSettingsLayout::layout(const Rect& popBounds, const QSLayout
 
     // 1. Header (left side) & Power button (right side)
     constexpr double kPowerW = 52.0;
-    const double headerW = contentW - kPowerW - m.gap;
+    const double headerW = contentW - kPowerW - 32.0 - 2.0 * m.gap;
     if (header != nullptr) {
         header->bounds = {.x = popBounds.x + m.pad, .y = y, .w = headerW, .h = kHeaderH};
     }
 
     if (power != nullptr) {
-        const double px = popBounds.x + popBounds.w - m.pad - kPowerW;
+        const double px = popBounds.x + popBounds.w - m.pad - kPowerW - 32.0 - m.gap;
         res.powerBounds = {.x = px, .y = y, .w = kPowerW, .h = kHeaderH};
         power->bounds = res.powerBounds;
     }
 
-    y += kHeaderH + m.gap;
+    y += kHeaderH;
 
     // 2. 3-Column Toggle Grid
     const auto grid = gridTiles(wifiCombo, tiles);
     const double rowH = gridRowHeight(m, grid, colW);
 
     int col = 0;
-    double rowY = y;
+    double rowY = y + m.gap;
     for (auto* tile : grid) {
         if (col >= kGridCols) {
             col = 0;

@@ -22,6 +22,10 @@ struct ColorConfig {
     std::string success = "#a6e3a1";
     std::string border = "#45475a";
     std::string selection = "#45475a";
+    // Empty values follow the effective accent/foreground colors, including
+    // colors supplied by a live Matugen theme.
+    std::string switcher_selected_outline;
+    std::string switcher_unselected_outline;
 
     bool operator==(const ColorConfig&) const = default;
 };
@@ -125,6 +129,9 @@ struct AppSwitcherConfig {
     int card_size = 104;
     int corner_radius = 20;
     bool show_app_names = true;
+    bool previews = true;
+    bool live_previews = true;
+    int preview_height = 160;
     bool group_by_app = true;
     bool quick_actions = true;
     // Optional shell command run when a window is activated, in addition to the

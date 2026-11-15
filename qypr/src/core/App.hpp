@@ -6,6 +6,7 @@
 #pragma once
 
 #include "auth/FingerprintAuthenticator.hpp"
+#include "auth/FprintdDbus.hpp"
 #include "auth/PamAuthenticator.hpp"
 #include "core/EventLoop.hpp"
 #include "core/Interfaces.hpp"
@@ -18,6 +19,7 @@
 #include "system/BrightnessBackend.hpp"
 #include "system/DndState.hpp"
 #include "system/SNIBackend.hpp"
+#include "system/SleepMonitor.hpp"
 #include "system/SystemBus.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
@@ -50,16 +52,25 @@ public:
     // session. Runs for `seconds` and reports whether frames were produced.
     int videoTest(int seconds = 6);
 
+    // Exercise fingerprint verification and its suspend/resume handling
+    // without locking the session: claims the reader, logs every transition
+    // with wall-clock timestamps (to line up with the journal), and exits on
+    // a match or after `seconds` of awake time. Never unlocks anything.
+    int fingerprintTest(int seconds = 60);
+
     // RenderHost
     void invalidate() override;
     void requestUnlock() override;
 
 private:
+    // Wire fingerprint unlock to the sleep monitor; the first scan starts once
+    // the monitor knows the machine is awake.
+    void startFingerprintUnlock();
+
     EventLoop loop_;
     WaylandDisplay display_;
     LockSession lock_;
     PamAuthenticator pam_;
-    FingerprintAuthenticator fingerprint_{loop_};
     SystemActions power_{loop_};
     MprisController mpris_;
     AudioController audio_;
@@ -71,6 +82,12 @@ private:
     // snapshots only).
     SystemBus systemBus_{loop_};
     SystemBus sessionBus_{loop_, BusKind::Session};
+    // Fingerprint unlock: fprintd over the system bus, paused around suspend
+    // (docs/FINGERPRINT.md). Declared after the bus and before shell_, so it is
+    // destroyed after the LockController that stops it and before the bus.
+    SleepMonitor sleep_{loop_, systemBus_};
+    FprintdDbus fprintd_{loop_, systemBus_};
+    FingerprintAuthenticator fingerprint_{loop_, fprintd_};
     // The monitor is receive-only; lock-screen dismissal uses this separate
     // sender connection to issue the standard CloseNotification call.
     NotificationActions notificationActions_{sessionBus_};

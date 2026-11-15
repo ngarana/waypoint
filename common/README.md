@@ -17,6 +17,7 @@ wiring stay in each consumer — only the *data and units* below are shared.
 | `protocols/wlr-layer-shell-unstable-v1.xml` | upstream v5 | `get_layer_surface` has a `namespace` arg — a C++ keyword; consumers firewall it at codegen |
 | `protocols/wlr-foreign-toplevel-management-unstable-v1.xml` | qypr's copy (newer: `finished` destructor type, `fullscreen since="2"`) | |
 | `protocols/wlr-screencopy-unstable-v1.xml` | waylaunch's copy (backdrop blur) | unused by qypr (vendored for the union) |
+| `protocols/hyprland-toplevel-export-v1.xml` | hyprland-protocols 0.8.0 | waylaunch's optional per-window previews |
 | `protocols/wlr-gamma-control-unstable-v1.xml` | qypr's copy (night light) | unused by waylaunch (vendored for the union) |
 | `core/EventLoop.hpp` / `.cpp` | qypr's epoll reactor | fd/timer/post multiplexing; `addFd`/`addTimer`/`post`/`addPrepare` |
 | `core/Process.hpp` / `.cpp` | qypr's I3 spawn primitive | `posix_spawn`, absolute paths, `SIGDEF`, pidfd reaping; `env_add`/`devnull_stdio` options for hook commands; the single contract also covers captured runs (`runCapture`), `commandExists`, and loop-less daemon launch (`spawnDaemon`) |

@@ -63,10 +63,17 @@ git clone https://github.com/yourusername/waylaunch.git
 cd waylaunch
 cmake -B build
 cmake --build build
+./build/waylaunch --version
 
 # Install
 sudo cmake --install build
 ```
+
+The version comes from `project(... VERSION ...)` in `CMakeLists.txt` and is
+shared by `waylaunch`, `waylaunchd`, and `waylaunchctl`. For a pre-release
+build, pass `-DWAYLAUNCH_VERSION_EXTRA=-rc.1` when configuring. Product tags
+and shipping steps are documented in the repository's
+[release guide](../docs/RELEASING.md).
 
 ## Usage
 
@@ -92,6 +99,11 @@ waylaunch --power
 
 # Debug output to stderr
 waylaunch --debug
+
+# Show the installed product version
+waylaunch --version
+waylaunchd --version
+waylaunchctl --version
 ```
 
 ### App switcher (Alt+Tab)
@@ -100,14 +112,20 @@ waylaunch --debug
 full-screen overlay that grabs the keyboard and
 lists open windows grouped by application, most-recently-used first, with the
 previous app preselected — so a quick Alt+Tab flips to the last window.
+Each card has a neutral outline; the selected card adds an accent fill and a
+stronger outline.
+Set `[theme.colors].switcher_selected_outline` and
+`[theme.colors].switcher_unselected_outline` to `#rrggbb` values to customize
+the outline colors independently. Leave either empty to follow the effective
+accent or foreground color (including Matugen updates).
 
 Bind it in Hyprland (`~/.config/hypr/hyprland.conf`):
 
 ```ini
 # Alt+Tab → app switcher. Hold Alt and tap Tab to cycle; release Alt to confirm.
 bind = ALT, Tab, exec, waylaunch --switch
-# Optional: also open it going the other way (then Shift+Tab / ` cycles back).
-bind = ALT SHIFT, Tab, exec, waylaunch --switch
+# Optional: start from the far end when cycling backwards.
+bind = ALT SHIFT, Tab, exec, waylaunch --switch --reverse
 ```
 
 How it works: the overlay maps as a `keyboard_interactivity: exclusive` layer
@@ -117,11 +135,13 @@ Because Hyprland's keybind consumes each Tab before the surface sees it, a
 repeated Alt+Tab re-runs `waylaunch --switch`, which signals the already-running
 overlay to advance (single-instance via `$XDG_RUNTIME_DIR/waylaunch-switcher.lock`)
 rather than stacking a new one. Inside the switcher: **Tab/→/`** next · **Shift+Tab/←**
-previous · **release Alt / Enter / Space** confirm · **Esc** cancel · **q** close
-the app · **h** minimize · **1–9** jump.
+previous · **↑/↓** move by row · **release Alt / Enter / Space** confirm · **Esc**
+cancel · **q** close the app · **h** minimize · **1–9** jump.
 
 Requires a compositor that implements `wlr-foreign-toplevel-management` (Hyprland,
-sway, and other wlroots-based compositors do).
+sway, and other wlroots-based compositors do). Live window thumbnails use
+Hyprland's optional toplevel-export protocol; other compositors and cold caches
+show app icons instead.
 
 **Cross-workspace:** activating a window is a standard `wlr-foreign-toplevel`
 request; most compositors follow it to the window's workspace. On Hyprland,
@@ -277,7 +297,7 @@ icon    = "system-lock-screen"
 | `[search]` | Provider toggles, file search roots/excludes |
 | `[history]` | Persistent recent searches and frecency retention/decay |
 | `[content]` | Content-index daemon: roots, excludes, privacy paths, size caps, match mode, reconcile interval |
-| `[app_switcher]` | Alt+Tab overlay config (modifier, icon size, grouping, quick actions) |
+| `[app_switcher]` | Alt+Tab cards, live previews, grouping, and quick actions |
 | `[power]` | Power overlay: action list/order, confirmation toggle, command + text overrides |
 | `[[commands]]` | Custom shell commands shown as results |
 
@@ -289,8 +309,11 @@ enabled        = true     # enable Alt+Tab overlay
 modifier       = "Super"  # "Super" or "Alt"
 icon_size      = 64       # icon size in px
 card_size      = 104      # card size in px
-corner_radius  = 20       # glass HUD corner radius
-show_app_names = true     # show application title below HUD
+corner_radius  = 20       # glass panel corner radius
+show_app_names = true     # show app icon and window title in each card
+previews       = true     # use window thumbnails when Hyprland supports export
+live_previews  = true     # refresh selected at 15 fps, others once per second
+preview_height = 160      # thumbnail height in px (minimum 64)
 group_by_app   = true     # true: one entry per app
 quick_actions  = true     # enable Q (quit app) and H (hide/minimize)
 hypr_address_focus = true # Hyprland: follow to the window's workspace via its

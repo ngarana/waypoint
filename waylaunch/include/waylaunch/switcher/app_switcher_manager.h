@@ -25,6 +25,8 @@ class AppSwitcherManager : public IToplevelObserver {
 
     void navigate_next();
     void navigate_prev();
+    void set_row_stride(size_t stride) { row_stride_ = stride == 0 ? 1 : stride; }
+    void navigate_row(int direction);
     void jump_to(size_t index);
 
     void quit_selected();
@@ -53,6 +55,7 @@ class AppSwitcherManager : public IToplevelObserver {
     IToplevelBackend* backend_ = nullptr;
     std::vector<AppGroup> groups_;
     size_t selected_index_ = 0;
+    size_t row_stride_ = 1;
     bool visible_ = false;
     bool group_by_app_ = true;
     uint64_t clock_counter_ = 0;

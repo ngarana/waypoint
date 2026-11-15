@@ -4,7 +4,9 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 
+#include <array>
 #include <cstdio>
+#include <ctime>
 #include <optional>
 #include <string>
 
@@ -24,13 +26,30 @@ void renderToPng(qypr::Shell& shell, const std::string& path, int w, int h) {
     cairo_surface_write_to_png(surface, path.c_str());
     cairo_surface_destroy(surface);
 }
+
+// --fingerprint-test output: wall-clock time to the millisecond, so each line
+// can be matched against `journalctl -o short-precise` (fprintd, kernel PM).
+void probeLog(const char* what, const char* detail = nullptr) {
+    timespec ts{};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    tm local{};
+    localtime_r(&ts.tv_sec, &local);
+    std::array<char, 16> hms{};
+    std::strftime(hms.data(), hms.size(), "%H:%M:%S", &local);
+    if (detail != nullptr && *detail != '\0') {
+        std::fprintf(stderr, "fingerprint-test %s.%03ld %s: %s\n", hms.data(),
+                     ts.tv_nsec / 1'000'000, what, detail);
+    } else {
+        std::fprintf(stderr, "fingerprint-test %s.%03ld %s\n", hms.data(), ts.tv_nsec / 1'000'000,
+                     what);
+    }
+}
 }  // namespace
 
 App::App()
     : display_(loop_),
       lock_(display_),
       pam_(loop_, std::string(PamAuthenticator::passwordService())),
-      fingerprint_(loop_),
       audio_(mpris_),
       video_(loop_, *this),
       shell_(loop_, *this, pam_, power_, backends_, &fingerprint_) {
@@ -85,20 +104,13 @@ int App::run() {
 
     lockRuntime_.startBackends(backends_, notifications_);
 
-    // Fingerprint unlock races password auth (swaylock#445 pattern): start the
-    // background pam_fprintd attempt now. If no finger is enrolled or there is
-    // no reader, the worker gives up after a few silent attempts and the lock
-    // stays password-only. The static checks skip the thread entirely on
-    // systems without fprintd or without /etc/pam.d/qypr-fingerprint.
-    if (FingerprintAuthenticator::moduleInstalled() && fingerprint_.serviceInstalled()) {
-        // The race only works if the password stack has no pam_fprintd of its
-        // own; "login" usually does once fingerprint login is set up, and then
-        // a typed password waits for a finger instead (docs/FINGERPRINT.md).
-        if (pam_.service() == "login") {
-            std::fprintf(stderr, "qypr-lock: password auth on PAM service 'login'; if it includes "
-                                 "pam_fprintd, install pam/qypr-lock to /etc/pam.d/qypr-lock\n");
-        }
-        shell_.lockScreen().startFingerprint();
+    // Fingerprint unlock races password auth. It needs nothing installed beyond
+    // fprintd: with no reader or no enrolled finger fprintd says so and the
+    // lock stays password-only. `[lock] fingerprint = false` turns it off.
+    if (config.getBool("lock", "fingerprint", true)) {
+        startFingerprintUnlock();
+    } else {
+        std::fprintf(stderr, "qypr-lock: fingerprint unlock disabled ([lock] fingerprint)\n");
     }
 
     // Lock runtime consumes only the bar's private cached coordinates. Network
@@ -227,6 +239,76 @@ int App::videoTest(int seconds) {
         std::fprintf(stderr, "video-test: wrote /tmp/qypr-videoframe.png\n");
     }
     return video_.hasFrame() ? 0 : 2;
+}
+
+void App::startFingerprintUnlock() {
+    // The race only works if the password stack has no pam_fprintd of its own;
+    // "login" usually does once fingerprint login is set up, and then a typed
+    // password waits behind a scan that also takes the reader from us.
+    if (pam_.service() == "login") {
+        std::fprintf(stderr, "qypr-lock: password auth on PAM service 'login'; if it includes "
+                             "pam_fprintd, install pam/qypr-lock to /etc/pam.d/qypr-lock\n");
+    }
+    sleep_.setHandlers(
+        // End the scan before the machine sleeps; the inhibitor holds the
+        // suspend until fprintd has acknowledged (or SleepMonitor's timeout).
+        [this](SleepMonitor::Ready ready) { fingerprint_.suspend(std::move(ready)); },
+        // Awake — first at launch, then after every resume: resume a paused
+        // scan, or (re)start one that never ran or gave up while the reader
+        // was out of reach. LockController skips it once an unlock is underway.
+        [this] {
+            fingerprint_.resume();
+            shell_.lockScreen().startFingerprint();
+            invalidate();
+        });
+    sleep_.start();
+}
+
+int App::fingerprintTest(int seconds) {
+    const char* unique = nullptr;
+    if (systemBus_.available()) { sd_bus_get_unique_name(systemBus_.get(), &unique); }
+    probeLog("system bus name", unique != nullptr ? unique : "(no system bus)");
+
+    int status = 2;  // timed out without a match
+    fingerprint_.setTrace([](const std::string& event) { probeLog("fprintd", event.c_str()); });
+    auto start = [this, &status] {
+        fingerprint_.start(
+            [this, &status](FingerprintAuthenticator::Result result, const std::string& message) {
+                const bool ok = result == FingerprintAuthenticator::Result::Success;
+                const char* what = "result: unavailable";
+                if (ok) {
+                    what = "result: MATCH";
+                } else if (result == FingerprintAuthenticator::Result::LockedOut) {
+                    what = "result: locked out";
+                }
+                probeLog(what, message.c_str());
+                status = ok ? 0 : 3;
+                loop_.quit();
+            },
+            [](const std::string& message, bool isError) {
+                probeLog(isError ? "prompt (error)" : "prompt", message.c_str());
+            });
+    };
+    // Same sequence as startFingerprintUnlock(), with every step logged.
+    sleep_.setHandlers(
+        [this](SleepMonitor::Ready ready) {
+            probeLog("PrepareForSleep(true)");
+            fingerprint_.suspend([ready = std::move(ready)] {
+                probeLog("quiesced; releasing sleep inhibitor");
+                ready();
+            });
+        },
+        [this, start] {
+            probeLog("awake");
+            fingerprint_.resume();
+            if (!fingerprint_.running()) { start(); }
+        });
+    probeLog(sleep_.start() ? "sleep monitor active" : "sleep monitor unavailable");
+    loop_.addTimer(static_cast<int64_t>(seconds) * 1000, false, [this] { loop_.quit(); });
+    loop_.run();
+    probeLog(status == 2 ? "done: no match before timeout" : "done");
+    fingerprint_.stop();
+    return status;
 }
 
 void App::setIdleTimeout(int seconds) {

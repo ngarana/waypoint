@@ -2,6 +2,12 @@
 // Split verbatim from tests/unit_tests.cpp; bodies unchanged.
 #include "test_framework.hpp"
 
+#include <algorithm>
+#include <deque>
+#include <functional>
+#include <utility>
+#include <vector>
+
 TEST(LockScreenInputHandling) {
     qypr::EventLoop loop;
     qypr::App app;
@@ -467,149 +473,331 @@ TEST(LockInteractionAllowList) {
     cairo_surface_destroy(surf);
 }
 
-// Fingerprint unlock (docs/FINGERPRINT.md): the background worker on the
-// dedicated qypr-fingerprint service unlocks without any password typed.
-// Mirrors LockScreenUnlockGating's spy-host shape; the Done + Info callbacks
-// arrive via loop.post, so the test pumps dispatchPosted() while waiting.
-TEST(FingerprintSuccessUnlocksWithoutPassword) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
+// Fingerprint unlock (docs/FINGERPRINT.md) is driven against a scripted
+// fprintd: FakeFprintd records each D-Bus call and answers it on the next loop
+// pass, as the bus would, and tests emit VerifyStatus the way the reader does.
+// Everything runs on the loop thread, so pumpUntil() simply runs the loop
+// (posted replies and back-off timers both fire) until a condition holds.
+namespace {
 
-    mock_pam_reset();
-    mock_pam_set_expected_password("open-sesame");
+struct FakeFprintd : qypr::FprintdTransport {
+    explicit FakeFprintd(qypr::EventLoop& l) : loop(l) {}
 
-    screen.startFingerprint();
-    for (int i = 0; i < 1000 && fp.running(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
+    void setHandlers(StatusHandler s, VanishedHandler v) override {
+        status = std::move(s);
+        vanished = std::move(v);
     }
-    loop.dispatchPosted();
-
-    EXPECT_FALSE(fp.running());
-    EXPECT_EQ(host.unlocks, 1);
-    EXPECT_TRUE(screen.unlocking());
-    EXPECT_EQ(std::string(mock_pam_last_service()), std::string("qypr-fingerprint"));
-}
-
-// A hard misconfiguration (missing service file, no device) reports
-// Unavailable: no unlock, fingerprint UI disabled, password auth unaffected.
-TEST(FingerprintUnavailableStaysPasswordOnly) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
-
-    mock_pam_reset();
-    mock_pam_set_expected_password("open-sesame");
-    mock_fp_force_rc(PAM_SERVICE_ERR);
-
-    screen.startFingerprint();
-    for (int i = 0; i < 1000 && fp.running(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
+    void claim(Reply done) override {
+        calls.emplace_back("Claim");
+        qypr::FprintdError const e = next(claimErrors);
+        if (!e.failed()) { claimed = true; }
+        answer(std::move(done), e);
     }
-    loop.dispatchPosted();
-    mock_fp_force_rc(-1);
+    void verifyStart(Reply done) override {
+        calls.emplace_back("VerifyStart");
+        qypr::FprintdError const e =
+            claimed ? next(startErrors)
+                    : qypr::FprintdError{.name = qypr::fprintd_error::kClaimDevice, .message = ""};
+        if (!e.failed()) { verifying = true; }
+        answer(std::move(done), e);
+    }
+    void verifyStop(Reply done) override {
+        calls.emplace_back("VerifyStop");
+        bool const was = verifying;
+        verifying = false;
+        answer(std::move(done),
+               was ? qypr::FprintdError{}
+                   : qypr::FprintdError{.name = qypr::fprintd_error::kNoActionInProgress,
+                                        .message = ""});
+    }
+    void release(Reply done) override {
+        calls.emplace_back("Release");
+        bool const was = claimed;
+        claimed = false;
+        verifying = false;
+        answer(std::move(done),
+               was ? qypr::FprintdError{}
+                   : qypr::FprintdError{.name = qypr::fprintd_error::kClaimDevice, .message = ""});
+    }
 
-    EXPECT_EQ(host.unlocks, 0);
-    EXPECT_FALSE(screen.unlocking());
-
-    // Password auth still unlocks exactly once afterwards.
-    screen.password().clear();
-    screen.password().append("open-sesame");
-    screen.submitPassword();
-    while (pam.busy()) {}
-    loop.dispatchPosted();
-    EXPECT_EQ(host.unlocks, 1);
-    EXPECT_TRUE(screen.unlocking());
-}
-
-// Transient mismatches retry: each failed attempt still drives the SDDM-style
-// info conversation ("Place your finger..."), which the controller surfaces as
-// the Prompting state, before a later attempt succeeds and unlocks.
-TEST(FingerprintRetryShowsPromptThenUnlocks) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
-
-    mock_pam_reset();
-    mock_fp_fail_n_times(2);
-
-    screen.startFingerprint();
-    bool sawPrompt = false;
-    for (int i = 0; i < 2000 && host.unlocks == 0; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
-        if (screen.controller_.fingerprint_ == qypr::FingerprintState::Prompting) {
-            sawPrompt = true;
+    // The reader reports on the live scan (done = the scan is over).
+    void emit(const std::string& result, bool done = true) {
+        loop.post([this, result, done] {
+            if (status) { status(result, done); }
+        });
+    }
+    [[nodiscard]] int count(const std::string& call) const {
+        return static_cast<int>(std::count(calls.begin(), calls.end(), call));
+    }
+    [[nodiscard]] std::string sequence() const {
+        std::string out;
+        for (const std::string& c : calls) { out += (out.empty() ? "" : ",") + c; }
+        return out;
+    }
+    // While `hold` is set, replies wait for flush() — a slow fprintd.
+    void flush() {
+        auto pending = std::move(held);
+        held.clear();
+        for (auto& [done, e] : pending) {
+            loop.post([done = std::move(done), e = e] { done(e); });
         }
     }
-    loop.dispatchPosted();
 
-    EXPECT_TRUE(sawPrompt);
-    EXPECT_EQ(host.unlocks, 1);
-    EXPECT_TRUE(screen.unlocking());
+    static qypr::FprintdError next(std::deque<qypr::FprintdError>& queue) {
+        if (queue.empty()) { return {}; }
+        qypr::FprintdError e = queue.front();
+        queue.pop_front();
+        return e;
+    }
+    void answer(Reply done, const qypr::FprintdError& e) {
+        if (hold) {
+            held.emplace_back(std::move(done), e);
+            return;
+        }
+        loop.post([done = std::move(done), e] { done(e); });
+    }
+
+    qypr::EventLoop& loop;
+    StatusHandler status;
+    VanishedHandler vanished;
+    std::vector<std::string> calls;
+    std::deque<qypr::FprintdError> claimErrors;  // scripted failures, oldest first
+    std::deque<qypr::FprintdError> startErrors;
+    bool claimed = false;
+    bool verifying = false;
+    bool hold = false;
+    std::vector<std::pair<Reply, qypr::FprintdError>> held;
+};
+
+qypr::FprintdError readerBusy() {
+    return {.name = qypr::fprintd_error::kAlreadyInUse, .message = "Device was already claimed"};
 }
 
-// The race policy: a correct password unlocks exactly once while the finger
-// worker is still retrying, and the loser's late success never double-unlocks.
-TEST(PasswordSuccessStopsFingerprintRace) {
+bool pumpUntil(qypr::EventLoop& loop, const std::function<bool()>& cond, int ms = 2000) {
+    if (cond()) { return true; }
+    int const poll = loop.addTimer(1, true, [&] {
+        if (cond()) { loop.quit(); }
+    });
+    int const deadline = loop.addTimer(ms, false, [&] { loop.quit(); });
+    loop.run();
+    loop.removeTimer(poll);
+    loop.removeTimer(deadline);
+    return cond();
+}
+
+void pumpFor(qypr::EventLoop& loop, int ms) {
+    pumpUntil(loop, [] { return false; }, ms);
+}
+
+struct FpHost : qypr::RenderHost {
+    int unlocks = 0;
+    void invalidate() override {}
+    void requestUnlock() override { ++unlocks; }
+};
+
+// Rig shared by the tests: a lock screen whose finger side talks to `fprintd`.
+struct FpRig {
     qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
+    FpHost host;
+    qypr::PamAuthenticator pam{loop};
+    FakeFprintd fprintd{loop};
+    qypr::FingerprintAuthenticator fp{loop, fprintd};
+    qypr::SystemActions power{loop};
+    qypr::LockScreen screen{loop, host, pam, power, &fp};
 
-    mock_pam_reset();
-    mock_pam_set_expected_password("open-sesame");
-    mock_fp_fail_n_times(50);  // finger keeps missing while the password lands
+    FpRig() { fp.retryBackoff_ = std::chrono::milliseconds(1); }
 
-    screen.startFingerprint();
-    screen.password().clear();
-    screen.password().append("open-sesame");
-    screen.submitPassword();
-    while (pam.busy()) {}
-    for (int i = 0; i < 200 && host.unlocks == 0; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
+    bool scanning() {
+        return pumpUntil(loop, [&] { return fprintd.verifying; });
     }
-    loop.dispatchPosted();
-
-    EXPECT_EQ(host.unlocks, 1);
-
-    // Let the finger worker finish in the background; unlocks must stay at 1.
-    mock_fp_fail_n_times(0);
-    for (int i = 0; i < 200; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
+    bool unlockedBy(const std::string& password) {
+        mock_pam_reset();
+        mock_pam_set_expected_password(password.c_str());
+        screen.password().clear();
+        screen.password().append(password);
+        screen.submitPassword();
+        return pumpUntil(loop, [&] { return host.unlocks == 1; });
     }
-    EXPECT_EQ(host.unlocks, 1);
+    // `n` wrong fingers in a row. Each is followed by the next scan, or — once
+    // the miss budget is spent — by the authenticator stopping.
+    void miss(int n) {
+        for (int i = 0; i < n; ++i) {
+            EXPECT_TRUE(scanning());
+            int const starts = fprintd.count("VerifyStart");
+            fprintd.emit("verify-no-match");
+            EXPECT_TRUE(pumpUntil(
+                loop, [&] { return fprintd.count("VerifyStart") > starts || !fp.running(); }));
+        }
+    }
+    bool lockedOutAndReleased() {
+        return pumpUntil(loop, [&] {
+            return !fprintd.claimed && !fp.inflight_ &&
+                   screen.controller_.fingerprint_ == qypr::FingerprintState::Disabled;
+        });
+    }
+};
+
+}  // namespace
+
+// A touch unlocks without any password; the reader is then handed back: the
+// scan stopped first, then the claim released (fprintd requires that order).
+TEST(FingerprintSuccessUnlocksWithoutPassword) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    pumpFor(rig.loop, 5);  // the "Place your finger" prompt is posted
+    EXPECT_TRUE(rig.screen.controller_.fingerprint_ == qypr::FingerprintState::Prompting);
+
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1 && !rig.fprintd.claimed; }));
+    EXPECT_FALSE(rig.fp.running());
+    EXPECT_TRUE(rig.screen.unlocking());
+    EXPECT_EQ(rig.fprintd.sequence(), std::string("Claim,VerifyStart,VerifyStop,Release"));
+}
+
+// No reader: Unavailable at once (no retry loop), fingerprint UI off, and the
+// password still unlocks exactly once.
+TEST(FingerprintUnavailableStaysPasswordOnly) {
+    FpRig rig;
+    rig.fprintd.claimErrors.push_back(
+        {.name = qypr::fprintd_error::kNoSuchDevice, .message = "No devices available"});
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return !rig.fp.running(); }));
+    pumpFor(rig.loop, 20);
+    EXPECT_EQ(rig.fprintd.count("Claim"), 1);
+    EXPECT_FALSE(rig.screen.controller_.fingerprintActive());
+    EXPECT_EQ(rig.host.unlocks, 0);
+
+    EXPECT_TRUE(rig.unlockedBy("open-sesame"));
+    EXPECT_TRUE(rig.screen.unlocking());
+}
+
+// Nothing enrolled: fprintd refuses VerifyStart. Give up, and do not keep the
+// reader claimed (sudo/polkit fingerprint prompts need it).
+TEST(FingerprintWithoutEnrolledPrintsReleasesReader) {
+    FpRig rig;
+    rig.fprintd.startErrors.push_back(
+        {.name = qypr::fprintd_error::kNoEnrolledPrints, .message = "No enrolled prints"});
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return !rig.fp.running() && !rig.fprintd.claimed; }));
+    EXPECT_EQ(rig.fprintd.sequence(), std::string("Claim,VerifyStart,Release"));
+    pumpFor(rig.loop, 5);
+    EXPECT_FALSE(rig.screen.controller_.fingerprintActive());
+}
+
+// A wrong finger shows the error state, then a new scan starts on the same
+// claim, and a later touch unlocks.
+TEST(FingerprintMissShowsErrorThenRetries) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    rig.fprintd.emit("verify-no-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.screen.controller_.fingerprintError_; }));
+    EXPECT_TRUE(pumpUntil(
+        rig.loop, [&] { return rig.fprintd.count("VerifyStart") == 2 && rig.fprintd.verifying; }));
+    EXPECT_EQ(rig.fprintd.count("Claim"), 1);
+
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
+}
+
+// Up to the limit, a wrong finger only costs a retry: the right one still
+// unlocks on the last allowed scan.
+TEST(FingerprintMatchWithinMissBudgetUnlocks) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    rig.miss(qypr::FingerprintAuthenticator::kMaxMisses - 1);
+    EXPECT_TRUE(rig.fp.running());
+    EXPECT_TRUE(rig.scanning());
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
+}
+
+// The kMaxMisses-th wrong finger locks fingerprint out: the reader is handed
+// back, the status line says why, later touches are ignored, and only the
+// password unlocks.
+TEST(FingerprintLocksOutAfterTooManyMisses) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    rig.miss(qypr::FingerprintAuthenticator::kMaxMisses);
+    EXPECT_TRUE(rig.lockedOutAndReleased());
+    EXPECT_TRUE(rig.fp.lockedOut());
+    EXPECT_FALSE(rig.fp.running());
+    EXPECT_EQ(rig.fprintd.count("VerifyStart"), qypr::FingerprintAuthenticator::kMaxMisses);
+    EXPECT_TRUE(rig.screen.controller_.hasError_);
+    EXPECT_EQ(rig.screen.controller_.statusMessage_,
+              std::string("Too many fingerprint attempts. Enter your password."));
+
+    rig.fprintd.emit("verify-match");  // not a scan of ours any more
+    pumpFor(rig.loop, 20);
+    EXPECT_EQ(rig.host.unlocks, 0);
+    EXPECT_TRUE(rig.unlockedBy("open-sesame"));
+}
+
+// Neither a suspend/resume nor a stop/start buys fresh attempts, and once
+// locked out the reader is never claimed again — not by the restart the App's
+// resume handler asks for, nor by a direct start().
+TEST(FingerprintLockoutSurvivesSuspendAndRestart) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    rig.miss(2);
+
+    bool ready = false;
+    rig.fp.suspend([&] { ready = true; });
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return ready; }));
+    rig.fp.resume();
+    rig.miss(1);
+
+    rig.screen.stopFingerprint();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return !rig.fprintd.claimed && !rig.fp.inflight_; }));
+    rig.screen.startFingerprint();
+    rig.miss(qypr::FingerprintAuthenticator::kMaxMisses - 3);
+    EXPECT_TRUE(rig.lockedOutAndReleased());
+    EXPECT_TRUE(rig.fp.lockedOut());
+
+    int const claims = rig.fprintd.count("Claim");
+    ready = false;
+    rig.fp.suspend([&] { ready = true; });
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return ready; }));
+    rig.fp.resume();
+    rig.screen.startFingerprint();  // what App's awake handler does
+    bool refused = false;
+    rig.fp.stop();
+    rig.fp.start([&](qypr::FingerprintAuthenticator::Result result, const std::string&) {
+        refused = result == qypr::FingerprintAuthenticator::Result::LockedOut;
+    });
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return refused; }));
+    pumpFor(rig.loop, 20);
+    EXPECT_EQ(rig.fprintd.count("Claim"), claims);
+    EXPECT_FALSE(rig.fp.running());
+    EXPECT_TRUE(rig.unlockedBy("open-sesame"));
+}
+
+// "Try again" statuses keep the same scan running (done = false).
+TEST(FingerprintRetryPromptKeepsScanning) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    rig.fprintd.emit("verify-finger-not-centered", false);
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.screen.controller_.fingerprintError_; }));
+    EXPECT_EQ(rig.fprintd.count("VerifyStop"), 0);
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
+}
+
+// The race policy: a correct password unlocks exactly once, the scan is
+// stopped and the reader released, and a late finger result changes nothing.
+TEST(PasswordSuccessStopsFingerprintRace) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    EXPECT_TRUE(rig.unlockedBy("open-sesame"));
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return !rig.fprintd.claimed; }));
+    EXPECT_EQ(rig.fprintd.sequence(), std::string("Claim,VerifyStart,VerifyStop,Release"));
+
+    rig.fprintd.emit("verify-match");
+    pumpFor(rig.loop, 20);
+    EXPECT_EQ(rig.host.unlocks, 1);
 }
 
 // The password must be checked on a stack without pam_fprintd, or a typed
@@ -655,131 +843,147 @@ TEST(PasswordServicePrefersDedicatedStack) {
     std::filesystem::remove_all(pamDir);
 }
 
-// Attempts that never reach the reader (no device, no enrolled finger, reader
-// claimed elsewhere, or the shipped `sufficient` stack's flat PERM_DENIED) are
-// silent. They must not spin forever: back off, then report Unavailable after
-// kMaxSilentFailures in a row — fingerprint UI off, password still unlocks.
+// A reader that never becomes reachable (claimed by another client the whole
+// time) must not be retried forever: back off, then report Unavailable after
+// kMaxSilentFailures attempts in a row — fingerprint UI off, password works.
 TEST(FingerprintSilentFailuresGiveUp) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    fp.retryBackoff_ = std::chrono::milliseconds(1);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
-
-    mock_pam_reset();
-    mock_pam_set_expected_password("open-sesame");
-    mock_fp_force_rc(PAM_PERM_DENIED);
-
-    screen.startFingerprint();
-    EXPECT_TRUE(screen.controller_.fingerprintActive());
-    for (int i = 0; i < 1000 && fp.running(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
+    FpRig rig;
+    for (int i = 0; i < qypr::FingerprintAuthenticator::kMaxSilentFailures; ++i) {
+        rig.fprintd.claimErrors.push_back(readerBusy());
     }
-    loop.dispatchPosted();
-    mock_fp_force_rc(-1);
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.screen.controller_.fingerprintActive());
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return !rig.fp.running(); }));
+    pumpFor(rig.loop, 20);
+    EXPECT_EQ(rig.fprintd.count("Claim"), qypr::FingerprintAuthenticator::kMaxSilentFailures);
+    EXPECT_FALSE(rig.screen.controller_.fingerprintActive());
+    EXPECT_EQ(rig.host.unlocks, 0);
 
-    EXPECT_FALSE(fp.running());
-    EXPECT_EQ(mock_fp_attempts(), qypr::FingerprintAuthenticator::kMaxSilentFailures);
-    EXPECT_FALSE(screen.controller_.fingerprintActive());
-    EXPECT_EQ(host.unlocks, 0);
-
-    screen.password().clear();
-    screen.password().append("open-sesame");
-    screen.submitPassword();
-    while (pam.busy()) {}
-    loop.dispatchPosted();
-    EXPECT_EQ(host.unlocks, 1);
+    EXPECT_TRUE(rig.unlockedBy("open-sesame"));
 }
 
-// Attempts that did reach the reader (it said "Place your finger...") are
-// ordinary misses or timeouts — pam_fprintd reports a timeout as
-// PAM_AUTHINFO_UNAVAIL, the same code as a missing reader. However many pile
-// up while the user is away, the worker keeps waiting and a later touch
-// unlocks.
-TEST(FingerprintTimeoutsNeverGiveUp) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    fp.retryBackoff_ = std::chrono::milliseconds(1);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
-
-    mock_pam_reset();
-    const int timeouts = qypr::FingerprintAuthenticator::kMaxSilentFailures * 3;
-    mock_fp_fail_n_times(timeouts);
-
-    screen.startFingerprint();
-    for (int i = 0; i < 2000 && host.unlocks == 0; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
-    }
-    loop.dispatchPosted();
-
-    EXPECT_EQ(host.unlocks, 1);
-    EXPECT_EQ(mock_fp_attempts(), timeouts + 1);
-}
-
-// A reader briefly held by another client (sudo's pam_fprintd, say) fails
-// silently until it is released; as long as that ends inside the give-up
-// window, the worker picks the reader up and a touch unlocks.
+// A reader briefly held by another client (sudo's pam_fprintd, say) is picked
+// up once it is free, as long as that happens inside the give-up window.
 TEST(FingerprintSurvivesBrieflyBusyReader) {
-    qypr::EventLoop loop;
-    struct SpyHost : qypr::RenderHost {
-        int unlocks = 0;
-        void invalidate() override {}
-        void requestUnlock() override { ++unlocks; }
-    } host;
-    qypr::PamAuthenticator pam(loop);
-    qypr::FingerprintAuthenticator fp(loop);
-    fp.retryBackoff_ = std::chrono::milliseconds(1);
-    qypr::SystemActions power(loop);
-    qypr::LockScreen screen(loop, host, pam, power, &fp);
-
-    mock_pam_reset();
-    const int busy = qypr::FingerprintAuthenticator::kMaxSilentFailures - 1;
-    mock_fp_silent_fail_n_times(busy);
-
-    screen.startFingerprint();
-    for (int i = 0; i < 2000 && host.unlocks == 0 && fp.running(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        loop.dispatchPosted();
-    }
-    loop.dispatchPosted();
-
-    EXPECT_EQ(host.unlocks, 1);
-    EXPECT_EQ(mock_fp_attempts(), busy + 1);
+    FpRig rig;
+    int const busy = qypr::FingerprintAuthenticator::kMaxSilentFailures - 1;
+    for (int i = 0; i < busy; ++i) { rig.fprintd.claimErrors.push_back(readerBusy()); }
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    EXPECT_EQ(rig.fprintd.count("Claim"), busy + 1);
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
 }
 
-// Without its PAM file the worker would run against the deny-all "other"
-// stack (instant failure plus a pam_warn journal line per attempt), so App
-// only starts it when the service file is installed.
-TEST(FingerprintServiceInstalledChecksPamDir) {
-    std::string dirTemplate = "/tmp/qypr-pam-d-XXXXXX";
-    char* const dir = ::mkdtemp(dirTemplate.data());
-    EXPECT_TRUE(dir != nullptr);
-    if (dir == nullptr) { return; }
-    const std::filesystem::path pamDir(dir);
+// Suspend (SleepMonitor -> suspend()): the live scan is stopped before the
+// machine sleeps and `ready` fires only once fprintd has acknowledged; the
+// claim is kept, so resume() just starts a new scan. fprintd's own report that
+// it ended the scan for the suspend is not a failure.
+TEST(FingerprintPausesForSuspendAndResumes) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
 
-    qypr::EventLoop loop;
-    qypr::FingerprintAuthenticator fp(loop);
-    EXPECT_FALSE(fp.serviceInstalled(pamDir.string()));
-    std::ofstream(pamDir / "qypr-fingerprint") << "auth sufficient pam_fprintd.so\n";
-    EXPECT_TRUE(fp.serviceInstalled(pamDir.string()));
+    // Real ordering (journal, 2026-11-11): fprintd reports the scan's end
+    // while our VerifyStop is still in flight. That report is not a failure.
+    rig.fprintd.hold = true;
+    bool ready = false;
+    rig.fp.suspend([&] { ready = true; });
+    rig.fprintd.emit("verify-unknown-error");  // "Cannot run while suspended"
+    pumpFor(rig.loop, 10);
+    EXPECT_FALSE(ready);  // still waiting for VerifyStop's reply
+    rig.fprintd.hold = false;
+    rig.fprintd.flush();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return ready; }));
+    EXPECT_FALSE(rig.fprintd.verifying);
+    EXPECT_TRUE(rig.fprintd.claimed);
+    EXPECT_EQ(rig.fprintd.count("Release"), 0);
+    EXPECT_EQ(rig.fp.silentFailures_, 0);
 
-    qypr::FingerprintAuthenticator custom(loop, "other-finger");
-    EXPECT_FALSE(custom.serviceInstalled(pamDir.string()));
+    pumpFor(rig.loop, 20);
+    EXPECT_TRUE(rig.fp.running());
+    EXPECT_EQ(rig.fprintd.count("VerifyStart"), 1);  // nothing starts while asleep
 
-    std::filesystem::remove_all(pamDir);
+    rig.fp.resume();
+    EXPECT_TRUE(rig.scanning());
+    EXPECT_EQ(rig.fprintd.sequence(), std::string("Claim,VerifyStart,VerifyStop,VerifyStart"));
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
+}
+
+// A suspend that lands while a call is in flight waits for its reply, and a
+// claim granted meanwhile does not turn into a scan until resume.
+TEST(FingerprintSuspendWaitsForCallInFlight) {
+    FpRig rig;
+    rig.fprintd.hold = true;
+    rig.screen.startFingerprint();
+    pumpFor(rig.loop, 5);
+    EXPECT_EQ(rig.fprintd.count("Claim"), 1);
+
+    bool ready = false;
+    rig.fp.suspend([&] { ready = true; });
+    pumpFor(rig.loop, 10);
+    EXPECT_FALSE(ready);
+
+    rig.fprintd.hold = false;
+    rig.fprintd.flush();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return ready; }));
+    EXPECT_TRUE(rig.fprintd.claimed);
+    EXPECT_EQ(rig.fprintd.count("VerifyStart"), 0);
+
+    rig.fp.resume();
+    EXPECT_TRUE(rig.scanning());
+}
+
+// Resume restores the full retry budget: failures from before the suspend do
+// not count against the reader after it.
+TEST(FingerprintResumeRestoresRetryBudget) {
+    FpRig rig;
+    int const before = 3;
+    for (int i = 0; i < before; ++i) { rig.fprintd.claimErrors.push_back(readerBusy()); }
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(pumpUntil(
+        rig.loop, [&] { return rig.fprintd.count("Claim") == before && !rig.fp.inflight_; }));
+    bool ready = false;
+    rig.fp.suspend([&] { ready = true; });
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return ready; }));
+
+    int const after = qypr::FingerprintAuthenticator::kMaxSilentFailures - 1;
+    for (int i = 0; i < after; ++i) { rig.fprintd.claimErrors.push_back(readerBusy()); }
+    rig.fp.resume();
+    EXPECT_TRUE(rig.scanning());
+    EXPECT_TRUE(rig.fp.running());
+    EXPECT_EQ(rig.fprintd.count("Claim"), before + after + 1);
+}
+
+// fprintd restarting drops our claim; the authenticator claims again and the
+// next touch still unlocks.
+TEST(FingerprintReclaimsAfterFprintdRestart) {
+    FpRig rig;
+    rig.screen.startFingerprint();
+    EXPECT_TRUE(rig.scanning());
+    rig.fprintd.claimed = false;
+    rig.fprintd.verifying = false;
+    rig.fprintd.vanished();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.fprintd.count("Claim") == 2; }));
+    EXPECT_TRUE(rig.scanning());
+    rig.fprintd.emit("verify-match");
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.host.unlocks == 1; }));
+}
+
+// stop() while the claim is still in flight: once it is granted the reader is
+// released straight away, and no scan is ever started.
+TEST(FingerprintStopDuringClaimReleasesReader) {
+    FpRig rig;
+    rig.fprintd.hold = true;
+    rig.screen.startFingerprint();
+    pumpFor(rig.loop, 5);
+    rig.screen.stopFingerprint();
+    rig.fprintd.hold = false;
+    rig.fprintd.flush();
+    EXPECT_TRUE(pumpUntil(rig.loop, [&] { return rig.fprintd.count("Release") == 1; }));
+    pumpFor(rig.loop, 10);
+    EXPECT_FALSE(rig.fprintd.claimed);
+    EXPECT_EQ(rig.fprintd.count("VerifyStart"), 0);
+    EXPECT_EQ(rig.host.unlocks, 0);
 }

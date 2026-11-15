@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <climits>
 #include <cstring>
 
 namespace qypr {
@@ -13,7 +14,24 @@ const wl_buffer_listener kBufferListener = {
 
 std::unique_ptr<ShmBuffer> ShmBuffer::create(wl_shm* shm, int width, int height) {
     const int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, width);
-    const size_t size = static_cast<size_t>(stride) * height;
+    return create(shm, width, height, stride, WL_SHM_FORMAT_ARGB8888);
+}
+
+cairo_format_t ShmBuffer::cairoFormatForWlShmFormat(uint32_t wl_shm_format) {
+    if (wl_shm_format == WL_SHM_FORMAT_ARGB8888) return CAIRO_FORMAT_ARGB32;
+    if (wl_shm_format == WL_SHM_FORMAT_XRGB8888) return CAIRO_FORMAT_RGB24;
+    return CAIRO_FORMAT_INVALID;
+}
+
+std::unique_ptr<ShmBuffer> ShmBuffer::create(wl_shm* shm, int width, int height, int stride,
+                                             uint32_t wl_shm_format) {
+    cairo_format_t const cairo_format = cairoFormatForWlShmFormat(wl_shm_format);
+    if (!shm || width <= 0 || height <= 0 || cairo_format == CAIRO_FORMAT_INVALID || stride <= 0 ||
+        stride < cairo_format_stride_for_width(cairo_format, width)) {
+        return nullptr;
+    }
+    const size_t size = static_cast<size_t>(stride) * static_cast<size_t>(height);
+    if (size > static_cast<size_t>(INT_MAX)) return nullptr;
 
     int fd = memfd_create("qypr-shm", MFD_CLOEXEC);
     if (fd < 0) return nullptr;
@@ -28,11 +46,19 @@ std::unique_ptr<ShmBuffer> ShmBuffer::create(wl_shm* shm, int width, int height)
         return nullptr;
     }
 
-    wl_shm_pool* pool = wl_shm_create_pool(shm, fd, size);
-    wl_buffer* buffer =
-        wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool* pool = wl_shm_create_pool(shm, fd, static_cast<int>(size));
+    if (!pool) {
+        close(fd);
+        munmap(data, size);
+        return nullptr;
+    }
+    wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride, wl_shm_format);
     wl_shm_pool_destroy(pool);
     close(fd);
+    if (!buffer) {
+        munmap(data, size);
+        return nullptr;
+    }
 
     auto self = std::unique_ptr<ShmBuffer>(new ShmBuffer());
     self->buffer_ = buffer;
@@ -40,10 +66,13 @@ std::unique_ptr<ShmBuffer> ShmBuffer::create(wl_shm* shm, int width, int height)
     self->size_ = size;
     self->width_ = width;
     self->height_ = height;
+    self->stride_ = stride;
+    self->format_ = wl_shm_format;
     self->cairo_ = cairo_image_surface_create_for_data(static_cast<unsigned char*>(data),
-                                                       CAIRO_FORMAT_ARGB32, width, height, stride);
+                                                       cairo_format, width, height, stride);
+    if (cairo_surface_status(self->cairo_) != CAIRO_STATUS_SUCCESS) return nullptr;
 
-    wl_buffer_add_listener(buffer, &kBufferListener, self.get());
+    if (wl_buffer_add_listener(buffer, &kBufferListener, self.get()) != 0) return nullptr;
     return self;
 }
 

@@ -179,6 +179,15 @@ void AppSwitcherManager::navigate_prev() {
     notify_change();
 }
 
+void AppSwitcherManager::navigate_row(int direction) {
+    if (groups_.empty() || direction == 0) return;
+    auto const size = static_cast<int64_t>(groups_.size());
+    auto const offset = static_cast<int64_t>(row_stride_) * direction;
+    auto const next = (static_cast<int64_t>(selected_index_) + offset) % size;
+    selected_index_ = static_cast<size_t>((next + size) % size);
+    notify_change();
+}
+
 void AppSwitcherManager::jump_to(size_t index) {
     if (index < groups_.size()) {
         selected_index_ = index;

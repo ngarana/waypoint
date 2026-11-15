@@ -47,6 +47,17 @@ Exercise the video pipeline offscreen (via libmpv) without locking. Runs for
 .I seconds
 (default 6) and then exits. Useful to verify the playlist and decode pipeline.
 .TP
+.BR \-\-fingerprint\-test " [" \fIseconds\fR "]"
+Exercise fingerprint verification and its suspend/resume handling without
+locking: claims the reader, logs every fprintd call, status and
+.B PrepareForSleep
+transition with wall-clock timestamps (to line up with
+.BR journalctl (1)),
+and exits after
+.I seconds
+of awake time (default 60) or on a match, with status 0. A match unlocks
+nothing.
+.TP
 .BR \-h ", " \-\-help
 Print a short usage message and exit.
 .SH ENVIRONMENT
@@ -76,11 +87,32 @@ undismissed notifications, enable the
 .B qypr-record
 mirror service; see
 .BR qypr-record (1).
+.SH FINGERPRINT
+When
+.BR fprintd (8)
+has a reader and an enrolled finger, touching the reader unlocks as well; the
+password keeps working at any time. qypr-lock talks to fprintd over D-Bus
+directly (no PAM service is involved), ends the scan before the system
+suspends while holding a logind delay inhibitor, and starts a new one on
+resume. After five wrong fingers fingerprint is switched off until the
+password unlocks; suspending or restarting the scan does not reset the count.
+Set
+.B fingerprint = false
+in the
+.B [lock]
+section of
+.I ~/.config/qypr/bar.conf
+to turn it off. See docs/FINGERPRINT.md.
 .SH SECURITY
 The password is copied directly into a dedicated PAM worker thread and cleared
 immediately after use; the UI only ever holds the in-progress input.
 Authentication runs off the UI thread so a slow PAM stack cannot freeze the
-lock surface.
+lock surface. A fingerprint match is accepted only from the fprintd connection
+that granted the reader's claim; forged D-Bus signals from other processes are
+ignored. The lock, the unlock method (password or fingerprint) and a
+fingerprint lockout are logged to the system journal under the authpriv
+facility:
+.BR "journalctl -t qypr-lock" .
 .SH EXIT STATUS
 .TP
 .B 0
@@ -102,6 +134,9 @@ Preview the look without locking:
 .TP
 Exercise the video wallpaper for 10s:
 .B qypr-lock \-\-video\-test 10
+.TP
+Watch the fingerprint reader across a suspend:
+.B qypr-lock \-\-fingerprint\-test 120
 .SH SEE ALSO
 .BR qypr-record (1),
 .BR hyprctl (1),

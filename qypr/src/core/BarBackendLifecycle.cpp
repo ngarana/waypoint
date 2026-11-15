@@ -8,9 +8,12 @@
 #include "system/BatteryBackend.hpp"
 #include "system/BluetoothBackend.hpp"
 #include "system/BrightnessBackend.hpp"
+#include "system/ApplicationsBackend.hpp"
+#include "system/KdeConnectBackend.hpp"
 #include "system/PowerProfilesBackend.hpp"
 #include "system/SNIBackend.hpp"
 #include "system/StateCache.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/VolumeBackend.hpp"
 #include "system/WifiBackend.hpp"
 
@@ -30,6 +33,9 @@ void BarBackendLifecycle::start() {
     if (backends_.bluetooth) backends_.bluetooth->start();
     if (backends_.volume) backends_.volume->start();
     if (backends_.sni) backends_.sni->start();
+    if (backends_.udisks) backends_.udisks->start();
+    if (backends_.kdeConnect) backends_.kdeConnect->start();
+    if (backends_.applications) backends_.applications->start();
 
     if (backends_.powerProfiles) {
         backends_.powerProfiles->setOnChange([this] { invalidator_.invalidate(); });
@@ -37,7 +43,13 @@ void BarBackendLifecycle::start() {
     }
 
     if (backends_.notifications) {
-        backends_.notifications->setOnChange([this] { invalidator_.invalidate(); });
+        backends_.notifications->setOnChange([this] {
+            if (onNotifications_) {
+                onNotifications_();
+            } else {
+                invalidator_.invalidate();
+            }
+        });
         if (!backends_.notifications->start(/*seedFromLog=*/false)) {
             std::fprintf(stderr, "qypr-bar: notification monitor unavailable\n");
         }

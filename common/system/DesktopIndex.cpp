@@ -9,11 +9,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
 
 namespace qypr {
 
@@ -106,10 +109,14 @@ bool DesktopIndex::parseEntry(const std::string& body, DesktopEntry& out) {
     std::string categories;
     std::string comment;
     std::string genericName;
+    std::string actionList;
     bool noDisplay = false;
     bool hidden = false;
     bool terminal = false;
-    bool inEntry = false;
+    // Which group the current line belongs to: the main entry, one action
+    // (index into `groups`), or something else (ignored).
+    enum class Group : uint8_t { None, Entry, Action } group = Group::None;
+    std::vector<DesktopAction> groups;
 
     std::stringstream ss(body);
     std::string line;
@@ -117,16 +124,36 @@ bool DesktopIndex::parseEntry(const std::string& body, DesktopEntry& out) {
         if (!line.empty() && line.back() == '\r') { line.pop_back(); }
         if (line.empty() || line.at(0) == '#') { continue; }
         if (line.at(0) == '[') {
-            // Only the main [Desktop Entry] group; stop at the first action group.
-            inEntry = line == "[Desktop Entry]";
+            static constexpr std::string_view kAction = "[Desktop Action ";
+            if (line == "[Desktop Entry]") {
+                group = Group::Entry;
+            } else if (line.starts_with(kAction) && line.back() == ']') {
+                group = Group::Action;
+                DesktopAction action;
+                action.id = line.substr(kAction.size(), line.size() - kAction.size() - 1);
+                groups.push_back(std::move(action));
+            } else {
+                group = Group::None;
+            }
             continue;
         }
-        if (!inEntry) { continue; }
+        if (group == Group::None) { continue; }
         const size_t eq = line.find('=');
         if (eq == std::string::npos) { continue; }
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
         // Ignore localized keys (Name[de]=…): take the unlocalized value only.
+        if (group == Group::Action) {
+            DesktopAction& a = groups.back();
+            if (key == "Name") {
+                a.name = val;
+            } else if (key == "Exec") {
+                a.exec = cleanExec(val);
+            } else if (key == "Icon") {
+                a.icon = val;
+            }
+            continue;
+        }
         if (key == "Type") {
             type = val;
         } else if (key == "Name") {
@@ -147,6 +174,12 @@ bool DesktopIndex::parseEntry(const std::string& body, DesktopEntry& out) {
             hidden = truthy(val);
         } else if (key == "Terminal") {
             terminal = truthy(val);
+        } else if (key == "Actions") {
+            actionList = val;
+        } else if (key == "DBusActivatable") {
+            out.dbusActivatable = truthy(val);
+        } else if (key == "StartupWMClass") {
+            out.startupWMClass = val;
         }
     }
 
@@ -161,6 +194,17 @@ bool DesktopIndex::parseEntry(const std::string& body, DesktopEntry& out) {
     out.categories = categories;
     out.comment = comment;
     out.genericName = genericName;
+    // Actions in the order the entry lists them; a listed action needs its
+    // group and a Name, and something to run (its Exec, or the app's D-Bus
+    // ActivateAction).
+    std::stringstream ids(actionList);
+    std::string actionId;
+    while (std::getline(ids, actionId, ';')) {
+        const auto it = std::ranges::find(groups, actionId, &DesktopAction::id);
+        if (actionId.empty() || it == groups.end() || it->name.empty()) { continue; }
+        if (it->exec.empty() && !out.dbusActivatable) { continue; }
+        out.actions.push_back(*it);
+    }
     // Precomputed lowercase haystack: search() is one find() per entry.
     std::string key = name;
     key += ' ';
@@ -225,7 +269,8 @@ std::vector<const DesktopEntry*> DesktopIndex::search(const std::string& query) 
             substr.push_back(&e);
         }
     }
-    prefix.insert(prefix.end(), substr.begin(), substr.end());  // both already alphabetical
+    prefix.insert(prefix.end(), substr.begin(),
+                  substr.end());  // both already alphabetical
     return prefix;
 }
 
@@ -257,6 +302,25 @@ const DesktopEntry* DesktopIndex::resolve(const std::string& key) const {
         if (lower(e.name).starts_with(q)) { return &e; }
     }
     return nullptr;
+}
+
+const DesktopEntry* DesktopIndex::byId(const std::string& id) const {
+    if (id.empty()) { return nullptr; }
+    const std::string q = lower(id);
+    for (const auto& e : entries_) {
+        if (lower(e.id) == q) { return &e; }
+    }
+    return nullptr;
+}
+
+const DesktopEntry* DesktopIndex::resolveWindow(const std::string& appId) const {
+    if (appId.empty()) { return nullptr; }
+    if (const DesktopEntry* e = byId(appId)) { return e; }
+    const std::string q = lower(appId);
+    for (const auto& e : entries_) {
+        if (!e.startupWMClass.empty() && lower(e.startupWMClass) == q) { return &e; }
+    }
+    return resolve(appId);
 }
 
 bool launchDetached(EventLoop& loop, const std::string& cmd, bool terminal) {

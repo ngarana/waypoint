@@ -103,9 +103,13 @@ build/qypr-record  # notification mirror
 Semantic versioning (MAJOR.MINOR.PATCH) is set in `CMakeLists.txt`:
 
 ```sh
-cmake -B build -DCMAKE_PROJECT_VERSION_EXTRA="-rc1" ..   # pre-release tag
-./build/qypr-lock --version                               # → qypr 0.1.0-rc1
+cmake -S . -B build -DQYPR_VERSION_EXTRA="-rc.1"         # pre-release build
+./build/qypr-lock --version                               # → qypr 0.1.0-rc.1
 ```
+
+Product releases use tags such as `qypr-v0.1.0`; the CMake project version
+must match the numeric part of the tag. See the repository's
+[release guide](../docs/RELEASING.md) for the full process.
 
 ### Test suite
 

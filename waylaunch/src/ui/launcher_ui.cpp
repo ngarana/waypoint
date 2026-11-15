@@ -20,8 +20,13 @@
 #include "waylaunch/subprocess.h"
 #include "waylaunch/switcher/app_switcher_manager.h"
 #include "waylaunch/switcher/switcher_input_controller.h"
+#include "waylaunch/switcher/switcher_layout.h"
+#include "waylaunch/switcher/switcher_previews.h"
 #include "waylaunch/switcher/switcher_renderer.h"
 #include "waylaunch/switcher/wlr_toplevel_backend.h"
+#ifdef HAS_TOPLEVEL_EXPORT
+#include "waylaunch/switcher/hyprland_toplevel_export.h"
+#endif
 #include "waylaunch/wayland_core.h"
 #include <algorithm>
 #include <cerrno>
@@ -465,6 +470,20 @@ bool LauncherUI::init(Config& config) {
             std::make_unique<SwitcherInputController>(switcher_manager_.get(), wayland_->seat());
         switcher_renderer_ = std::make_unique<SwitcherRenderer>();
 
+#ifdef HAS_TOPLEVEL_EXPORT
+        if (config.get().app_switcher.previews && wayland_->toplevel_export_manager()) {
+            auto capture = std::make_unique<HyprlandToplevelExportBackend>(wayland_.get(),
+                                                                           switcher_backend_.get());
+            if (capture->available()) {
+                switcher_previews_ = std::make_unique<SwitcherPreviews>(
+                    switcher_manager_.get(), switcher_backend_.get(), std::move(capture),
+                    config.get().app_switcher.preview_height,
+                    config.get().app_switcher.live_previews);
+                switcher_previews_->set_change_callback([this] { needs_redraw_ = true; });
+            }
+        }
+#endif
+
         switcher_manager_->set_change_callback([this] {
             needs_redraw_ = true;
             // Resident switcher: the first Alt+Tab starts this process; it then stays
@@ -477,6 +496,11 @@ bool LauncherUI::init(Config& config) {
                     switcher_shown_ = true;
                 } else if (switcher_shown_) {
                     switcher_shown_ = false;
+                    if (switcher_previews_) switcher_previews_->on_hide();
+                    if (switcher_preview_timer_fd_ >= 0) {
+                        loop_.removeTimer(switcher_preview_timer_fd_);
+                        switcher_preview_timer_fd_ = -1;
+                    }
                     // Don't unmap here: confirm_selection() has just queued an
                     // activate() request, and unmapping our exclusive-keyboard layer
                     // makes the compositor refocus the *previous* window, overriding
@@ -758,6 +782,21 @@ void LauncherUI::show_switcher(bool reverse) {
         size_t nn = switcher_manager_->app_groups().size();
         if (nn > 1) switcher_manager_->jump_to(nn - 1);
     }
+    if (switcher_previews_) {
+        switcher_previews_->on_show();
+        if (switcher_preview_timer_fd_ < 0) {
+            switcher_preview_timer_fd_ = loop_.addTimer(33, true, [this] {
+                if (!switcher_previews_ || !switcher_manager_ || !switcher_manager_->is_visible()) {
+                    return;
+                }
+                auto const now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now().time_since_epoch())
+                                        .count();
+                switcher_previews_->tick(static_cast<uint64_t>(now_ms));
+                after_events();
+            });
+        }
+    }
     needs_redraw_ = true;
 }
 
@@ -813,6 +852,10 @@ Theme LauncherUI::build_theme() {
     t.success = Color::from_hex(cc.success);
     t.border = Color::from_hex(cc.border);
     t.selection = Color::from_hex(cc.selection);
+    t.switcher_selected_outline = Color::from_hex(
+        cc.switcher_selected_outline.empty() ? cc.accent : cc.switcher_selected_outline);
+    t.switcher_unselected_outline = Color::from_hex(
+        cc.switcher_unselected_outline.empty() ? cc.foreground : cc.switcher_unselected_outline);
     t.corner_radius = tc.corner_radius;
     t.opacity = tc.opacity;
     auto to_rfc = [](const ConfigFont& cf) -> RenderFontConfig {
@@ -1514,7 +1557,26 @@ void LauncherUI::render_frame() {
         if (ui_dbg())
             fprintf(stderr, "[sw] render %dx%d groups=%zu sel=%zu\n", bw, bh,
                     switcher_manager_->app_groups().size(), switcher_manager_->selected_index());
-        SwitcherRenderer::render(*renderer_, *switcher_manager_, t, bw, bh);
+        const ThumbnailCache* thumbnails =
+            switcher_previews_ ? &switcher_previews_->cache() : nullptr;
+        std::vector<SwitcherLayoutEntry> entries;
+        entries.reserve(switcher_manager_->app_groups().size());
+        for (const AppGroup& group : switcher_manager_->app_groups()) {
+            const ThumbnailCache::Entry* cached =
+                thumbnails ? thumbnails->get(group.primary_handle()) : nullptr;
+            entries.push_back({.aspect = cached ? cached->aspect : 0.0});
+        }
+        const auto& switcher_config = config_->get().app_switcher;
+        SwitcherLayoutConfig layout_config{
+            .preview_height = switcher_config.preview_height,
+            .corner_radius = switcher_config.corner_radius,
+            .show_app_names = switcher_config.show_app_names,
+        };
+        SwitcherLayout switcher_layout_result = switcher_layout(entries, bw, bh, layout_config);
+        switcher_columns_ = switcher_layout_result.columns;
+        switcher_manager_->set_row_stride(static_cast<size_t>(switcher_columns_));
+        SwitcherRenderer::render(*renderer_, *switcher_manager_, t, switcher_layout_result,
+                                 thumbnails);
         renderer_->end();
         wayland_->submit_buffer(buf, 0, 0);
         needs_redraw_ = false;

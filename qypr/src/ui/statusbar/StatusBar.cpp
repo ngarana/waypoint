@@ -22,6 +22,9 @@
 #include "system/SNIBackend.hpp"
 #include "system/ToplevelBackend.hpp"
 #include "system/VolumeBackend.hpp"
+#include "system/ApplicationsBackend.hpp"
+#include "system/KdeConnectBackend.hpp"
+#include "system/UDisksBackend.hpp"
 #include "system/WifiBackend.hpp"
 #include "system/WorkspaceBackend.hpp"
 #include "ui/Theme.hpp"
@@ -34,18 +37,23 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
                      const IndicatorRegistry::ModuleSelection* sel)
     : loop_(loop),
       host_(host),
+      detailBackends_(withStatusArea(backends)),
       sessionSurface_(backends.sessionSurface),
       wifi_(backends.wifi) {
     popovers_.setEventLoop(&loop);
 
     // One bucketing + tile-attachment path shared with reloadModules.
-    indicators_.load(backends, sel);
+    indicators_.load(detailBackends_, sel);
+    syncStatusArea(backends);
     indicators_.attachTiles(qsPanel_, [this](const std::string& id) { openIndicatorDetail(id); });
+    refreshIndicators();
 
     // Build internal QS panel tiles (header, power, wifi combo, volume, media).
     // Only on the session surface (QL-7): command tiles must not exist on lock.
     if (sessionSurface_) {
-        qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
+        qsPanel_.buildTiles(
+            loop_, backends, [this]() { openIndicatorDetail("wifi"); },
+            [this]() { openIndicatorDetail("volume"); });
     }
     cascadeTheme();
 
@@ -59,6 +67,9 @@ StatusBar::StatusBar(EventLoop& loop, Invalidator& host, const SystemBackends& b
     if (backends.bluetooth != nullptr) { backends.bluetooth->setOnChange(onChange); }
     if (backends.volume != nullptr) { backends.volume->setOnChange(onChange); }
     if (backends.sni != nullptr) { backends.sni->setOnChange(onChange); }
+    if (backends.udisks != nullptr) { backends.udisks->setOnChange(onChange); }
+    if (backends.kdeConnect != nullptr) { backends.kdeConnect->setOnChange(onChange); }
+    if (backends.applications != nullptr) { backends.applications->setOnChange(onChange); }
     if (backends.mpris != nullptr) { backends.mpris->setOnChange(onChange); }
     if (backends.idleInhibitor != nullptr) { backends.idleInhibitor->setOnChange(onChange); }
     if (backends.keyboardLayout != nullptr) { backends.keyboardLayout->setOnChange(onChange); }
@@ -86,17 +97,69 @@ StatusBar::~StatusBar() {
 void StatusBar::reloadModules(const SystemBackends& backends,
                               const IndicatorRegistry::ModuleSelection* sel) {
     // Close any open popover — the indicators are about to be destroyed.
-    popovers_.closeActive();
+    popovers_.clear();
+    detailIndicators_.clear();
+    detailBackends_ = withStatusArea(backends);
 
-    indicators_.load(backends, sel);
+    indicators_.load(detailBackends_, sel);
+    syncStatusArea(backends);
     indicators_.attachTiles(
         qsPanel_, [this](const std::string& id) { openIndicatorDetail(id); },
         /*clearFirst=*/true);
+    refreshIndicators();
     if (sessionSurface_) {
-        qsPanel_.buildTiles(loop_, backends, [this]() { openIndicatorDetail("wifi"); });
+        qsPanel_.buildTiles(
+            loop_, backends, [this]() { openIndicatorDetail("wifi"); },
+            [this]() { openIndicatorDetail("volume"); });
     }
     cascadeTheme();
     host_.invalidate();
+}
+
+SystemBackends StatusBar::withStatusArea(const SystemBackends& backends) {
+    SystemBackends out = backends;
+    out.statusArea = &statusArea_;
+    return out;
+}
+
+// Indicators built by load() have not seen the status area's layout yet; the
+// claims it carries decide what the tray host and claimed modules show, so
+// every indicator recomputes once instead of waiting for the next push.
+void StatusBar::refreshIndicators() {
+    indicators_.forEach([this](StatusIndicator& ind) {
+        ind.barBottom = geom_.bottom;
+        if (!ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
+    refreshOverflowHosts();
+}
+
+// The overflow host's own visibility follows what the other modules just
+// decided (a module that hid itself lists itself behind the chevron), so it
+// always goes last.
+void StatusBar::refreshOverflowHosts() {
+    indicators_.forEach([](StatusIndicator& ind) {
+        if (ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
+}
+
+void StatusBar::syncStatusArea(const SystemBackends& backends) {
+    statusArea_.configure(backends.config);
+    std::vector<std::string> ids;
+    indicators_.forEach([&](StatusIndicator& ind) { ids.push_back(ind.id()); });
+    statusArea_.setLayoutModules(std::move(ids));
+    // Passive modules leave the strip and are listed behind the overflow. The
+    // same visibility policy as the strip applies: a session-sensitive module
+    // never lists itself while locked.
+    statusArea_.setPassiveProvider([this] {
+        std::vector<OverflowEntry> out;
+        indicators_.forEach([&](StatusIndicator& ind) {
+            if (ind.sensitive() && !sessionContentVisible_) { return; }
+            if (!isInteractive(ind)) { return; }
+            auto entry = ind.overflowEntry();
+            if (!entry.id.empty()) { out.push_back(std::move(entry)); }
+        });
+        return out;
+    });
 }
 
 void StatusBar::resetAutoDismiss() {
@@ -109,6 +172,7 @@ void StatusBar::resetAutoDismiss() {
 void StatusBar::setSessionContentVisible(bool v) {
     if (v == sessionContentVisible_) { return; }
     sessionContentVisible_ = v;
+    refreshOverflowHosts();  // sensitive modules leave/rejoin the overflow
     host_.invalidate();
 }
 
@@ -135,6 +199,7 @@ const theme::State& StatusBar::theme() const {
 
 void StatusBar::cascadeTheme() {
     indicators_.forEach([&](StatusIndicator& ind) { ind.setTheme(theme_); });
+    for (auto& ind : detailIndicators_) { ind->setTheme(theme_); }
     qsPanel_.setTheme(theme_);
 }
 
@@ -161,16 +226,24 @@ void StatusBar::setBackdrop(bool enabled, double alpha) {
 
 void StatusBar::setGeometry(const BarGeometry& g) {
     geom_ = g;
+    indicators_.forEach([&](StatusIndicator& ind) { ind.barBottom = g.bottom; });
     host_.invalidate();
 }
 
 void StatusBar::notifyBackendUpdate() {
-    indicators_.forEach([&](StatusIndicator& ind) { ind.onBackendUpdate(); });
+    indicators_.forEach([&](StatusIndicator& ind) {
+        if (!ind.listsOverflow()) { ind.onBackendUpdate(); }
+    });
+    refreshOverflowHosts();
+    for (auto& ind : detailIndicators_) { ind->onBackendUpdate(); }
     if (wifi_ != nullptr) { qsPanel_.updateWifi(wifi_->snapshot()); }
     host_.invalidate();
 }
 
-void StatusBar::layout(int screenW, int screenH) {
+void StatusBar::layout(int screenW, int screenH, bool overlay) {
+    drawOverlay_ = overlay;
+    screenW_ = screenW;
+    screenH_ = screenH;
     double const pad = theme().statusbar.padding;
     double const sp = theme().statusbar.iconSpacing;
 
@@ -210,16 +283,29 @@ void StatusBar::layout(int screenW, int screenH) {
     apply(indicators_.center(), r.center);
     apply(indicators_.right(), r.right);
 
-    // Anchor active popovers away from the screen edge, right-aligned for
-    // wide/QS panels.
-    if (popovers_.active() != nullptr) {
-        DetailedPopover* p = popovers_.active();
-        if (p == &qsPanel_ || p->contentWidth() >= 300.0) {
-            p->anchorX = rightGroupBounds_.w > 0 ? rightGroupBounds_.x + rightGroupBounds_.w
-                                                 : contentBounds_.x + contentBounds_.w;
+    if (drawOverlay_) { placeActivePopover(); }
+}
+
+void StatusBar::placeActivePopover() {
+    auto* pop = popovers_.active();
+    if (!pop || screenW_ <= 0 || screenH_ <= 0) { return; }
+    const double gap = 6.0;
+    const double top = geom_.bottom ? 8.0 : bounds.y + bounds.h + gap;
+    const double bottom = geom_.bottom ? bounds.y - gap : screenH_ - 8.0;
+    pop->setViewport({8.0, top, std::max(1.0, screenW_ - 16.0), std::max(1.0, bottom - top)});
+    auto* source = indicators_.findById(popovers_.ownerId());
+    if (!source) { source = indicators_.findById("power"); }
+    if (auto* ind = source) {
+        const double width = std::min(pop->contentWidth(), pop->availableWidth());
+        if (ind->zone() == Zone::Left) {
+            pop->anchorX = ind->bounds.x + width;
+        } else if (ind->zone() == Zone::Center) {
+            pop->anchorX = ind->bounds.x + (ind->bounds.w + width) / 2.0;
+        } else {
+            pop->anchorX = ind->bounds.x + ind->bounds.w;
         }
-        popovers_.anchorToStrip(*p, geom_.bottom, bounds);
     }
+    popovers_.anchorToStrip(*pop, geom_.bottom, bounds);
 }
 
 void StatusBar::draw(Painter& p, int64_t now) {
@@ -245,6 +331,12 @@ void StatusBar::draw(Painter& p, int64_t now) {
                                        ease::inOutQuad);
             ind->hoverScale_.animateTo(ind->hovered ? 1.05 : 1.0, theme().anim.fast,
                                        ease::inOutQuad);
+            if (drawOverlay_ && popovers_.active() && popovers_.ownerId() == ind->id()) {
+                p.fillRoundedRect(ind->bounds, 6.0, theme().colors.primary.withAlpha(0.18));
+                const double y = geom_.bottom ? ind->bounds.y : ind->bounds.y + ind->bounds.h - 2.0;
+                p.fillRoundedRect({ind->bounds.x + 4.0, y, std::max(0.0, ind->bounds.w - 8.0), 2.0},
+                                  1.0, theme().colors.primary);
+            }
             ind->draw(p, now);
         }
     };
@@ -252,7 +344,7 @@ void StatusBar::draw(Painter& p, int64_t now) {
     drawZone(indicators_.center());
     drawZone(indicators_.right());
 
-    popovers_.draw(p, now);
+    if (drawOverlay_) { popovers_.draw(p, now); }
     tooltips_.draw(p, theme(), geom_, bounds, now);
 }
 
@@ -286,6 +378,8 @@ StatusBarInput::Context StatusBar::makeInputContext() {
         .sessionContentVisible = sessionContentVisible_,
         .onToggleQuickSettings = [this] { toggleQuickSettings(); },
         .onActivateIndicator = [this](StatusIndicator& ind) { activateIndicator(ind); },
+        .onOpenContextMenu = [this](StatusIndicator& ind, double x,
+                                    double y) { openContextMenu(ind, x, y); },
         .onResetAutoDismiss = [this] { resetAutoDismiss(); },
     };
 }
@@ -299,6 +393,11 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
     // Lock-screen policy (default deny) before any backend touch (QL-*).
     if (!isInteractive(ind)) { return; }
 
+    if (popovers_.active() && popovers_.ownerId() == ind.id()) {
+        popovers_.closeActive();
+        host_.invalidate();
+        return;
+    }
     ind.onActivate();
     if (ind.id() == "power") {
         toggleQuickSettings();
@@ -312,7 +411,8 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
             const double anchorX = ind.zone() == Zone::Left ? ind.bounds.x + p->contentWidth()
                                                             : ind.bounds.x + ind.bounds.w;
             popovers_.open(std::move(view), anchorX, 0);
-            popovers_.anchorToStrip(*p, geom_.bottom, bounds);
+            popovers_.setOwnerId(ind.id());
+            placeActivePopover();
             resetAutoDismiss();
         }
     }
@@ -320,15 +420,85 @@ void StatusBar::activateIndicator(StatusIndicator& ind) {
 }
 
 void StatusBar::openIndicatorDetail(const std::string& id) {
-    if (auto* ind = indicators_.findById(id); ind != nullptr && ind->hasDetailedView()) {
-        activateIndicator(*ind);
+    auto* ind = indicators_.findById(id);
+    if (!ind && sessionSurface_) {
+        for (auto& detail : detailIndicators_) {
+            if (detail->id() == id) {
+                ind = detail.get();
+                break;
+            }
+        }
+        if (!ind) {
+            IndicatorRegistry::ModuleSelection selection;
+            selection.right = {id};
+            auto created = IndicatorRegistry::instance().createAll(detailBackends_, &selection);
+            if (!created.empty()) {
+                ind = created.front().get();
+                ind->setTheme(theme());
+                ind->onBackendUpdate();
+                detailIndicators_.push_back(std::move(created.front()));
+            }
+        }
+    }
+    if (ind && ind->hasDetailedView()) { activateIndicator(*ind); }
+}
+
+void StatusBar::openContextMenu(StatusIndicator& ind, double x, double y) {
+    if (!isInteractive(ind)) { return; }
+    openMenuFor(ind, ind.createContextMenu(x, y));
+}
+
+void StatusBar::openAppletMenu(const std::string& moduleId) {
+    auto* ind = indicators_.findById(moduleId);
+    if (ind == nullptr || !isInteractive(*ind)) { return; }
+    openMenuFor(*ind, ind->createAppletMenu());
+}
+
+void StatusBar::openMenuFor(StatusIndicator& ind, std::unique_ptr<DetailedPopover> view) {
+    if (view) {
+        view->setTheme(theme());
+        popovers_.open(std::move(view), ind.bounds.x + ind.bounds.w, 0);
+        popovers_.setOwnerId(ind.id());
+        placeActivePopover();
+        resetAutoDismiss();
+    }
+    host_.invalidate();
+}
+
+void StatusBar::openDetailAnchored(const std::string& moduleId, const std::string& anchorId) {
+    auto* ind = indicators_.findById(moduleId);
+    if (ind == nullptr || !ind->hasDetailedView() || !isInteractive(*ind)) { return; }
+    ind->onActivate();
+    if (auto view = ind->createDetailedView()) {
+        view->setTheme(theme());
+        auto* anchor = indicators_.findById(anchorId);
+        const double anchorX = anchor ? anchor->bounds.x + anchor->bounds.w : 0.0;
+        popovers_.open(std::move(view), anchorX, 0);
+        // Owned by the chevron: placement anchors there, and clicking the
+        // chevron again closes it like any other flyout.
+        popovers_.setOwnerId(anchor ? anchorId : moduleId);
+        placeActivePopover();
+        resetAutoDismiss();
+    }
+    host_.invalidate();
+}
+
+void StatusBar::takeStatusAreaRequest() {
+    if (auto req = statusArea_.takeDetailRequest()) {
+        if (req->appletMenu) {
+            openAppletMenu(req->moduleId);
+        } else {
+            openDetailAnchored(req->moduleId, req->anchorId);
+        }
     }
 }
 
 bool StatusBar::handlePointerButton(double x, double y, uint32_t button, bool pressed,
                                     int64_t now) {
     auto ctx = makeInputContext();
-    return input_.handlePointerButton(ctx, x, y, button, pressed, now);
+    const bool handled = input_.handlePointerButton(ctx, x, y, button, pressed, now);
+    takeStatusAreaRequest();
+    return handled;
 }
 
 void StatusBar::handlePointerLeave(int64_t now) {
@@ -343,7 +513,9 @@ bool StatusBar::handleScroll(double x, double y, double dx, double dy) {
 
 bool StatusBar::handleKey(uint32_t keysym) {
     auto ctx = makeInputContext();
-    return input_.handleKey(ctx, keysym);
+    const bool handled = input_.handleKey(ctx, keysym);
+    takeStatusAreaRequest();
+    return handled;
 }
 
 bool StatusBar::handleTextInput(const std::string& utf8) {
@@ -364,7 +536,8 @@ void StatusBar::toggleQuickSettings() {
         const double qsAnchorX = rightGroupBounds_.w > 0 ? rightGroupBounds_.x + rightGroupBounds_.w
                                                          : contentBounds_.x + contentBounds_.w;
         popovers_.openBorrowed(&qsPanel_, qsAnchorX, 0);
-        popovers_.anchorToStrip(qsPanel_, geom_.bottom, bounds);
+        popovers_.setOwnerId("power");
+        placeActivePopover();
     }
     resetAutoDismiss();
 }

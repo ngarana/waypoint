@@ -31,7 +31,8 @@ struct LockSnapshot {
 };
 
 // Owns the lock policy and authentication state. It deliberately exposes no
-// power or rendering capability: a successful PAM result is the only path to
+// power or rendering capability: a successful password check (PAM) or a
+// fingerprint match (fprintd, via FingerprintAuthenticator) is the only path to
 // RenderHost::requestUnlock(). The secret remains a SecureBuffer throughout.
 class LockController : public theme::ThemeAware {
 public:

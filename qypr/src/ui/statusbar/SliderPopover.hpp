@@ -24,11 +24,10 @@ public:
     // all sides. It is intentionally much smaller than the full QS panel.
     double contentWidth() const override { return 360.0; }
     double contentHeight() const override { return 84.0; }
-    int autoDismissMs() const override { return 6000; }
+    int autoDismissMs() const override { return 0; }
 
     void draw(Painter& p, int64_t now) override {
         Rect b = getBounds();
-        b.y += (growUp ? 1.0 : -1.0) * (1.0 - openProgress_.value(now)) * 6.0;
 
         if (!drawSharedBackdrop(p, b, theme().statusbar.popoverRadius)) {
             p.fillRoundedRectSource(b, theme().statusbar.popoverRadius, theme().panelSurface());
@@ -39,11 +38,13 @@ public:
     }
 
     bool handleClick(double x, double y) override {
-        tile_->onClick(x, y);
+        dragging_ = tile_->canDragAt(x, y);
+        if (tile_->bounds.contains(x, y)) { tile_->onClick(x, y); }
         return true;
     }
 
     bool handleDrag(double x, double y) override {
+        if (!dragging_) { return false; }
         tile_->onDrag(x, y);
         return true;
     }
@@ -56,10 +57,13 @@ public:
         return tile_->handleKey(delta < 0.0 ? XKB_KEY_Up : XKB_KEY_Down);
     }
 
+    void handleRelease() override { dragging_ = false; }
+
     bool handleKey(uint32_t keysym) override { return tile_->handleKey(keysym); }
 
 private:
     std::unique_ptr<QSTile> tile_;
+    bool dragging_ = false;
 };
 
 }  // namespace qypr

@@ -12,6 +12,7 @@
 #include "ui/statusbar/IndicatorRegistry.hpp"
 #include "ui/statusbar/PopoverManager.hpp"
 #include "ui/statusbar/QuickSettingsPanel.hpp"
+#include "ui/statusbar/StatusArea.hpp"
 #include "ui/statusbar/StatusBarInput.hpp"
 #include "ui/statusbar/StatusBarLayout.hpp"
 #include "ui/statusbar/TooltipController.hpp"
@@ -38,7 +39,7 @@ public:
     ~StatusBar() override;
 
     // Layout the bar based on focused screen width
-    void layout(int screenW, int screenH);
+    void layout(int screenW, int screenH, bool overlay = true);
 
     void draw(Painter& p, int64_t now) override;
 
@@ -52,8 +53,8 @@ public:
     bool handleKey(uint32_t keysym);
     // Committed keyboard text → the active popover (launcher search box).
     bool handleTextInput(const std::string& utf8);
-    // True while a popover needing typed input is open (the host then grabs
-    // keyboard focus for the bar surface).
+    // Desktop flyouts take keyboard focus for Escape/navigation; locked hosts
+    // keep their existing text-input policy.
     bool wantsKeyboard() const;
 
     // Focus navigation
@@ -115,10 +116,32 @@ public:
     // Pull current state out of every backend, exactly as a backend push would.
     void refreshFromBackends() { notifyBackendUpdate(); }
 
+    // Cross-module status-area state (tray claims, overflow requests).
+    StatusArea& statusArea() { return statusArea_; }
+
 private:
     void toggleQuickSettings();
+    void placeActivePopover();
+    bool drawOverlay_ = true;
+    int screenW_ = 0;
+    int screenH_ = 0;
     void activateIndicator(StatusIndicator& ind);
     void openIndicatorDetail(const std::string& id);
+    // Right-click menu of `ind` (IContextMenuProvider), anchored to it.
+    void openContextMenu(StatusIndicator& ind, double x, double y);
+    // A passive module's flyout opened from the overflow, anchored to the
+    // overflow chevron (`anchorId`) since the module itself is not drawn.
+    void openDetailAnchored(const std::string& moduleId, const std::string& anchorId);
+    void openAppletMenu(const std::string& moduleId);
+    void openMenuFor(StatusIndicator& ind, std::unique_ptr<DetailedPopover> view);
+    // Serve a detail request a popover left in the status area.
+    void takeStatusAreaRequest();
+    // Indicators see the status area through their backends copy.
+    SystemBackends withStatusArea(const SystemBackends& backends);
+    // Claims follow the layout: refresh after every (re)load.
+    void syncStatusArea(const SystemBackends& backends);
+    void refreshIndicators();
+    void refreshOverflowHosts();
     void notifyBackendUpdate();
     // (Re)arm auto-dismiss on the active popover via the manager.
     void resetAutoDismiss();
@@ -146,8 +169,12 @@ private:
     EventLoop& loop_;
     Invalidator& host_;
 
+    // Declared before the indicators: they hold a pointer to it.
+    StatusArea statusArea_;
     // Ownership + zone bucketing (one load path for ctor and reload).
     IndicatorHost indicators_;
+    SystemBackends detailBackends_;
+    std::vector<std::unique_ptr<StatusIndicator>> detailIndicators_;
 
     Rect rightGroupBounds_;
     Rect contentBounds_;
