@@ -36,6 +36,8 @@ struct Theme {
     Color success;
     Color border;
     Color selection;
+    Color switcher_selected_outline;
+    Color switcher_unselected_outline;
     RenderFontConfig input_font;
     RenderFontConfig result_font;
     RenderFontConfig result_detail_font;

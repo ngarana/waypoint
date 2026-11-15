@@ -105,11 +105,14 @@ void SwitcherRenderer::render(Renderer& renderer, const AppSwitcherManager& mana
             Renderer::round_rect_path(cr, card.card.x + 2, card.card.y + 2, card.card.w - 4,
                                       card.card.h - 4, std::max(0, layout.corner_radius - 4));
             if (selected) {
-                cairo_set_source_rgba(cr, theme.accent.r, theme.accent.g, theme.accent.b, 0.95);
+                cairo_set_source_rgba(cr, theme.switcher_selected_outline.r,
+                                      theme.switcher_selected_outline.g,
+                                      theme.switcher_selected_outline.b, 0.95);
                 cairo_set_line_width(cr, 3.0);
             } else {
-                cairo_set_source_rgba(cr, theme.foreground.r, theme.foreground.g,
-                                      theme.foreground.b, 0.32);
+                cairo_set_source_rgba(cr, theme.switcher_unselected_outline.r,
+                                      theme.switcher_unselected_outline.g,
+                                      theme.switcher_unselected_outline.b, 0.32);
                 cairo_set_line_width(cr, 1.25);
             }
             cairo_stroke(cr);

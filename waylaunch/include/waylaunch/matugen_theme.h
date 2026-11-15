@@ -11,9 +11,11 @@ namespace waylaunch {
 
 // Matugen (Material You) theming: reads the `matugen --json hex` output file
 // (usually written via a matugen template to
-// `~/.config/matugen/colors.json`) and maps its Material tokens onto our 11
-// [theme.colors] slots. Missing tokens or a missing file keep the static
-// [theme.colors] values, so a partial/stale file never breaks the UI.
+// `~/.config/matugen/colors.json`) and maps its Material tokens onto the
+// standard [theme.colors] slots. Missing tokens or a missing file keep the
+// static [theme.colors] values, so a partial/stale file never breaks the UI.
+// Empty switcher outline overrides follow effective accent/foreground colors;
+// non-empty overrides stay fixed.
 //
 // Accepted file shapes:
 //   1. Native matugen dump: {"colors": {"dark": {...}, "light": {...}}}

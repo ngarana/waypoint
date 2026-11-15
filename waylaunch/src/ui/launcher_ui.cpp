@@ -852,6 +852,10 @@ Theme LauncherUI::build_theme() {
     t.success = Color::from_hex(cc.success);
     t.border = Color::from_hex(cc.border);
     t.selection = Color::from_hex(cc.selection);
+    t.switcher_selected_outline = Color::from_hex(
+        cc.switcher_selected_outline.empty() ? cc.accent : cc.switcher_selected_outline);
+    t.switcher_unselected_outline = Color::from_hex(
+        cc.switcher_unselected_outline.empty() ? cc.foreground : cc.switcher_unselected_outline);
     t.corner_radius = tc.corner_radius;
     t.opacity = tc.opacity;
     auto to_rfc = [](const ConfigFont& cf) -> RenderFontConfig {

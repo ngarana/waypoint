@@ -101,7 +101,11 @@ full-screen overlay that grabs the keyboard and
 lists open windows grouped by application, most-recently-used first, with the
 previous app preselected — so a quick Alt+Tab flips to the last window.
 Each card has a neutral outline; the selected card adds an accent fill and a
-stronger accent outline.
+stronger outline.
+Set `[theme.colors].switcher_selected_outline` and
+`[theme.colors].switcher_unselected_outline` to `#rrggbb` values to customize
+the outline colors independently. Leave either empty to follow the effective
+accent or foreground color (including Matugen updates).
 
 Bind it in Hyprland (`~/.config/hypr/hyprland.conf`):
 

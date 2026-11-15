@@ -87,7 +87,8 @@ void test_apply_mapping() {
     std::map<std::string, std::string> scheme;
     std::map<std::string, std::string> direct;
     assert(MatugenTheme::parse_schemes(kDump, "dark", scheme, direct));
-    ColorConfig out = MatugenTheme::apply_scheme(ColorConfig{}, scheme, direct);
+    ColorConfig const base;
+    ColorConfig out = MatugenTheme::apply_scheme(base, scheme, direct);
     assert(out.background == "#1b1b1f");
     assert(out.background_alt == "#252629");
     assert(out.foreground == "#e3e2e6");
@@ -104,6 +105,8 @@ void test_apply_mapping() {
 
 void test_apply_partial_and_direct() {
     ColorConfig base;
+    base.switcher_selected_outline = "#123456";
+    base.switcher_unselected_outline = "#abcdef";
     // Missing tokens keep the static base values.
     std::map<std::string, std::string> partial = {{"primary", "#010203"}};
     std::map<std::string, std::string> empty;
@@ -111,6 +114,8 @@ void test_apply_partial_and_direct() {
     assert(out.accent == "#010203");
     assert(out.background == base.background);
     assert(out.border == base.border);
+    assert(out.switcher_selected_outline == base.switcher_selected_outline);
+    assert(out.switcher_unselected_outline == base.switcher_unselected_outline);
     // Direct slots win over scheme-mapped tokens.
     std::map<std::string, std::string> direct = {{"accent", "#111111"}};
     out = MatugenTheme::apply_scheme(base, partial, direct);
@@ -123,15 +128,19 @@ void test_custom_semantic_tokens() {
     // over the palette-hue fallbacks; without them tertiary/secondary apply.
     ColorConfig base;
     std::map<std::string, std::string> empty;
-    std::map<std::string, std::string> fallback = {{"tertiary", "#e5b8e8"},
-                                                   {"secondary", "#bbc6e4"}};
+    std::map<std::string, std::string> fallback = {
+        {"tertiary", "#e5b8e8"},
+        {"secondary", "#bbc6e4"},
+    };
     ColorConfig out = MatugenTheme::apply_scheme(base, fallback, empty);
     assert(out.warning == "#e5b8e8");
     assert(out.success == "#bbc6e4");
-    std::map<std::string, std::string> custom = {{"tertiary", "#e5b8e8"},
-                                                 {"secondary", "#bbc6e4"},
-                                                 {"warning", "#fab387"},
-                                                 {"success", "#a6e3a1"}};
+    std::map<std::string, std::string> custom = {
+        {"tertiary", "#e5b8e8"},
+        {"secondary", "#bbc6e4"},
+        {"warning", "#fab387"},
+        {"success", "#a6e3a1"},
+    };
     out = MatugenTheme::apply_scheme(base, custom, empty);
     assert(out.warning == "#fab387");
     assert(out.success == "#a6e3a1");

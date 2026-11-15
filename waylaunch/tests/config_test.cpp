@@ -40,6 +40,9 @@ int main() {
              << "source = \"matugen\"\n"
              << "matugen_path = \"~/matugen.json\"\n"
              << "mode = \"light\"\n"
+             << "\n[theme.colors]\n"
+             << "switcher_selected_outline = \"#ff00ff\"\n"
+             << "switcher_unselected_outline = \"#00ff88\"\n"
              << "\n[dropdown]\n"
              << "enabled = true\n"
              << "terminal = \"kitty\"\n"
@@ -80,6 +83,8 @@ int main() {
     assert(config.get().theme.source == "matugen");
     assert(config.get().theme.matugen_path == "~/matugen.json");
     assert(config.get().theme.mode == "light");
+    assert(config.get().theme.colors.switcher_selected_outline == "#ff00ff");
+    assert(config.get().theme.colors.switcher_unselected_outline == "#00ff88");
     const auto& dropdown = config.get().dropdown;
     assert(dropdown.enabled);
     assert(dropdown.terminal == "kitty");
@@ -120,6 +125,8 @@ int main() {
     assert(reloaded.get().theme.source == "matugen");
     assert(reloaded.get().theme.matugen_path == "~/matugen.json");
     assert(reloaded.get().theme.mode == "light");
+    assert(reloaded.get().theme.colors.switcher_selected_outline == "#ff00ff");
+    assert(reloaded.get().theme.colors.switcher_unselected_outline == "#00ff88");
     const auto& dd = reloaded.get().dropdown;
     assert(dd.enabled && dd.terminal == "kitty");
     assert(dd.edge == waylaunch::DropdownEdge::Bottom);

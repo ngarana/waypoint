@@ -22,6 +22,10 @@ struct ColorConfig {
     std::string success = "#a6e3a1";
     std::string border = "#45475a";
     std::string selection = "#45475a";
+    // Empty values follow the effective accent/foreground colors, including
+    // colors supplied by a live Matugen theme.
+    std::string switcher_selected_outline;
+    std::string switcher_unselected_outline;
 
     bool operator==(const ColorConfig&) const = default;
 };

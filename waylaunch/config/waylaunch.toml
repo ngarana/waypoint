@@ -87,6 +87,8 @@ warning        = "#fab387"
 success        = "#a6e3a1"
 border         = "#45475a"   # hairline separators
 selection      = "#45475a"   # selected-row background
+switcher_selected_outline   = "" # empty follows accent; otherwise a #rrggbb color
+switcher_unselected_outline = "" # empty follows foreground; otherwise a #rrggbb color
 
 [theme.input_font]           # the big query field
 family = "SF Pro Display, Inter, Sans"

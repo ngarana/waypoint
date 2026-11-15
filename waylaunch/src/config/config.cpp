@@ -124,6 +124,12 @@ bool Config::load(const std::string& path) {
                     get_str(*colors, "border", config_.theme.colors.border);
                 config_.theme.colors.selection =
                     get_str(*colors, "selection", config_.theme.colors.selection);
+                config_.theme.colors.switcher_selected_outline =
+                    get_str(*colors, "switcher_selected_outline",
+                            config_.theme.colors.switcher_selected_outline);
+                config_.theme.colors.switcher_unselected_outline =
+                    get_str(*colors, "switcher_unselected_outline",
+                            config_.theme.colors.switcher_unselected_outline);
             }
             if (auto* font = (*theme)["input_font"].as_table()) {
                 config_.theme.input_font.family =
@@ -377,6 +383,8 @@ bool Config::save(const std::string& path) const {
     write_color("success", config_.theme.colors.success);
     write_color("border", config_.theme.colors.border);
     write_color("selection", config_.theme.colors.selection);
+    write_color("switcher_selected_outline", config_.theme.colors.switcher_selected_outline);
+    write_color("switcher_unselected_outline", config_.theme.colors.switcher_unselected_outline);
 
     auto write_font = [&](const std::string& sec, const ConfigFont& f) {
         file << "\n[" << sec << "]\n";
