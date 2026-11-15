@@ -1,0 +1,127 @@
+name: Product release
+
+on:
+  push:
+    tags:
+      - 'qypr-v*'
+      - 'waylaunch-v*'
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/validate-release-tag.py "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake g++ pkg-config ninja-build wayland-protocols \
+            libwayland-dev libxkbcommon-dev libcairo2-dev \
+            libpango1.0-dev libfontconfig1-dev librsvg2-dev \
+            libsqlite3-dev libzstd-dev libmagic-dev \
+            libpam0g-dev libmpv-dev libpulse-dev libudev-dev \
+            libsystemd-dev libsdbus-c++-dev libtomlplusplus-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev
+
+      - name: Configure and build qypr
+        if: steps.release.outputs.product == 'qypr'
+        env:
+          VERSION_EXTRA: ${{ steps.release.outputs.version_extra }}
+        run: |
+          cmake -S qypr -B build/qypr -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+            "-DQYPR_VERSION_EXTRA=$VERSION_EXTRA"
+          cmake --build build/qypr --parallel
+
+      - name: Test qypr and check version output
+        if: steps.release.outputs.product == 'qypr'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          ctest --test-dir build/qypr --output-on-failure
+          test "$(build/qypr/qypr-lock --version)" = "qypr $VERSION"
+          test "$(build/qypr/qypr-bar --version)" = "qypr-bar $VERSION"
+          test "$(build/qypr/qypr-record --version)" = "qypr-record $VERSION"
+
+      - name: Configure and build waylaunch
+        if: steps.release.outputs.product == 'waylaunch'
+        env:
+          VERSION_EXTRA: ${{ steps.release.outputs.version_extra }}
+        run: |
+          cmake -S waylaunch -B build/waylaunch -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=ON "-DWAYLAUNCH_VERSION_EXTRA=$VERSION_EXTRA"
+          cmake --build build/waylaunch --parallel
+
+      - name: Test waylaunch and check version output
+        if: steps.release.outputs.product == 'waylaunch'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          ctest --test-dir build/waylaunch --output-on-failure
+          test "$(build/waylaunch/waylaunch --version)" = "waylaunch $VERSION"
+          test "$(build/waylaunch/waylaunchd --version)" = "waylaunchd $VERSION"
+          test "$(build/waylaunch/waylaunchctl --version)" = "waylaunchctl $VERSION"
+
+      - name: Stage install tree and create release assets
+        id: assets
+        env:
+          PRODUCT: ${{ steps.release.outputs.product }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          BUILD_DIR="build/$PRODUCT"
+          STAGE_DIR="$PWD/release-stage"
+          ASSET_DIR="$PWD/release-assets"
+          PACKAGE_DIR="$ASSET_DIR/$PRODUCT-$VERSION"
+          ARCH="$(uname -m)"
+          ASSET="$ASSET_DIR/$PRODUCT-$VERSION-linux-$ARCH.tar.gz"
+          CHECKSUM="$ASSET.sha256"
+
+          DESTDIR="$STAGE_DIR" cmake --install "$BUILD_DIR"
+          mkdir -p "$PACKAGE_DIR"
+          cp -a "$STAGE_DIR/usr" "$PACKAGE_DIR/usr"
+          tar -czf "$ASSET" -C "$ASSET_DIR" "$PRODUCT-$VERSION"
+          (cd "$ASSET_DIR" && sha256sum "$(basename "$ASSET")" > "$(basename "$CHECKSUM")")
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT: ${{ steps.release.outputs.product }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+          ASSET: ${{ steps.assets.outputs.asset }}
+          CHECKSUM: ${{ steps.assets.outputs.checksum }}
+        run: |
+          gh_args=(
+            --title "$PRODUCT $VERSION"
+            --verify-tag
+            --latest=false
+          )
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            gh_args+=(--prerelease)
+          fi
+
+          if PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match "$PRODUCT-v*" "${GITHUB_SHA}^" 2>/dev/null)"; then
+            gh_args+=(--generate-notes)
+            gh_args+=(--notes-start-tag "$PREVIOUS_TAG")
+          else
+            gh_args+=(--notes "First $PRODUCT release.")
+          fi
+
+          gh release create "$RELEASE_TAG" "${gh_args[@]}" "$ASSET" "$CHECKSUM"

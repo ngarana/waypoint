@@ -4,7 +4,8 @@
 //   MAJOR.MINOR.PATCH[-prerelease][+build]
 //
 // Set via `project(qypr VERSION x.y.z ...)` in the top-level CMakeLists.txt.
-// The CMake configure_file() call replaces @QYPR_VERSION@ etc. at build time.
+// CMake's configure_file() supplies both the numeric version and optional
+// SemVer suffix at build time.
 
 #pragma once
 
@@ -14,11 +15,4 @@
 #define QYPR_VERSION_TWEAK @PROJECT_VERSION_TWEAK@
 
 #define QYPR_VERSION "@PROJECT_VERSION@"
-
-// Full version string including any pre-release / build metadata suffix that
-// was passed as QYPR_VERSION_EXTRA (e.g. "-rc1", "-dev+abc1234").
-#if defined(QYPR_VERSION_EXTRA)
-#define QYPR_VERSION_STRING QYPR_VERSION QYPR_VERSION_EXTRA
-#else
-#define QYPR_VERSION_STRING QYPR_VERSION
-#endif
+#define QYPR_VERSION_STRING "@QYPR_VERSION_STRING@"

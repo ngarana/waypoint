@@ -2,8 +2,13 @@ cmake_minimum_required(VERSION 3.20)
 project(qypr VERSION 0.1.0 LANGUAGES C CXX)
 
 # Pre-release / build-metadata suffix appended to the semantic version string
-# (e.g. "-rc1", "-dev+gabcdef0"). Leave empty for stable releases.
+# (e.g. "-rc.1", "+build.abcdef0"). Leave empty for stable releases.
 set(QYPR_VERSION_EXTRA "" CACHE STRING "Version pre-release / build-metadata suffix")
+if(NOT QYPR_VERSION_EXTRA STREQUAL "" AND
+   NOT QYPR_VERSION_EXTRA MATCHES "^[+-][0-9A-Za-z.-]+$")
+    message(FATAL_ERROR
+        "QYPR_VERSION_EXTRA must be empty or a SemVer suffix beginning with '-' or '+'.")
+endif()
 
 # -----------------------------------------------------------------------------
 # Standards & defaults
@@ -106,6 +111,7 @@ qypr_gen_protocol(wlr-gamma-control-unstable-v1
 # -----------------------------------------------------------------------------
 # Version header (generated)
 # -----------------------------------------------------------------------------
+set(QYPR_VERSION_STRING "${PROJECT_VERSION}${QYPR_VERSION_EXTRA}")
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/core/Version.hpp.in"
     "${CMAKE_BINARY_DIR}/generated/Version.hpp"

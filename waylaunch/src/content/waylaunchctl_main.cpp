@@ -3,6 +3,8 @@
 // queries the index file directly (read-only), so it works whether or not the
 // daemon is running (NFR8), like mdfind.
 
+#include "WaylaunchVersion.hpp"
+
 #include "waylaunch/content/config.h"
 #include "waylaunch/content/control.h"
 #include "waylaunch/content/store.h"
@@ -34,7 +36,8 @@ void print_help() {
         "  shutdown          stop the daemon\n"
         "  ping              check the daemon is alive\n\n"
         "Options:\n"
-        "  -c, --config PATH   config.toml to read [content] from\n");
+        "  -c, --config PATH   config.toml to read [content] from\n"
+        "      --version       print version\n");
 }
 
 // Human-readable reason an index can't answer, so `search`/degradation is
@@ -89,6 +92,9 @@ int main(int argc, char** argv) {
         std::string a = argv[i];
         if ((a == "-c" || a == "--config") && i + 1 < argc) {
             config_path = argv[++i];
+        } else if (a == "--version") {
+            std::printf("waylaunchctl %s\n", WAYLAUNCH_VERSION_STRING);
+            return 0;
         } else if (a == "-h" || a == "--help") {
             print_help();
             return 0;

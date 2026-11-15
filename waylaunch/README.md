@@ -63,10 +63,17 @@ git clone https://github.com/yourusername/waylaunch.git
 cd waylaunch
 cmake -B build
 cmake --build build
+./build/waylaunch --version
 
 # Install
 sudo cmake --install build
 ```
+
+The version comes from `project(... VERSION ...)` in `CMakeLists.txt` and is
+shared by `waylaunch`, `waylaunchd`, and `waylaunchctl`. For a pre-release
+build, pass `-DWAYLAUNCH_VERSION_EXTRA=-rc.1` when configuring. Product tags
+and shipping steps are documented in the repository's
+[release guide](../docs/RELEASING.md).
 
 ## Usage
 
@@ -92,6 +99,11 @@ waylaunch --power
 
 # Debug output to stderr
 waylaunch --debug
+
+# Show the installed product version
+waylaunch --version
+waylaunchd --version
+waylaunchctl --version
 ```
 
 ### App switcher (Alt+Tab)

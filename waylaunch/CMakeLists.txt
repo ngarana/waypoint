@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 project(waylaunch VERSION 0.1.0 LANGUAGES C CXX)
 
+# Pre-release / build-metadata suffix, for example "-rc.1" or
+# "+build.abcdef0". Stable builds leave this empty.
+set(WAYLAUNCH_VERSION_EXTRA "" CACHE STRING "Version pre-release / build-metadata suffix")
+if(NOT WAYLAUNCH_VERSION_EXTRA STREQUAL "" AND
+   NOT WAYLAUNCH_VERSION_EXTRA MATCHES "^[+-][0-9A-Za-z.-]+$")
+    message(FATAL_ERROR
+        "WAYLAUNCH_VERSION_EXTRA must be empty or a SemVer suffix beginning with '-' or '+'.")
+endif()
+set(WAYLAUNCH_VERSION_STRING "${PROJECT_VERSION}${WAYLAUNCH_VERSION_EXTRA}")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Version.hpp.in"
+    "${CMAKE_BINARY_DIR}/generated/WaylaunchVersion.hpp"
+    @ONLY)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -235,6 +250,7 @@ add_executable(waylaunch ${SOURCES})
 
 target_include_directories(waylaunch PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/generated
     ${LIBWL_COMMON}
     ${PROTOCOL_BUILD_DIR}
     ${WAYLAND_INCLUDE_DIRS}
@@ -283,10 +299,12 @@ endif()
 
 # waylaunchd (indexing daemon) + waylaunchctl (control CLI)
 add_executable(waylaunchd src/content/waylaunchd_main.cpp)
+target_include_directories(waylaunchd PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(waylaunchd PRIVATE waylaunch_content)
 target_compile_options(waylaunchd PRIVATE -Wall -Wextra)
 
 add_executable(waylaunchctl src/content/waylaunchctl_main.cpp)
+target_include_directories(waylaunchctl PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(waylaunchctl PRIVATE waylaunch_content)
 target_compile_options(waylaunchctl PRIVATE -Wall -Wextra)
 

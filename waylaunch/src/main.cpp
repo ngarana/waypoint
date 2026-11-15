@@ -1,6 +1,8 @@
+#include "WaylaunchVersion.hpp"
 #include "waylaunch/config.h"
 #include "waylaunch/dropdown/dropdown_main.h"
 #include "waylaunch/launcher_ui.h"
+
 #include <csignal>
 #include <cstdlib>
 #include <fcntl.h>
@@ -110,7 +112,7 @@ int main(int argc, char* argv[]) {
                       << "  -v, --version        Show version\n";
             return 0;
         } else if (arg == "--version" || arg == "-v") {
-            std::cout << "waylaunch 0.1.0\n";
+            std::cout << "waylaunch " << WAYLAUNCH_VERSION_STRING << '\n';
             return 0;
         } else if (arg == "--debug") {
             config.get().general.debug = true;

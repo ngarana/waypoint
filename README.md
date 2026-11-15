@@ -24,6 +24,16 @@ cmake -S waylaunch -B waylaunch/build -G Ninja -DBUILD_TESTING=ON && cmake --bui
 cmake -S common -B common/build -G Ninja && cmake --build common/build --parallel
 ```
 
+## Versioning and releases
+
+`qypr` and `waylaunch` have independent SemVer release streams, starting at
+`0.1.0`. Tag them as `qypr-v0.1.0` and `waylaunch-v0.1.0`; shared `common/`
+code ships with either product and has no separate version. The tag-triggered
+workflow validates the tag against the product's CMake version, runs that
+product's test suite, and publishes a Linux install archive with a SHA-256
+checksum. See [docs/RELEASING.md](docs/RELEASING.md) for version bumps,
+pre-releases, and installation steps.
+
 ## Test
 
 ```sh
