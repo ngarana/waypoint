@@ -34,6 +34,10 @@ struct zwlr_foreign_toplevel_manager_v1;
 struct zwlr_foreign_toplevel_handle_v1;
 #endif
 
+#ifdef HAS_TOPLEVEL_EXPORT
+struct hyprland_toplevel_export_manager_v1;
+#endif
+
 #ifdef HAS_SCREENCOPY
 struct zwlr_screencopy_manager_v1;
 struct zwlr_screencopy_frame_v1;
@@ -177,6 +181,7 @@ class WaylandCore {
     wl_display* display() const;
     wl_surface* surface() const;
     wl_seat* seat() const; // for clients that need the seat (e.g. switcher activate)
+    wl_shm* shm() const { return shm_; }
     bool is_running() const;
     bool is_configured() const; // true once the (layer/xdg) surface has been configured
 
@@ -261,6 +266,12 @@ class WaylandCore {
     }
 #endif
 
+#ifdef HAS_TOPLEVEL_EXPORT
+    hyprland_toplevel_export_manager_v1* toplevel_export_manager() const {
+        return toplevel_export_manager_;
+    }
+#endif
+
 #ifdef HAS_SCREENCOPY
     zwlr_screencopy_manager_v1* screencopy_manager_ = nullptr;
     // Backdrop capture state (written by frame-listener trampolines).
@@ -281,6 +292,10 @@ class WaylandCore {
     void handle_sc_flags(uint32_t flags);
     void handle_sc_ready();
     void handle_sc_failed();
+#endif
+
+#ifdef HAS_TOPLEVEL_EXPORT
+    hyprland_toplevel_export_manager_v1* toplevel_export_manager_ = nullptr;
 #endif
 
   private:

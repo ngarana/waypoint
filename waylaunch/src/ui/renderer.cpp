@@ -118,6 +118,32 @@ void Renderer::rounded_rect(int x, int y, int w, int h, int radius, const Color&
     cairo_fill(cairo_->cr);
 }
 
+void Renderer::draw_surface(cairo_surface_t* surface, int x, int y, int w, int h, int radius,
+                            double alpha) {
+    if (!cairo_ || !cairo_->cr || !surface ||
+        cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS || w <= 0 || h <= 0) {
+        return;
+    }
+    int const source_width = cairo_image_surface_get_width(surface);
+    int const source_height = cairo_image_surface_get_height(surface);
+    if (source_width <= 0 || source_height <= 0) return;
+
+    cairo_t* cr = cairo_->cr;
+    cairo_save(cr);
+    round_rect_path(cr, x, y, w, h, radius);
+    cairo_clip(cr);
+    double const scale =
+        std::min(static_cast<double>(w) / source_width, static_cast<double>(h) / source_height);
+    double const draw_width = source_width * scale;
+    double const draw_height = source_height * scale;
+    cairo_translate(cr, x + ((w - draw_width) / 2), y + ((h - draw_height) / 2));
+    cairo_scale(cr, scale, scale);
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+    cairo_paint_with_alpha(cr, std::clamp(alpha, 0.0, 1.0));
+    cairo_restore(cr);
+}
+
 void Renderer::draw_selection_pill(int x, int y, int w, int h, int radius, const Color& accent) {
     rounded_rect(x, y, w, h, radius, Color::from_rgba(accent.r, accent.g, accent.b, 0.28));
     rounded_rect(x, y, w, h, radius, Color::from_rgba(accent.r, accent.g, accent.b, 0.6));
@@ -245,10 +271,12 @@ void Renderer::draw_icon(int x, int y, int size, const std::string& icon_name,
         rounded_rect(x, y, size, size, radius, bg);
         Color fg{.r = accent.r, .g = accent.g, .b = accent.b, .a = 1.0};
         std::string m = monogram_of(label.empty() ? icon_name : label);
-        RenderFontConfig f{.family = "Sans",
-                           .size = static_cast<double>(size) * 0.5,
-                           .bold = true,
-                           .italic = false};
+        RenderFontConfig f{
+            .family = "Sans",
+            .size = static_cast<double>(size) * 0.5,
+            .bold = true,
+            .italic = false,
+        };
         with_layout(cairo_->cr, f, m, [&](PangoLayout* layout) {
             // Center by ink extents so the glyph is optically centred in the tile.
             PangoRectangle ink;

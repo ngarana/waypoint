@@ -53,6 +53,8 @@ class Renderer {
     void clear(const Color& color);
     void fill_rect(int x, int y, int w, int h, const Color& color);
     void rounded_rect(int x, int y, int w, int h, int radius, const Color& color);
+    void draw_surface(cairo_surface_t* surface, int x, int y, int w, int h, int radius,
+                      double alpha = 1.0);
     // Accent selection pill (fill + brighter overlay) — the one treatment shared
     // by the switcher and power HUD cards, factored here so it can't diverge.
     void draw_selection_pill(int x, int y, int w, int h, int radius, const Color& accent);

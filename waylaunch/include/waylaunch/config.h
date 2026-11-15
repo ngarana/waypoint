@@ -125,6 +125,9 @@ struct AppSwitcherConfig {
     int card_size = 104;
     int corner_radius = 20;
     bool show_app_names = true;
+    bool previews = true;
+    bool live_previews = true;
+    int preview_height = 160;
     bool group_by_app = true;
     bool quick_actions = true;
     // Optional shell command run when a window is activated, in addition to the

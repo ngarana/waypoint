@@ -50,6 +50,7 @@ class WlrForeignToplevelBackend : public IToplevelBackend {
     const std::vector<ToplevelWindow>& windows() const override { return window_cache_; }
 
 #ifdef HAS_FOREIGN_TOPLEVEL
+    zwlr_foreign_toplevel_handle_v1* find_handle(uintptr_t handle_id) const;
     void bind_manager(zwlr_foreign_toplevel_manager_v1* manager);
     void handle_manager_toplevel(zwlr_foreign_toplevel_handle_v1* handle);
     void handle_toplevel_title(zwlr_foreign_toplevel_handle_v1* handle, const char* title);

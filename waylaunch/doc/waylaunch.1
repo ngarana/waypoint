@@ -111,6 +111,34 @@ Panel alpha when glass is unavailable.
 \fBbackdrop_tint\fR (double, default: \fB0.55\fR)
 Darkening overlay alpha over the blurred backdrop.
 .
+.SS [app_switcher]
+.TP
+\fBpreviews\fR (bool, default: \fBtrue\fR)
+Show per-window thumbnails when the compositor provides Hyprland's
+toplevel-export protocol; otherwise app icons are used.
+.TP
+\fBlive_previews\fR (bool, default: \fBtrue\fR)
+Refresh the selected thumbnail about every 66 ms and other thumbnails about
+once per second while the switcher is visible. When false, capture each window
+once per show.
+.TP
+\fBpreview_height\fR (int, default: \fB160\fR)
+Thumbnail height in pixels. The layout shrinks previews as needed, down to
+64 pixels, to fit the screen.
+.TP
+\fBcorner_radius\fR (int, default: \fB20\fR)
+Corner radius for the switcher panel.
+.TP
+\fBshow_app_names\fR (bool, default: \fBtrue\fR)
+Show the app icon and window title in each card.
+.TP
+\fBgroup_by_app\fR (bool, default: \fBtrue\fR)
+Show one card per app, with a window count badge; when false, show one card per
+window.
+.PP
+With Hyprland's \fBecosystem:enforce_permissions\fR enabled, add a
+\fBscreencopy\fR permission rule for waylaunch to use thumbnails.
+.
 .SS [theme]
 .TP
 \fBname\fR (string, default: \fB"dark"\fR)

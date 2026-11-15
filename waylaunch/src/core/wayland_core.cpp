@@ -42,6 +42,9 @@ extern "C" {
 #ifdef HAS_FOREIGN_TOPLEVEL
 #include "wlr-foreign-toplevel-management-client-protocol.h"
 #endif
+#ifdef HAS_TOPLEVEL_EXPORT
+#include "hyprland-toplevel-export-v1-client-protocol.h"
+#endif
 }
 
 namespace waylaunch {
@@ -112,6 +115,12 @@ static void pointer_motion_cb(void* data, wl_pointer*, uint32_t, wl_fixed_t x, w
     self->pointer_y_ = wl_fixed_to_double(y);
     if (self->mouse_move_handler_) self->mouse_move_handler_(self->pointer_x_, self->pointer_y_);
 }
+static void pointer_warp_cb(void* data, wl_pointer*, wl_fixed_t x, wl_fixed_t y) {
+    auto* self = static_cast<WaylandCore*>(data);
+    self->pointer_x_ = wl_fixed_to_double(x);
+    self->pointer_y_ = wl_fixed_to_double(y);
+    if (self->mouse_move_handler_) self->mouse_move_handler_(self->pointer_x_, self->pointer_y_);
+}
 static void pointer_button_cb(void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button,
                               uint32_t state) {
     auto* self = static_cast<WaylandCore*>(data);
@@ -143,6 +152,7 @@ static const wl_pointer_listener pointer_listener = {
     .axis_discrete = pointer_axis_discrete_cb,
     .axis_value120 = pointer_axis_value120_cb,
     .axis_relative_direction = pointer_axis_relative_direction_cb,
+    .warp = pointer_warp_cb,
 };
 
 // Seat
@@ -194,7 +204,10 @@ static const wl_output_listener output_listener = {
 
 // Registry
 static void registry_global_cb(void* data, wl_registry* reg, uint32_t name, const char* interface,
-                               uint32_t) {
+                               uint32_t version) {
+#ifndef HAS_TOPLEVEL_EXPORT
+    (void) version;
+#endif
     auto* self = static_cast<WaylandCore*>(data);
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
         self->compositor_ =
@@ -229,6 +242,13 @@ static void registry_global_cb(void* data, wl_registry* reg, uint32_t name, cons
         }
     }
 #endif
+#ifdef HAS_TOPLEVEL_EXPORT
+    else if (version >= 2 &&
+             std::strcmp(interface, hyprland_toplevel_export_manager_v1_interface.name) == 0) {
+        self->toplevel_export_manager_ = static_cast<hyprland_toplevel_export_manager_v1*>(
+            wl_registry_bind(reg, name, &hyprland_toplevel_export_manager_v1_interface, 2));
+    }
+#endif
 }
 
 static void registry_global_remove_cb(void*, wl_registry*, uint32_t) {}
@@ -241,6 +261,10 @@ WaylandCore::~WaylandCore() {
     buffers_.clear();
 #ifdef HAS_SCREENCOPY
     if (screencopy_manager_) zwlr_screencopy_manager_v1_destroy(screencopy_manager_);
+#endif
+#ifdef HAS_TOPLEVEL_EXPORT
+    if (toplevel_export_manager_)
+        hyprland_toplevel_export_manager_v1_destroy(toplevel_export_manager_);
 #endif
     if (layer_surface_) zwlr_layer_surface_v1_destroy(layer_surface_);
     if (layer_shell_) zwlr_layer_shell_v1_destroy(layer_shell_);

@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CAIRO REQUIRED cairo)
+pkg_check_modules(WAYLAND REQUIRED wayland-client)
 
 option(BUILD_TESTING "Build the shared unit tests" ON)
 if(BUILD_TESTING)
@@ -69,4 +70,12 @@ if(BUILD_TESTING)
     target_include_directories(matugen_tokens_test PRIVATE ${CMAKE_SOURCE_DIR})
     target_compile_options(matugen_tokens_test PRIVATE -Wall -Wextra -UNDEBUG)
     add_test(NAME matugen_tokens_test COMMAND matugen_tokens_test)
+
+    add_executable(shm_buffer_format_test tests/shm_buffer_format_test.cpp wayland/ShmBuffer.cpp)
+    target_include_directories(shm_buffer_format_test PRIVATE
+        ${CMAKE_SOURCE_DIR} ${CAIRO_INCLUDE_DIRS} ${WAYLAND_INCLUDE_DIRS})
+    target_link_libraries(shm_buffer_format_test PRIVATE ${CAIRO_LIBRARIES} ${WAYLAND_LIBRARIES})
+    target_compile_options(shm_buffer_format_test PRIVATE
+        ${CAIRO_CFLAGS} ${WAYLAND_CFLAGS} -Wall -Wextra -UNDEBUG)
+    add_test(NAME shm_buffer_format_test COMMAND shm_buffer_format_test)
 endif()

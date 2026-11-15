@@ -26,6 +26,9 @@ int main() {
              << "card_size = 96\n"
              << "corner_radius = 12\n"
              << "show_app_names = false\n"
+             << "previews = false\n"
+             << "live_previews = true\n"
+             << "preview_height = 128\n"
              << "group_by_app = false\n"
              << "quick_actions = false\n"
              // Quotes + backslashes: save() must escape these, or the reload
@@ -67,6 +70,9 @@ int main() {
     assert(sw.card_size == 96);
     assert(sw.corner_radius == 12);
     assert(!sw.show_app_names);
+    assert(!sw.previews);
+    assert(sw.live_previews);
+    assert(sw.preview_height == 128);
     assert(!sw.group_by_app);
     assert(!sw.quick_actions);
     assert(sw.activate_command == "printf 'dispatch focuswindow class:%s' \"a\\\"b\"");
@@ -104,6 +110,9 @@ int main() {
     assert(rsw.card_size == 96);
     assert(rsw.corner_radius == 12);
     assert(!rsw.show_app_names);
+    assert(!rsw.previews);
+    assert(rsw.live_previews);
+    assert(rsw.preview_height == 128);
     assert(!rsw.group_by_app);
     assert(!rsw.quick_actions);
     assert(rsw.activate_command == "printf 'dispatch focuswindow class:%s' \"a\\\"b\"");

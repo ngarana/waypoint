@@ -230,15 +230,19 @@ category = "System"
 
 
 # ============================================================================
-#  [app_switcher] — macOS-style Command+Tab Application Switcher HUD.
+#  [app_switcher] — Alt+Tab switcher with per-window live previews.
 # ============================================================================
 [app_switcher]
 enabled        = true     # enable Command+Tab application switcher overlay
 modifier       = "Super"  # modifier key to hold ("Super" | "Alt")
 icon_size      = 64       # application icon size in px
 card_size      = 104      # card size in px
-corner_radius  = 20       # glass HUD corner radius
-show_app_names = true     # show active application title below HUD
+corner_radius  = 20       # glass panel corner radius
+show_app_names = true     # show app icon and window title in each card
+previews       = true     # capture window thumbnails when Hyprland supports it
+live_previews  = true     # refresh selected at 15 fps, other windows once per second
+preview_height = 160      # thumbnail height in px (minimum 64)
+# Hyprland with ecosystem:enforce_permissions = true needs a `screencopy` permission rule.
 group_by_app   = true     # true: one entry per app (macOS style). false: one
                           #   entry per window, so you can switch to a specific
                           #   instance (e.g. the same app on another workspace).

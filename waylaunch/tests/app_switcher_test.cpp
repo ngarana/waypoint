@@ -106,6 +106,13 @@ void test_app_switcher_mru_and_navigation() {
     manager.navigate_prev();
     assert(manager.selected_index() == initial_idx);
 
+    manager.set_row_stride(2);
+    manager.jump_to(0);
+    manager.navigate_row(-1);
+    assert(manager.selected_index() == 1);
+    manager.navigate_row(1);
+    assert(manager.selected_index() == 0);
+
     // 4. Direct Jump test
     manager.jump_to(2);
     assert(manager.selected_index() == 2);

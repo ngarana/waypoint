@@ -19,6 +19,8 @@ void SwitcherInputController::setup_dispatch_table() {
         {XKB_KEY_grave, [this] { manager_->navigate_prev(); }},
         {XKB_KEY_Left, [this] { manager_->navigate_prev(); }},
         {XKB_KEY_Right, [this] { manager_->navigate_next(); }},
+        {XKB_KEY_Up, [this] { manager_->navigate_row(-1); }},
+        {XKB_KEY_Down, [this] { manager_->navigate_row(1); }},
         {XKB_KEY_q, [this] { manager_->quit_selected(); }},
         {XKB_KEY_Q, [this] { manager_->quit_selected(); }},
         {XKB_KEY_h, [this] { manager_->toggle_minimize_selected(); }},
