@@ -115,12 +115,14 @@ static void pointer_motion_cb(void* data, wl_pointer*, uint32_t, wl_fixed_t x, w
     self->pointer_y_ = wl_fixed_to_double(y);
     if (self->mouse_move_handler_) self->mouse_move_handler_(self->pointer_x_, self->pointer_y_);
 }
+#ifdef WL_POINTER_WARP_SINCE_VERSION
 static void pointer_warp_cb(void* data, wl_pointer*, wl_fixed_t x, wl_fixed_t y) {
     auto* self = static_cast<WaylandCore*>(data);
     self->pointer_x_ = wl_fixed_to_double(x);
     self->pointer_y_ = wl_fixed_to_double(y);
     if (self->mouse_move_handler_) self->mouse_move_handler_(self->pointer_x_, self->pointer_y_);
 }
+#endif
 static void pointer_button_cb(void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button,
                               uint32_t state) {
     auto* self = static_cast<WaylandCore*>(data);
@@ -152,7 +154,9 @@ static const wl_pointer_listener pointer_listener = {
     .axis_discrete = pointer_axis_discrete_cb,
     .axis_value120 = pointer_axis_value120_cb,
     .axis_relative_direction = pointer_axis_relative_direction_cb,
+#ifdef WL_POINTER_WARP_SINCE_VERSION
     .warp = pointer_warp_cb,
+#endif
 };
 
 // Seat
